@@ -18,6 +18,27 @@ from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           CheckboxGroup, Select, Text)
 
 
+def save_svg_image(img_name, figa, figb):
+    """
+        To save plots as svg
+        Note: 2 images will emerge
+    """
+    
+    figa.output_backend = "svg"
+    figb.output_backend = "svg"
+    export_svgs([figa], filename = img_name + "(a).svg")
+    export_svgs([figb], filename = img_name + "(b).svg")
+
+
+def save_png_image(img_name, disp_layout):
+    """
+        To save plots as png
+        Note: 1 image will emerge
+    """
+
+    export_pngs(img_name, disp_layout)
+    
+
 def determine_table(table_name):
     """
         Find pattern at end of string to determine table to be plotted
@@ -302,19 +323,11 @@ def main():
     else:
         #getting the name of the gain table specified
         mytab = args[0].rstrip("/")
-
-
-
-    if pngname == '':
-        pngname = 'plot_' + mytab + '_corr' + str(corr) + '_' \
-                    + doplot + '_field' + str(field)
         
-    else:
-        pngname = pngname + ".png"
-
-    output_file(pngname + ".html")
-
-
+    if pngname == '':
+        pngname = 'plot_' + mytab + '_corr' + str(corr) + '_' + doplot + '_field' + str(field)
+        output_file(pngname + ".html")
+        
     #by default is ap: amplitude and phase
     if doplot not in ['ap','ri']:
         print "Plot selection must be either ap (amp and phase) or ri (real and imag)"
@@ -878,21 +891,25 @@ def main():
 
         """)
 
-    #uncomment next 2 line to save as svg also
-
-    '''
-    ax1.output_backend = "svg"
-    ax2.output_backend = "svg"
-    export_svgs([ax1], filename=pngname+".svg")
-    export_svgs([ax2], filename=pngname+".svg")
-    '''
 
     plot_widgets = widgetbox([ant_select, batch_select, toggle_err, legend_toggle])
     #figures   = column(ax1,ant_select, toggle_err)
     #figures_b = column(ax2)
 
     layout = gridplot([[plot_widgets, ax1, ax2]], plot_width=700, plot_height=600)
-    show(layout)
+    
+    #uncomment next line to automatically plot on web browser
+    #show(layout)
+
+        
+    if pngname:
+        for i in range(len(legend_items_ax1)):
+            legend_items_ax1[i][1][0].visible = True
+            legend_items_ax2[i][1][0].visible = True
+            #p2.visible = True
+        save_svg_image(pngname, ax1, ax2)
+
+    
     print 'Rendered: '+pngname
 
 
