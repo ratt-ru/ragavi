@@ -2,6 +2,7 @@ import sys
 import glob
 import pylab
 import numpy as np
+import re
 
 import matplotlib.cm as cmx
 from pyrap.tables import table
@@ -16,6 +17,19 @@ from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           FixedTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
 
+
+def determine_table(table_name):
+    """
+        Find pattern at end of string to determine table to be plotted
+        The search is not case sensitive
+    """
+    pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
+    found = pattern.search(table_name)     
+    try:
+        result = found.group()
+        return result.upper()
+    except AttributeError:
+        return -1
 
 def color_denormalize(ycol):
     '''
@@ -287,7 +301,8 @@ def main():
         sys.exit(-1)
     else:
         #getting the name of the gain table specified
-        mytab = args[0].rstrip('/')
+        mytab = args[0].rstrip("/")
+
 
 
     if pngname == '':
@@ -415,7 +430,7 @@ def main():
 
 
         if doplot == 'ap':
-            if mytab.endswith('.G0'):
+            if ".G" in determine_table(mytab):
                 cparam = subtab.getcol('CPARAM')
                 
                 # creating a masked array to prevent invalid values from being
@@ -431,7 +446,7 @@ def main():
                 ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
-            elif mytab.endswith('.B0'):
+            elif ".B" in determine_table(mytab):
                 cparam = subtab.getcol('CPARAM')
                 nchan = cparam.shape[1]
                 chans = np.arange(0,nchan,dtype='int')
@@ -443,7 +458,7 @@ def main():
                 ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
 
-            elif mytab.endswith('.K0'):
+            elif ".K" in determine_table(mytab):
                 antenna=subtab.getcol('ANTENNA1')
                 fparam = subtab.getcol('FPARAM')
                 masked_data = np.ma.masked_array(data=fparam,mask=flagcol)
@@ -454,7 +469,7 @@ def main():
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
 
-            else:
+            elif determine_table(mytab) == -1:
                 print "Invalid table"
                 sys.exit(-1)
             
@@ -464,7 +479,7 @@ def main():
             ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
 
         elif doplot == 'ri':
-            if mytab.endswith('.G0'):
+            if ".G" in determine_table(mytab):
                 cparam = subtab.getcol('CPARAM')
                 times = subtab.getcol('TIME')
                 times = times - times[0]
@@ -478,7 +493,7 @@ def main():
                 ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
-            elif mytab.endswith('.B0'):
+            elif ".B" in determine_table(mytab):
                 cparam = subtab.getcol('CPARAM')
                 nchan = cparam.shape[1]
                 chans = np.arange(0,nchan,dtype='int')
@@ -490,11 +505,11 @@ def main():
                 ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
 
-            elif mytab.endswith('.K0'):
+            elif ".K" in determine_table(mytab):
                 print "No complex values to plot"
                 sys.exit()
 
-            else:
+            elif determine_table(mytab) == -1:
                 print "Invalid table"
                 sys.exit(-1)
 
@@ -539,8 +554,8 @@ def main():
 
 
     #reorienting the min and max vales for x and y axes
-    xmin = xmin-400
-    xmax = xmax+400
+    xmin = xmin - 400
+    xmax = xmax + 400
 
 
     #setting the axis limits for scaliing
@@ -631,8 +646,8 @@ def main():
         ax1.add_layout(legend_objs_ax1['leg_%s'%str(i)], 'right')
         ax2.add_layout(legend_objs_ax2['leg_%s'%str(i)], 'right')
 
-        ax1.add_layout(legend_objs_ax1_err['leg_%s'%str(i)], 'right')
-        ax2.add_layout(legend_objs_ax2_err['leg_%s'%str(i)], 'right')
+        ax1.add_layout(legend_objs_ax1_err['leg_%s'%str(i)], 'left')
+        ax2.add_layout(legend_objs_ax2_err['leg_%s'%str(i)], 'left')
 
 
     #adding plot titles
