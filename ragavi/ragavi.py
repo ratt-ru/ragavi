@@ -12,7 +12,7 @@ import matplotlib.colors as colors
 from bokeh.plotting import figure
 from bokeh.models.widgets import Div
 from bokeh.layouts import row, column, gridplot, widgetbox
-from bokeh.io import output_file, show, output_notebook, export_svgs
+from bokeh.io import output_file, show, output_notebook, export_svgs, export_png
 from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           FixedTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
@@ -36,7 +36,7 @@ def save_png_image(img_name, disp_layout):
     Note: One image will emerge
 
     """
-    export_pngs(img_name, disp_layout)
+    export_png(img_name, disp_layout)
 
 
 def determine_table(table_name):
