@@ -19,74 +19,77 @@ from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
 
 
 def save_svg_image(img_name, figa, figb):
+    """To save plots as svg
+
+    Note: Two images will emerge
+
     """
-        To save plots as svg
-        Note: 2 images will emerge
-    """
-    
     figa.output_backend = "svg"
     figb.output_backend = "svg"
-    export_svgs([figa], filename = img_name + "(a).svg")
-    export_svgs([figb], filename = img_name + "(b).svg")
+    export_svgs([figa], filename="%s_%s".format(img_name, "(a).svg"))
+    export_svgs([figb], filename="%s_%s".format(img_name, "(b).svg"))
 
 
 def save_png_image(img_name, disp_layout):
-    """
-        To save plots as png
-        Note: 1 image will emerge
-    """
+    """To save plots as png
 
+    Note: One image will emerge
+
+    """
     export_pngs(img_name, disp_layout)
-    
+
 
 def determine_table(table_name):
-    """
-        Find pattern at end of string to determine table to be plotted
-        The search is not case sensitive
+    """Find pattern at end of string to determine table to be plotted.
+       The search is not case sensitive
+
     """
     pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
-    found = pattern.search(table_name)     
+    found = pattern.search(table_name)
     try:
         result = found.group()
         return result.upper()
     except AttributeError:
         return -1
 
-def color_denormalize(ycol):
-    '''
-    converting rgb values from 0 to 255
 
-    '''
+def color_denormalize(ycol):
+    """Converting rgb values from 0 to 255"""
     ycol = np.array(ycol)
     ycol = np.array(ycol*255, dtype=int)
     ycol = ycol.tolist()
     ycol = tuple(ycol)[:-1]
-
     return ycol
 
 
-def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},         error_kwargs={}):
-    '''
-    Function to plot the error bars for both x and y. 
-    Takes in 3 compulsory parameters fig, x and y
-    INPUT:
-    ============
+def errorbar(fig, x, y, xerr=None, yerr=None, color='red',
+             point_kwargs={}, error_kwargs={}):
+    """Function to plot the error bars for both x and y.
+       Takes in 3 compulsory parameters fig, x and y
+
+    Inputs
+    ------
     fig: the figure object
-    x: x_axis
-    y: y_axis
-    xerr: errors for x axis, must be a list
-    yerr: errors for y axis, must be a list
-    color: color for the error bars
+    x: list
+        x_axis value
+    y: list
+        y_axis value
+    xerr: list
+        Errors for x axis, must be a list
+    yerr: list
+        Errors for y axis, must be a list
+    color: str
+        Color for the error bars
 
 
-    OUTPUT
-    ==============
-    Returns a multiline object for external legend rendering
+    Outputs
+    -------
+    h: fig.multi_line
+        Returns a multiline object for external legend rendering
 
-    '''
-
-    #setting default return value
-    h= None
+    """
+    # Setting default return value
+    h = None
 
     if xerr is not None:
 
@@ -97,8 +100,8 @@ def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},     
             x_err_x.append((px - err, px + err))
             x_err_y.append((py, py))
 
-        h=fig.multi_line(x_err_x, x_err_y, color=color, line_width=3,
-                        level='underlay', visible=False, **error_kwargs)
+        h = fig.multi_line(x_err_x, x_err_y, color=color, line_width=3,
+                           level='underlay', visible=False, **error_kwargs)
 
     if yerr is not None:
         y_err_x = []
@@ -109,144 +112,150 @@ def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},     
             y_err_y.append((py - err, py + err))
 
         h = fig.multi_line(y_err_x, y_err_y, color=color, line_width=3,
-                        level='underlay', visible=False, **error_kwargs)
+                           level='underlay', visible=False, **error_kwargs)
 
     fig.legend.click_policy = 'hide'
 
     return h
 
 
-def make_plots(source, ax1 , ax2, color='purple', y1_err=None, y2_err=None):
-    """
-        INPUTS
-        =====================
+def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
+    """Generate a plot
 
-        source: main data to plot type-> ColumnDataSource
-        ax1: First figure
-        ax2: Second Figure
-        color: Data points' color
-        y1_err: y1 error data
-        y2_err: y2 error data
+    Inputs
+    ------
 
-        OUTPUTS
-        =====================
+    source: ColumnDataSource
+        Main data to plot
+    ax1: figure
+        First figure
+    ax2: figure
+        Second Figure
+    color: str
+        Data points' color
+    y1_err: list
+        y1 error data
+    y2_err: list
+        y2 error data
+
+    Outputs
+    -------
+    (p1, p1_err, p2, p2_err ): tuple
         Tuple of glyphs
 
     """
-    
     p1 = ax1.circle('x', 'y1', size=8, alpha=1, color=color, source=source,
                     nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
-    p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'], color=color, yerr=y1_err)
+    p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
+                      color=color, yerr=y1_err)
 
-    p2 = ax2.circle('x', 'y2', size=8, alpha=1, color=color, source=source, 
+    p2 = ax2.circle('x', 'y2', size=8, alpha=1, color=color, source=source,
                     nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
-    p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'], color=color, yerr=y2_err)
-
+    p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
+                      color=color, yerr=y2_err)
 
     return p1, p1_err, p2, p2_err
 
 
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
+    """Preparing the data for plotting
+
+    Inputs
+    ------
+    masked_data: list
+        Flagged data from CPARAM column to be plotted.
+    masked_data_err : list
+        Flagged data from the PARAMERR column to be plotted
+    doplot: str
+        Either 'ap' or 'ri'
+    corr: int
+        Correlation to plot (0,1 e.t.c)
+
+    Outputs
+    -------
+    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array) : tuple
+        Tuple with arrays of the different data
+
     """
-    Preparing the data for plotting
 
-    INPUTS
-    =====================
-    masked_data     : Flagged data from CPARAM column to be plotted. 
-    masked_data_err : Flagged data from the PARAMERR column to be plotted
-    doplot: Either 'ap' or 'ri'
-    corr: Correlation to plot (0,1 e.t.c)
-
-    OUTPUTS
-    ====================
-    Tuple with arrays of the different data
-    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array)
-
-    """
-
-    if doplot =='ap':
-        y1 = np.abs(masked_data)[:,0,corr]
-        y1_err = np.abs(masked_data_err)[:,0,corr]
-
-        y2 = np.angle(masked_data)[:,0,corr]
-        #remove phase limit from -pi to pi
+    if doplot == 'ap':
+        y1 = np.abs(masked_data)[:, 0, corr]
+        y1_err = np.abs(masked_data_err)[:, 0, corr]
+        y2 = np.angle(masked_data)[:, 0, corr]
+        # Remove phase limit from -pi to pi
         y2 = np.unwrap(y2)
         y2 = np.rad2deg(y2)
         y2_err = None
-
     else:
-        y1 = np.real(masked_data)[:,0,corr]
-        y1_err = np.abs(masked_data_err)[:,0,corr]
-
-        y2 = np.imag(masked_data)[:,0,corr]
+        y1 = np.real(masked_data)[:, 0, corr]
+        y1_err = np.abs(masked_data_err)[:, 0, corr]
+        y2 = np.imag(masked_data)[:, 0, corr]
         y2_err = None
 
     return y1, y1_err, y2, y2_err
 
 
 def data_prep_B(masked_data, masked_data_err, doplot, corr):
-    """
-    Preparing the data for plotting
+    """Preparing the data for plotting
 
     INPUTS
     =====================
-    masked_data     : Flagged data from CPARAM column to be plotted. 
-    masked_data_err : Flagged data from the PARAMERR column to be plotted
-    doplot: Either 'ap' or 'ri'
-    corr: Correlation to plot (0,1 e.t.c)
+    masked_data     : list
+        Flagged data from CPARAM column to be plotted.
+    masked_data_err : list
+        Flagged data from the PARAMERR column to be plotted
+    doplot: str
+        Either 'ap' or 'ri'
+    corr: int
+        Correlation to plot (0,1 e.t.c)
 
-    OUTPUTS
-    ====================
-    Tuple with arrays of the different data
-    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array)
+    Outputs
+    -------
+    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array): tuple
+        Tuple with arrays of the different data
 
     """
 
     if doplot == 'ap':
-        y1 = np.abs(masked_data)[0,:,corr]
-        y1_err = np.abs(masked_data_err)[0,:,corr]
-
-        y2 = np.array(np.angle(masked_data[0,:,corr]))
+        y1 = np.abs(masked_data)[0, :, corr]
+        y1_err = np.abs(masked_data_err)[0, :, corr]
+        y2 = np.array(np.angle(masked_data[0, :, corr]))
         y2 = np.rad2deg(np.unwrap(y2))
-        y2_err= np.array(np.angle(masked_data_err[0,:,corr]))
+        y2_err = np.array(np.angle(masked_data_err[0, :, corr]))
         y2_err = np.rad2deg(np.unwrap(y2_err))
-
     else:
-        y1 = np.real(masked_data)[0,:,corr]
-        y1_err = np.abs(masked_data_err)[0,:,corr]
-
-        y2 = np.imag(masked_data)[0,:,corr]
+        y1 = np.real(masked_data)[0, :, corr]
+        y1_err = np.abs(masked_data_err)[0, :, corr]
+        y2 = np.imag(masked_data)[0, :, corr]
         y2_err = None
 
     return y1, y1_err, y2, y2_err
 
 
 def data_prep_K(masked_data, masked_data_err, corr):
+    """Preparing the data for plotting. Doplot must be 'ap'.
+
+    Inputs
+    ------
+    masked_data     : list
+        Flagged data from CPARAM column to be plotted.
+    masked_data_err : list
+        Flagged data from the PARAMERR column to be plotted
+    corr: int
+        Correlation to plot (0,1 e.t.c)
+
+    Outputs
+    -------
+    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array): tuple
+        Tuple with arrays of the different data
+
     """
-
-    Preparing the data for plotting
-    Doplot must be 'ap'
-
-    INPUTS
-    =====================
-    masked_data     : Flagged data from CPARAM column to be plotted. 
-    masked_data_err : Flagged data from the PARAMERR column to be plotted
-    corr: Correlation to plot (0,1 e.t.c)
-
-    OUTPUTS
-    ====================
-    Tuple with arrays of the different data
-    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array)
-
-    """
-    y1 = masked_data[:,0,corr]
+    y1 = masked_data[:, 0, corr]
     y1 = np.array(y1)
     y1_err = masked_data_err
-
-    y2 = masked_data[:,0,int(not corr)]
+    y2 = masked_data[:, 0, int(not corr)]
     y2 = np.array(y2)
     y2_err = masked_data_err
-
 
     return y1, y1_err, y2, y2_err
 
