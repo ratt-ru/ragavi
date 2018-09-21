@@ -12,11 +12,20 @@ Introduction
 This library mainly requires
     1. Bokeh
     2. Nodejs for js
+    3. casacore-dev
+
+**- Install build dependencies:**
+
+.. code-block:: bash
+    
+    $ apt-get install nodejs, casacore-dev
 
 All python requirements are found in requirements.txt
 
+or
+ 
 To install nodejs in the virtual environment, use: nodeenv, a nodejs virtual environment.
-Can be found [here]()https://pypi.org/project/nodeenv)
+Can be found here_
 
 Create nodejs virtual environment with:
 
@@ -61,6 +70,7 @@ Coontribute
 
 Contributions are always welcome! Please ensure that you adhere to our coding standards pep8_.
 
+.. _here: https://pypi.org/project/nodeenv
 .. _source: https://github.com/ratt-ru/ragavi
 .. _pep8: https://www.python.org/dev/peps/pep-0008
 .. _license: https://github.com/ratt-ru/ragavi/blob/master/LICENSE
