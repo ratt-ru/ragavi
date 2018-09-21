@@ -5,7 +5,6 @@ ragavi
 Radio Astronomy Gain and Visibility Inspector
 
 
-
 ============
 Introduction
 ============
@@ -29,7 +28,7 @@ and
 
 .. code-block:: bash
 
-    $. envName/bin/activate
+    $ . envName/bin/activate
 
 to switch to environment. 
 
