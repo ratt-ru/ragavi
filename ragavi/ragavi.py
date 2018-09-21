@@ -921,5 +921,3 @@ def main():
     
     print 'Rendered: '+pngname
 
-
-main()

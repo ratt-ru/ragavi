@@ -25,7 +25,7 @@ prompt-toolkit==1.0.15
 ptyprocess==0.6.0
 Pygments==2.2.0
 pyparsing==2.2.0
-python-casacore==2.2.1
+#python-casacore==2.2.1
 python-dateutil==2.7.3
 pytz==2018.5
 PyYAML==3.13

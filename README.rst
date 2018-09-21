@@ -16,7 +16,7 @@ This library mainly requires
 All python requirements are found in requirements.txt
 
 To install nodejs in the virtual environment, use: nodeenv, a nodejs virtual environment.
-Can be found (here)[https://pypi.org/project/nodeenv/]
+Can be found [here]()https://pypi.org/project/nodeenv)
 
 Create nodejs virtual environment with:
 
