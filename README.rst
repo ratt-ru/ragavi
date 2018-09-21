@@ -25,7 +25,7 @@ All python requirements are found in requirements.txt
 or
  
 To install nodejs in the virtual environment, use: nodeenv, a nodejs virtual environment.
-Can be found here_
+More info can be found here_
 
 Create nodejs virtual environment with:
 
