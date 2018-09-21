@@ -26,8 +26,8 @@ def save_svg_image(img_name, figa, figb):
     """
     figa.output_backend = "svg"
     figb.output_backend = "svg"
-    export_svgs([figa], filename="%s_%s".format(img_name, "(a).svg"))
-    export_svgs([figb], filename="%s_%s".format(img_name, "(b).svg"))
+    export_svgs([figa], filename="{:s}_{:s}".format(img_name, "a.svg"))
+    export_svgs([figb], filename="{:s}_{:s}".format(img_name, "b.svg"))
 
 
 def save_png_image(img_name, disp_layout):
