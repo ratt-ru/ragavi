@@ -30,6 +30,7 @@ def save_svg_image(img_name, figa, figb):
     export_svgs([figb], filename="{:s}_{:s}".format(img_name, "_b.svg"))
 
 
+
 def save_png_image(img_name, disp_layout):
     """To save plots as png
 
@@ -70,14 +71,14 @@ def errorbar(fig, x, y, xerr=None, yerr=None, color='red',
     Inputs
     ------
     fig: the figure object
-    x: list
+    x: numpy.ndarray
         x_axis value
-    y: list
+    y: numpy.ndarray
         y_axis value
-    xerr: list
-        Errors for x axis, must be a list
-    yerr: list
-        Errors for y axis, must be a list
+    xerr: numpy.ndarray
+        Errors for x axis, must be an array
+    yerr: numpy.ndarray
+        Errors for y axis, must be an array
     color: str
         Color for the error bars
 
@@ -133,9 +134,9 @@ def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
         Second Figure
     color: str
         Data points' color
-    y1_err: list
+    y1_err: numpy.ndarray
         y1 error data
-    y2_err: list
+    y2_err: numpy.ndarray
         y2 error data
 
     Outputs
@@ -162,9 +163,9 @@ def data_prep_G(masked_data, masked_data_err, doplot, corr):
 
     Inputs
     ------
-    masked_data: list
+    masked_data: numpy.ndarray
         Flagged data from CPARAM column to be plotted.
-    masked_data_err : list
+    masked_data_err : numpy.ndarray
         Flagged data from the PARAMERR column to be plotted
     doplot: str
         Either 'ap' or 'ri'
@@ -200,9 +201,9 @@ def data_prep_B(masked_data, masked_data_err, doplot, corr):
 
     INPUTS
     =====================
-    masked_data     : list
+    masked_data     : numpy.ndarray
         Flagged data from CPARAM column to be plotted.
-    masked_data_err : list
+    masked_data_err : numpy.ndarray
         Flagged data from the PARAMERR column to be plotted
     doplot: str
         Either 'ap' or 'ri'
@@ -237,9 +238,9 @@ def data_prep_K(masked_data, masked_data_err, corr):
 
     Inputs
     ------
-    masked_data     : list
+    masked_data: numpy.ndarray
         Flagged data from CPARAM column to be plotted.
-    masked_data_err : list
+    masked_data_err: numpy.ndarray
         Flagged data from the PARAMERR column to be plotted
     corr: int
         Correlation to plot (0,1 e.t.c)
@@ -321,8 +322,10 @@ def main():
     myms = options.myms
     pngname = options.pngname
 
+
     # uncomment next line for inline notebok output
-    # output_notebook()
+    #output_notebook()
+
 
     if len(args) != 1:
         print 'Please specify a gain table to plot.'
