@@ -26,8 +26,8 @@ def save_svg_image(img_name, figa, figb):
     """
     figa.output_backend = "svg"
     figb.output_backend = "svg"
-    export_svgs([figa], filename="{:s}_{:s}".format(img_name, "_a.svg"))
-    export_svgs([figb], filename="{:s}_{:s}".format(img_name, "_b.svg"))
+    export_svgs([figa], filename="{:s}_{:s}".format(img_name, "a.svg"))
+    export_svgs([figb], filename="{:s}_{:s}".format(img_name, "b.svg"))
 
 
 def save_png_image(img_name, disp_layout):
@@ -899,6 +899,10 @@ def main():
     # show(layout)
 
     if pngname == '':
+        # Remove path (if any) from table name
+        if '/' in mytab:
+            mytab = mytab.partition('/')[-1]
+
         pngname = 'plot_' + mytab + '_corr' + \
             str(corr) + '_' + doplot + '_field' + str(field)
         output = save(layout, pngname + ".html", title=pngname)
@@ -906,7 +910,6 @@ def main():
         for i in range(len(legend_items_ax1)):
             legend_items_ax1[i][1][0].visible = True
             legend_items_ax2[i][1][0].visible = True
-            #p2.visible = True
         save_svg_image(pngname, ax1, ax2)
 
     print 'Rendered: ' + pngname
