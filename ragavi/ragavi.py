@@ -30,7 +30,6 @@ def save_svg_image(img_name, figa, figb):
     export_svgs([figb], filename="{:s}_{:s}".format(img_name, "_b.svg"))
 
 
-
 def save_png_image(img_name, disp_layout):
     """To save plots as png
 
@@ -322,10 +321,8 @@ def main():
     myms = options.myms
     pngname = options.pngname
 
-
     # uncomment next line for inline notebok output
-    #output_notebook()
-
+    # output_notebook()
 
     if len(args) != 1:
         print 'Please specify a gain table to plot.'
@@ -904,7 +901,7 @@ def main():
     if pngname == '':
         pngname = 'plot_' + mytab + '_corr' + \
             str(corr) + '_' + doplot + '_field' + str(field)
-        save(layout, pngname + ".html")
+        output = save(layout, pngname + ".html", title=pngname)
     else:
         for i in range(len(legend_items_ax1)):
             legend_items_ax1[i][1][0].visible = True
