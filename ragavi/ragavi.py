@@ -157,6 +157,331 @@ def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
     return p1, p1_err, p2, p2_err
 
 
+def ant_select_callback():
+    """JS callback for the selection and deselection of antennas
+        Returns : string
+    """
+
+    code = """
+            var i;
+             //if toggle button active
+            if (this.active==false)
+                {
+                    this.label='Select all Antennas';
+
+
+                    for(i=0; i<glyph1.length; i++){
+                        glyph1[i][1][0].visible = false;
+                        glyph2[i][1][0].visible = false;
+                    }
+
+                    batchsel.active = []
+                }
+            else{
+                    this.label='Deselect all Antennas';
+                    for(i=0; i<glyph1.length; i++){
+                        glyph1[i][1][0].visible = true;
+                        glyph2[i][1][0].visible = true;
+
+                    }
+
+                    batchsel.active = [0,1,2,3]
+                }
+            """
+
+    return code
+
+
+def toggle_err_callback():
+    """JS callback for Error toggle  Toggle button
+        Returns : string
+    """
+    code = """
+            var i;
+             //if toggle button active
+            if (this.active==false)
+                {
+                    this.label='Show All Error bars';
+
+
+                    for(i=0; i<err1.length; i++){
+                        err1[i][1][0].visible = false;
+                        //checking for error on phase and imaginary planes as these tend to go off
+                        if (err2[i][1][0]){
+                            err2[i][1][0].visible = false;
+                        }
+
+
+
+                    }
+                }
+            else{
+                    this.label='Hide All Error bars';
+                    for(i=0; i<err1.length; i++){
+                        err1[i][1][0].visible = true;
+                        if (err2[i][1][0]){
+                            err2[i][1][0].visible = true;
+                        }
+                    }
+                }
+            """
+    return code
+
+
+def batch_select_callback():
+    """JS callback for batch selection Checkboxes
+        Returns : string
+    """
+    code = """
+            # bax = [ [batch1], [batch2], [batch3] ]
+
+            # j is batch number
+            # i is glyph number
+            j=0
+            i=0
+
+            if 0 in this.active
+                i=0
+                while i < bax1[j].length
+                    bax1[0][i][1][0].visible = true
+                    bax2[0][i][1][0].visible = true
+                    i++
+            else
+                i=0
+                while i < bax1[0].length
+                    bax1[0][i][1][0].visible = false
+                    bax2[0][i][1][0].visible = false
+                    i++
+
+            if 1 in this.active
+                i=0
+                while i < bax1[j].length
+                    bax1[1][i][1][0].visible = true
+                    bax2[1][i][1][0].visible = true
+                    i++
+            else
+                i=0
+                while i < bax1[0].length
+                    bax1[1][i][1][0].visible = false
+                    bax2[1][i][1][0].visible = false
+                    i++
+
+            if 2 in this.active
+                i=0
+                while i < bax1[j].length
+                    bax1[2][i][1][0].visible = true
+                    bax2[2][i][1][0].visible = true
+                    i++
+            else
+                i=0
+                while i < bax1[0].length
+                    bax1[2][i][1][0].visible = false
+                    bax2[2][i][1][0].visible = false
+                    i++
+
+            if 3 in this.active
+                i=0
+                while i < bax1[j].length
+                    bax1[3][i][1][0].visible = true
+                    bax2[3][i][1][0].visible = true
+                    i++
+            else
+                i=0
+                while i < bax1[0].length
+                    bax1[3][i][1][0].visible = false
+                    bax2[3][i][1][0].visible = false
+                    i++
+
+
+
+            if this.active.length == 4
+                antsel.active = true
+                antsel.label =  "Deselect all Antennas"
+            else if this.active.length == 0
+                antsel.active = false
+                antsel.label = "Select all Antennas"
+           """
+    return code
+
+
+def legend_toggle_callback():
+    """JS callback for legend toggle Dropdown menu
+        Returns : string
+    """
+    code = """
+                var len = loax1.length;
+                var i ;
+                if (this.value == "alo"){
+                    for(i=0; i<len; i++){
+                        loax1[i].visible = true;
+                        loax2[i].visible = true;
+
+                    }
+                }
+
+                else{
+                    for(i=0; i<len; i++){
+                        loax1[i].visible = false;
+                        loax2[i].visible = false;
+
+                    }
+                }
+
+
+
+                if (this.value == "elo"){
+                    for(i=0; i<len; i++){
+                        loax1_err[i].visible = true;
+                        loax2_err[i].visible = true;
+
+                    }
+                }
+
+                else{
+                    for(i=0; i<len; i++){
+                        loax1_err[i].visible = false;
+                        loax2_err[i].visible = false;
+
+                    }
+                }
+
+                if (this.value == "all"){
+                    for(i=0; i<len; i++){
+                        loax1[i].visible = true;
+                        loax2[i].visible = true;
+                        loax1_err[i].visible = true;
+                        loax2_err[i].visible = true;
+
+                    }
+                }
+
+                if (this.value == "non"){
+                    for(i=0; i<len; i++){
+                        loax1[i].visible = false;
+                        loax2[i].visible = false;
+                        loax1_err[i].visible = false;
+                        loax2_err[i].visible = false;
+
+                    }
+                }
+           """
+    return code
+
+
+def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, batch_size=16):
+    """Automates creation of antenna batches of 16 each unless otherwise
+
+        batch_0 : li_ax1[:16]
+        equivalent to
+        batch_0 = li_ax1[:16]
+
+    Inputs
+    ------
+
+    batch_size: int
+                Number of antennas in a legend object
+    num_leg_objs: int
+                Number of legend objects to be created
+    li_ax1: list
+                List containing all legend items for antennas for 1st figure
+                Items are in the form (antenna_legend, [glyph])
+    li_ax2: list
+                List containing all legend items for antennas for 2nd figure
+                Items are in the form (antenna_legend, [glyph])
+    lierr_ax1: list
+                List containing legend items for errorbars for 1st figure
+                Items are in the form (error_legend, [glyph])
+    lierr_ax2: list
+                List containing legend items for errorbars for 2nd figure
+                Items are in the form (error_legend, [glyph])
+
+    Outputs
+    -------
+
+    (bax1, bax1_err, bax2, bax2_err): Tuple
+                Tuple containing List of lists which have batch_size number of legend items for each batch.
+                Results in batches for figure1 antenna legends, figure1 error legends, figure2 antenna legends, figure2 error legends.
+
+                e.g bax1 = [[batch0], [batch1], ...,  [batch_numOfBatches]]
+
+    """
+
+    bax1, bax1_err, bax2, bax2_err = [], [], [], []
+
+    j = 0
+    for i in range(num_leg_objs):
+        # incase the number is not a multiple of 16
+        if i == num_leg_objs:
+            bax1.extend([li_ax1[j:]])
+            bax2.extend([li_ax2[j:]])
+            bax1_err.extend([lierr_ax1[j:]])
+            bax2_err.extend([lierr_ax2[j:]])
+        else:
+            bax1.extend([li_ax1[j:j + batch_size]])
+            bax2.extend([li_ax2[j:j + batch_size]])
+            bax1_err.extend([lierr_ax1[j:j + batch_size]])
+            bax2_err.extend([lierr_ax2[j:j + batch_size]])
+
+        j += batch_size
+
+    return bax1, bax1_err, bax2, bax2_err
+
+
+def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
+    """Creates legend objects using items from batches list
+       Legend objects allow legends be positioning outside the main plot
+
+       Inputs
+       ------
+       num_leg_objs: int
+                     Number of legend objects to be created
+       bax1: list
+             Batches for antenna legends of 1st figure
+       bax2: list
+             Batches for antenna legends of 2nd figure
+       baerr_ax1: list
+             Batches for errorbar legends of 1st figure
+       baerr_ax2: list
+             Batches for errorbar legends of 2nd figure
+
+
+       Outputs
+       -------
+       (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
+                Tuple containing dictionaries with legend objects for
+                ax1 antenna legend objects, ax1 errorbar legend objects,
+                ax2 antenna legend objects, ax2 errorbar legend objects
+
+                e.g.
+                leg_0 : Legend(items=batch_0, location='top_right', click_policy='hide')
+                equivalent to
+                leg_0 = Legend(
+                    items=batch_0, location='top_right', click_policy='hide')
+    """
+
+    lo_ax1, lo_ax2, loerr_ax1, loerr_ax2 = {}, {}, {}, {}
+
+    for i in range(num_leg_objs):
+        lo_ax1['leg_%s' % str(i)] = Legend(items=bax1[i],
+                                           location='top_right',
+                                           click_policy='hide')
+        lo_ax2['leg_%s' % str(i)] = Legend(items=bax2[i],
+                                           location='top_right',
+                                           click_policy='hide')
+        loerr_ax1['leg_%s' % str(i)] = Legend(
+            items=baerr_ax1[i],
+            location='top_right',
+            click_policy='hide',
+            visible=False)
+        loerr_ax2['leg_%s' % str(i)] = Legend(
+            items=baerr_ax2[i],
+            location='top_right',
+            click_policy='hide',
+            visible=False)
+
+    return lo_ax1, loerr_ax1, lo_ax2, loerr_ax2
+
+
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
     """Preparing the data for plotting
 
@@ -548,7 +873,7 @@ def main():
 
         subtab.close()
 
-        #dx = 1.0/float(len(ants)-1)
+        # dx = 1.0/float(len(ants)-1)
         if antnames == '':
             antlabel = str(ant)
         else:
@@ -613,47 +938,17 @@ def main():
     # for each plot
     num_legend_objs = int(np.ceil(len(plotants) / float(BATCH_SIZE)))
 
-    # Automating creating batches of 16 each unless otherwise
-    # Looks like
-    # batch_0 : legend_items_ax1[:16]
-    # equivalent to
-    # batch_0 = legend_items_ax1[:16]
-    batches_ax1, batches_ax1_err, batches_ax2, batches_ax2_err = [], [], [], []
+    batches_ax1, batches_ax1_err, batches_ax2, batches_ax2_err = \
+        create_legend_batches(num_legend_objs, legend_items_ax1,
+                              legend_items_ax2, legend_items_err_ax1,
+                              legend_items_err_ax2, batch_size=BATCH_SIZE)
 
-    j = 0
-    for i in range(num_legend_objs):
-        # incase the number is not a multiple of 16
-        if i == num_legend_objs:
-            batches_ax1.extend([legend_items_ax1[j:]])
-            batches_ax2.extend([legend_items_ax2[j:]])
-            batches_ax1_err.extend([legend_items_err_ax1[j:]])
-            batches_ax2_err.extend([legend_items_err_ax2[j:]])
-        else:
-            batches_ax1.extend([legend_items_ax1[j:j + BATCH_SIZE]])
-            batches_ax2.extend([legend_items_ax2[j:j + BATCH_SIZE]])
-            batches_ax1_err.extend([legend_items_err_ax1[j:j + BATCH_SIZE]])
-            batches_ax2_err.extend([legend_items_err_ax2[j:j + BATCH_SIZE]])
-
-        j += BATCH_SIZE
-
-    # creating legend objects using items from the previous batches dictionary
-    # Legend objects allow their positioning outside the main plot
-    # resulting ordered dictionary looks like;
-    # leg_0 : Legend(items=batch_0, location='top_right', click_policy='hide')
-    # equivalent to
-    # leg_0 = Legend(items=batch_0, location='top_right', click_policy='hide')
-
-    legend_objs_ax1, legend_objs_ax1_err, legend_objs_ax2, legend_objs_ax2_err = {}, {}, {}, {}
-
-    for i in range(num_legend_objs):
-        legend_objs_ax1['leg_%s' % str(i)] = Legend(
-            items=batches_ax1[i], location='top_right', click_policy='hide')
-        legend_objs_ax2['leg_%s' % str(i)] = Legend(
-            items=batches_ax2[i], location='top_right', click_policy='hide')
-        legend_objs_ax1_err['leg_%s' % str(i)] = Legend(items=batches_ax1_err[
-            i], location='top_right', click_policy='hide', visible=False)
-        legend_objs_ax2_err['leg_%s' % str(i)] = Legend(items=batches_ax2_err[
-            i], location='top_right', click_policy='hide', visible=False)
+    legend_objs_ax1, legend_objs_ax1_err, legend_objs_ax2, \
+        legend_objs_ax2_err = create_legend_objs(num_legend_objs,
+                                                 batches_ax1,
+                                                 batches_ax1_err,
+                                                 batches_ax2,
+                                                 batches_ax2_err)
 
     # adding legend objects to the layouts
     for i in range(num_legend_objs):
@@ -692,216 +987,50 @@ def main():
 
     # Dropdown to hide and show legends
     legend_toggle = Select(title="Showing Legends: ", value="alo",
-                           options=[("all", "All"), ("alo", "Antennas"), ("elo", "Errors"), ("non", "None")])
+                           options=[("all", "All"), ("alo", "Antennas"),
+                                    ("elo", "Errors"), ("non", "None")])
 
-    ant_select.callback = CustomJS(args=dict(glyph1=legend_items_ax1, glyph2=legend_items_ax2, batchsel=batch_select), code='''
-            var i;
-             //if toggle button active
-            if (this.active==false)
-                {
-                    this.label='Select all Antennas';
-                    
-                    
-                    for(i=0; i<glyph1.length; i++){
-                        glyph1[i][1][0].visible = false;
-                        glyph2[i][1][0].visible = false;
-                    }
+    ant_select.callback = CustomJS(args=dict(glyph1=legend_items_ax1,
+                                             glyph2=legend_items_ax2,
+                                             batchsel=batch_select),
+                                   code=ant_select_callback())
 
-                    batchsel.active = []
-                }
-            else{
-                    this.label='Deselect all Antennas';
-                    for(i=0; i<glyph1.length; i++){
-                        glyph1[i][1][0].visible = true;
-                        glyph2[i][1][0].visible = true;
-              
-                    }
-
-                    batchsel.active = [0,1,2,3]
-                }
-        '''
-                                   )
-
-    toggle_err.callback = CustomJS(args=dict(err1=legend_items_err_ax1, err2=legend_items_err_ax2), code='''
-            var i;
-             //if toggle button active
-            if (this.active==false)
-                {
-                    this.label='Show All Error bars';
-                    
-                    
-                    for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = false;
-                        //checking for error on phase and imaginary planes as these tend to go off
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = false;
-                        }
-
-                   
-                        
-                    }
-                }
-            else{
-                    this.label='Hide All Error bars';
-                    for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = true;
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = true;
-                        }
-                    }
-                }
-               
-        ''')
+    toggle_err.callback = CustomJS(args=dict(err1=legend_items_err_ax1,
+                                             err2=legend_items_err_ax2),
+                                   code=toggle_err_callback())
 
     # BATCH SELECTION
 
-    batch_select.callback = CustomJS.from_coffeescript(args=dict(bax1=batches_ax1, bax1_err=batches_ax1_err, bax2=batches_ax2, bax2_err=batches_ax2_err, antsel=ant_select), code="""
-        
-        #bax = [ [batch1], [batch2], [batch3] ]
+    batch_select.callback = CustomJS.from_coffeescript(
+        args=dict(bax1=batches_ax1,
+                  bax1_err=batches_ax1_err,
+                  bax2=batches_ax2,
+                  bax2_err=batches_ax2_err,
+                  antsel=ant_select),
+        code=batch_select_callback())
 
-        #j is batch number
-        #i is glyph number
-        j=0
-        i=0
-
-        if 0 in this.active
-            i=0
-            while i < bax1[j].length
-                bax1[0][i][1][0].visible = true
-                bax2[0][i][1][0].visible = true
-                i++
-        else
-            i=0
-            while i < bax1[0].length
-                bax1[0][i][1][0].visible = false
-                bax2[0][i][1][0].visible = false
-                i++
-
-        if 1 in this.active
-            i=0
-            while i < bax1[j].length
-                bax1[1][i][1][0].visible = true
-                bax2[1][i][1][0].visible = true
-                i++
-        else
-            i=0
-            while i < bax1[0].length
-                bax1[1][i][1][0].visible = false
-                bax2[1][i][1][0].visible = false
-                i++
-        
-        if 2 in this.active
-            i=0
-            while i < bax1[j].length
-                bax1[2][i][1][0].visible = true
-                bax2[2][i][1][0].visible = true
-                i++
-        else
-            i=0
-            while i < bax1[0].length
-                bax1[2][i][1][0].visible = false
-                bax2[2][i][1][0].visible = false
-                i++
-        
-        if 3 in this.active
-            i=0
-            while i < bax1[j].length
-                bax1[3][i][1][0].visible = true
-                bax2[3][i][1][0].visible = true
-                i++
-        else
-            i=0
-            while i < bax1[0].length
-                bax1[3][i][1][0].visible = false
-                bax2[3][i][1][0].visible = false
-                i++
-
-
-
-        if this.active.length == 4
-            antsel.active = true
-            antsel.label =  "Deselect all Antennas"
-        else if this.active.length == 0
-            antsel.active = false
-            antsel.label = "Select all Antennas"
-        """ )
-
-    legend_toggle.callback = CustomJS(args=dict(loax1=legend_objs_ax1.values(), loax1_err=legend_objs_ax1_err.values(), loax2=legend_objs_ax2.values(), loax2_err=legend_objs_ax2_err.values()), code="""
-
-        var len = loax1.length;
-        var i ;
-        if (this.value == "alo"){
-            for(i=0; i<len; i++){
-                loax1[i].visible = true;
-                loax2[i].visible = true;
-                
-            }
-        }
-
-        else{
-            for(i=0; i<len; i++){
-                loax1[i].visible = false;
-                loax2[i].visible = false;
-                
-            }
-        }
-
-        
-
-        if (this.value == "elo"){
-            for(i=0; i<len; i++){
-                loax1_err[i].visible = true;
-                loax2_err[i].visible = true;
-                
-            }
-        }
-
-        else{
-            for(i=0; i<len; i++){
-                loax1_err[i].visible = false;
-                loax2_err[i].visible = false;
-                
-            }
-        }   
-
-        if (this.value == "all"){
-            for(i=0; i<len; i++){
-                loax1[i].visible = true;
-                loax2[i].visible = true;
-                loax1_err[i].visible = true;
-                loax2_err[i].visible = true;
-                
-            }
-        }
-
-        if (this.value == "non"){
-            for(i=0; i<len; i++){
-                loax1[i].visible = false;
-                loax2[i].visible = false;
-                loax1_err[i].visible = false;
-                loax2_err[i].visible = false;
-                
-            }
-        }   
-
-        """)
+    legend_toggle.callback = CustomJS(
+        args=dict(
+            loax1=legend_objs_ax1.values(),
+            loax1_err=legend_objs_ax1_err.values(),
+            loax2=legend_objs_ax2.values(),
+            loax2_err=legend_objs_ax2_err.values()),
+        code=legend_toggle_callback())
 
     plot_widgets = widgetbox(
         [ant_select, batch_select, toggle_err, legend_toggle])
-    #figures   = column(ax1,ant_select, toggle_err)
-    #figures_b = column(ax2)
 
     layout = gridplot([[plot_widgets, ax1, ax2]],
                       plot_width=700, plot_height=600)
 
     # uncomment next line to automatically plot on web browser
-    # output_file(pngname+".html")
+    output_file(pngname + ".html")
     # show(layout)
 
     if pngname == '':
         # Remove path (if any) from table name
         if '/' in mytab:
-            mytab = mytab.partition('/')[-1]
+            mytab = mytab.split('/')[-1]
 
         pngname = 'plot_' + mytab + '_corr' + \
             str(corr) + '_' + doplot + '_field' + str(field)
