@@ -18,12 +18,33 @@ from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           CheckboxGroup, Select, Text)
 
 
-def save_svg_image(img_name, figa, figb):
+def save_svg_image(img_name, figa, figb, glax1, glax2):
     """To save plots as svg
 
     Note: Two images will emerge
 
+    Inputs
+    ------
+    img_name: string
+              Desired image name
+    figa: figure object
+          First figure 
+    figb: figure object
+          Second figure
+    glax1: list
+           Contains glyph metadata saved during execution
+    glax2: list
+           Contains glyph metadata saved during execution
+
+    Outputs
+    -------
+    Returns nothing
+
     """
+    for i in range(len(glax1)):
+        glax1[i][1][0].visible = True
+        glax2[i][1][0].visible = True
+
     figa.output_backend = "svg"
     figb.output_backend = "svg"
     export_svgs([figa], filename="{:s}_{:s}".format(img_name, "a.svg"))
@@ -431,32 +452,32 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
     """Creates legend objects using items from batches list
        Legend objects allow legends be positioning outside the main plot
 
-       Inputs
-       ------
-       num_leg_objs: int
-                     Number of legend objects to be created
-       bax1: list
-             Batches for antenna legends of 1st figure
-       bax2: list
-             Batches for antenna legends of 2nd figure
-       baerr_ax1: list
-             Batches for errorbar legends of 1st figure
-       baerr_ax2: list
-             Batches for errorbar legends of 2nd figure
+   Inputs
+   ------
+   num_leg_objs: int
+                 Number of legend objects to be created
+   bax1: list
+         Batches for antenna legends of 1st figure
+   bax2: list
+         Batches for antenna legends of 2nd figure
+   baerr_ax1: list
+         Batches for errorbar legends of 1st figure
+   baerr_ax2: list
+         Batches for errorbar legends of 2nd figure
 
 
-       Outputs
-       -------
-       (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
-                Tuple containing dictionaries with legend objects for
-                ax1 antenna legend objects, ax1 errorbar legend objects,
-                ax2 antenna legend objects, ax2 errorbar legend objects
+   Outputs
+   -------
+   (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
+            Tuple containing dictionaries with legend objects for
+            ax1 antenna legend objects, ax1 errorbar legend objects,
+            ax2 antenna legend objects, ax2 errorbar legend objects
 
-                e.g.
-                leg_0 : Legend(items=batch_0, location='top_right', click_policy='hide')
-                equivalent to
-                leg_0 = Legend(
-                    items=batch_0, location='top_right', click_policy='hide')
+            e.g.
+            leg_0 : Legend(items=batch_0, location='top_right', click_policy='hide')
+            equivalent to
+            leg_0 = Legend(
+                items=batch_0, location='top_right', click_policy='hide')
     """
 
     lo_ax1, lo_ax2, loerr_ax1, loerr_ax2 = {}, {}, {}, {}
@@ -480,6 +501,32 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
             visible=False)
 
     return lo_ax1, loerr_ax1, lo_ax2, loerr_ax2
+
+
+def gen_checkbox_labels(batch_size, num_leg_objs):
+    """ Autogenerating checkbox labels
+
+    Inputs
+    ------
+    batch_size: int
+                Number of items in a single batch
+    num_leg_objs: int
+                Number of legend objects / Number of batches
+    Ouputs
+    ------
+    labels: list
+            Batch labels for the checkbox
+    """
+
+    labels = []
+    s = 0
+    e = batch_size - 1
+    for i in range(num_leg_objs):
+        labels.append("A%s - A%s" % (s, e))
+        s = s + batch_size
+        e = e + batch_size
+
+    return labels
 
 
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
@@ -973,15 +1020,7 @@ def main():
     toggle_err = Toggle(label='Show All Error bars',
                         button_type='warning', width=200)
 
-    # Creating and configuring checkboxes
-    # Autogenerating checkbox labels
-    ant_labs = []
-    s = 0
-    e = BATCH_SIZE - 1
-    for i in range(num_legend_objs):
-        ant_labs.append("A%s - A%s" % (s, e))
-        s = s + BATCH_SIZE
-        e = e + BATCH_SIZE
+    ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs)
 
     batch_select = CheckboxGroup(labels=ant_labs, active=[])
 
@@ -1000,7 +1039,6 @@ def main():
                                    code=toggle_err_callback())
 
     # BATCH SELECTION
-
     batch_select.callback = CustomJS.from_coffeescript(
         args=dict(bax1=batches_ax1,
                   bax1_err=batches_ax1_err,
@@ -1036,9 +1074,6 @@ def main():
             str(corr) + '_' + doplot + '_field' + str(field)
         output = save(layout, pngname + ".html", title=pngname)
     else:
-        for i in range(len(legend_items_ax1)):
-            legend_items_ax1[i][1][0].visible = True
-            legend_items_ax2[i][1][0].visible = True
-        save_svg_image(pngname, ax1, ax2)
+        save_svg_image(pngname, ax1, ax2, legend_items_ax1, legend_items_ax2)
 
     print 'Rendered: ' + pngname
