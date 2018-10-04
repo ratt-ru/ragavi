@@ -674,34 +674,53 @@ def get_argparser():
     return parser
 
 
-def main():
+def main(**kwargs):
     """Main function"""
-    parser = get_argparser()
-    (options, args) = parser.parse_args()
+    NB_RENDER = None
+    if len(kwargs) == 0:
+        NB_RENDER = False
 
-    field = int(options.field)
-    doplot = options.doplot
-    plotants = options.plotants
-    corr = int(options.corr)
-    t0 = float(options.t0)
-    t1 = float(options.t1)
-    yu0 = float(options.yu0)
-    yu1 = float(options.yu1)
-    yl0 = float(options.yl0)
-    yl1 = float(options.yl1)
-    mycmap = options.mycmap
-    myms = options.myms
-    pngname = options.pngname
+        parser = get_argparser()
+        (options, args) = parser.parse_args()
 
-    # uncomment next line for inline notebok output
-    # output_notebook()
+        if len(args) != 1:
+            print 'Please specify a gain table to plot.'
+            sys.exit(-1)
+        else:
+            # getting the name of the gain table specified
+            mytab = args[0].rstrip("/")
 
-    if len(args) != 1:
-        print 'Please specify a gain table to plot.'
-        sys.exit(-1)
+        field = int(options.field)
+        doplot = options.doplot
+        plotants = options.plotants
+        corr = int(options.corr)
+        t0 = float(options.t0)
+        t1 = float(options.t1)
+        yu0 = float(options.yu0)
+        yu1 = float(options.yu1)
+        yl0 = float(options.yl0)
+        yl1 = float(options.yl1)
+        mycmap = options.mycmap
+        myms = options.myms
+        pngname = options.pngname
+
     else:
-        # getting the name of the gain table specified
-        mytab = args[0].rstrip("/")
+        NB_RENDER = True
+
+        field = kwargs.get('field', "0")
+        doplot = kwargs.get('doplot', 'ap')
+        plotants = kwargs.get('plotants', [-1])
+        corr = kwargs.get('corr', 0)
+        t0 = kwargs.get('t0', -1)
+        t1 = kwargs.get('t1', -1)
+        yu0 = kwargs.get('yu0', -1)
+        yu1 = kwargs.get('yu1', -1)
+        yl0 = kwargs.get('yl0', -1)
+        yl1 = kwargs.get('yl1', -1)
+        mycmap = kwargs.get('mycmap', 'coolwarm')
+        myms = kwargs.get('myms', '')
+        pngname = kwargs.get('pngname', '')
+        mytab = kwargs.get('mytab')
 
     # by default is ap: amplitude and phase
     if doplot not in ['ap', 'ri']:
@@ -1061,19 +1080,77 @@ def main():
     layout = gridplot([[plot_widgets, ax1, ax2]],
                       plot_width=700, plot_height=600)
 
-    # uncomment next line to automatically plot on web browser
-    output_file(pngname + ".html")
-    # show(layout)
+    if not NB_RENDER:
+        # uncomment next line to automatically plot on web browser
+        output_file(pngname + ".html")
+        # show(layout)
 
-    if pngname == '':
-        # Remove path (if any) from table name
-        if '/' in mytab:
-            mytab = mytab.split('/')[-1]
+        if pngname == '':
+            # Remove path (if any) from table name
+            if '/' in mytab:
+                mytab = mytab.split('/')[-1]
 
-        pngname = 'plot_' + mytab + '_corr' + \
-            str(corr) + '_' + doplot + '_field' + str(field)
-        output = save(layout, pngname + ".html", title=pngname)
+            pngname = 'plot_' + mytab + '_corr' + \
+                str(corr) + '_' + doplot + '_field' + str(field)
+            output = save(layout, pngname + ".html", title=pngname)
+        else:
+            save_svg_image(pngname, ax1, ax2,
+                           legend_items_ax1, legend_items_ax2)
+        print 'Rendered: ' + pngname
     else:
-        save_svg_image(pngname, ax1, ax2, legend_items_ax1, legend_items_ax2)
+        output_notebook()
+        show(layout)
 
-    print 'Rendered: ' + pngname
+
+def plot_table(mytab, **kwargs):
+    """
+    Function for plotting tables 
+
+    Inputs
+    --------
+    Required
+    --------
+        mytab       : The table to be plotted
+
+    Optional
+    --------
+
+        field       : Field ID to plot (default = 0)',default=0)
+        doplot      : Plot complex values as amp and phase (ap) or real and
+                      imag (ri) (default = ap)',default='ap')
+        plotants    : Plot only this antenna, or comma-separated list of 
+                      antennas',default=[-1])
+        corr        : Correlation index to plot (usually just 0 or 1, 
+                      default = 0)',default=0)
+        t0          : Minimum time to plot (default = full range)',default=-1)
+        t1          : Maximum time to plot (default = full range)',default=-1)
+        yu0         : Minimum y-value to plot for upper panel 
+                      (default = full   range)',default=-1)
+        yu1         : Maximum y-value to plot for upper panel 
+                      (default = full range)',default=-1)
+        yl0         : Minimum y-value to plot for lower panel 
+                      (default = full range)',default=-1)
+        yl1         : Maximum y-value to plot for lower panel 
+                      (default = full range)',default=-1)
+        mycmap      : Matplotlib colour map to use for antennas 
+                      (default = coolwarm)',default='coolwarm')
+        myms        : Measurement Set to consult for proper antenna names',
+                      (default='')
+        pngname     : Output PNG name (default = something sensible)'
+
+    Ouputs
+    ------
+    Returns nothing
+
+    """
+    if mytab is None:
+        print 'Please specify a gain table to plot.'
+        sys.exit(-1)
+    else:
+        # getting the name of the gain table specified
+        mytab = mytab.rstrip("/")
+        kwargs['mytab'] = mytab
+
+    main(**kwargs)
+
+    return
