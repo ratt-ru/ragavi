@@ -1,5 +1,6 @@
 language: python
-sudo: false
+dist: trusty
+sudo: required
 python:
 - '2.7'
 install:
@@ -7,11 +8,12 @@ install:
 script:
 - true
 before_install:
-- sudo apt-get install nodejs, casacore-dev
+- sudo apt-get update
+- sudo apt-get install nodejs
 deploy:
     provider: pypi
     user: athanaseus
     on:
        tags: true
        distributions: sdist bdist_wheel
-       repo: ratt-ru/ragavi
+repo: ratt-ru/ragavi
