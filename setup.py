@@ -26,7 +26,6 @@ setup(name='ragavi',
       long_description=readme(),
       url='https://github.com/ratt-ru/ragavi',
       classifiers=[
-          "Development Status :: 1 - Alpha",
           "Intended Audience :: Developers",
           "Operating System :: OS Independent",
           "Programming Language :: Python :: 2",
