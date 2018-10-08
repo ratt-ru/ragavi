@@ -65,7 +65,7 @@ License
 This project is licensed under the MIT License - see license_ for details.
 
 ===========
-Coontribute
+Contribute
 ===========
 
 Contributions are always welcome! Please ensure that you adhere to our coding standards pep8_.
