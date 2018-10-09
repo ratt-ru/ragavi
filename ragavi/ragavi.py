@@ -635,6 +635,8 @@ def data_prep_K(masked_data, masked_data_err, corr):
 def get_argparser():
     """Get argument parser"""
     parser = OptionParser(usage='%prog [options] tablename')
+    parser.add_option('-t', '--table', dest='mytab',
+                      help='Table to plot (default = None)', default='')
     parser.add_option('-f', '--field', dest='field',
                       help='Field ID to plot (default = 0)', default=0)
     parser.add_option('-d', '--doplot', dest='doplot',
@@ -683,13 +685,6 @@ def main(**kwargs):
         parser = get_argparser()
         (options, args) = parser.parse_args()
 
-        if len(args) != 1:
-            print 'Please specify a gain table to plot.'
-            sys.exit(-1)
-        else:
-            # getting the name of the gain table specified
-            mytab = args[0].rstrip("/")
-
         field = int(options.field)
         doplot = options.doplot
         plotants = options.plotants
@@ -703,6 +698,14 @@ def main(**kwargs):
         mycmap = options.mycmap
         myms = options.myms
         pngname = options.pngname
+        mytab = options.mytab
+
+        if mytab:
+            # getting the name of the gain table specified
+            mytab = mytab.rstrip("/")
+        else:
+            print 'Please specify a gain table to plot.'
+            sys.exit(-1)
 
     else:
         NB_RENDER = True
