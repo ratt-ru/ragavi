@@ -64,6 +64,11 @@ def determine_table(table_name):
     """Find pattern at end of string to determine table to be plotted.
        The search is not case sensitive
 
+    Input
+    -----
+    table_name: str
+                Name of table /  gaintype to be plotted
+
     """
     pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
     found = pattern.search(table_name)
@@ -529,6 +534,25 @@ def gen_checkbox_labels(batch_size, num_leg_objs):
     return labels
 
 
+def save_html(hname, plot_layout):
+    """Save [and show] resultant HTML file
+    Input
+    -----
+    hname: str
+           HTML Output file name
+    plot_layout: Bokeh layout object
+                 Layout of the bokeh plot, could be row, column, gridplot
+
+    Output
+    ------
+    Nothing 
+    """
+    output_file(hname + ".html")
+    output = save(plot_layout, hname + ".html", title=hname)
+    # uncomment next line to automatically plot on web browser
+    # show(layout)
+
+
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
     """Preparing the data for plotting
 
@@ -634,7 +658,7 @@ def data_prep_K(masked_data, masked_data_err, corr):
 
 def get_argparser():
     """Get argument parser"""
-    parser = OptionParser(usage='%prog [options] tablename')
+    parser = OptionParser(usage='%prog [options]')
     parser.add_option('-t', '--table', dest='mytab',
                       help='Table to plot (default = None)', default='')
     parser.add_option('-f', '--field', dest='field',
@@ -670,8 +694,13 @@ def get_argparser():
     parser.add_option('--ms', dest='myms',
                       help='Measurement Set to consult for proper antenna names',
                       default='')
-    parser.add_option('-p', '--plotname', dest='pngname',
-                      help='Output PNG name(default = something sensible)', default='')
+    parser.add_option('-p', '--plotname', dest='image_name',
+                      help='Output image name', default='')
+    parser.add_option('-g', '--gaintype', type='choice', dest='gain_type',
+                      choices=['B', 'G', 'K'],
+                      help='Type of table to be plotted', default='B')
+    parser.add_option('-H', '--htmlname', dest='html_name',
+                      help='Output HTMLfile name', default='')
 
     return parser
 
@@ -697,8 +726,10 @@ def main(**kwargs):
         yl1 = float(options.yl1)
         mycmap = options.mycmap
         myms = options.myms
-        pngname = options.pngname
-        mytab = options.mytab
+        image_name = str(options.image_name)
+        mytab = str(options.mytab)
+        html_name = str(options.html_name)
+        gain_type = str(options.gain_type)
 
         if mytab:
             # getting the name of the gain table specified
@@ -722,8 +753,10 @@ def main(**kwargs):
         yl1 = kwargs.get('yl1', -1)
         mycmap = kwargs.get('mycmap', 'coolwarm')
         myms = kwargs.get('myms', '')
-        pngname = kwargs.get('pngname', '')
+        image_name = kwargs.get('image_name', '')
         mytab = kwargs.get('mytab')
+        html_name = kwargs.get('html_name', '')
+        gain_type = kwargs.get('gain_type', '')
 
     # by default is ap: amplitude and phase
     if doplot not in ['ap', 'ri']:
@@ -829,7 +862,7 @@ def main(**kwargs):
         paramerr = subtab.getcol('PARAMERR')
 
         if doplot == 'ap':
-            if ".G" in determine_table(mytab):
+            if gain_type is 'G':
                 cparam = subtab.getcol('CPARAM')
 
                 # creating a masked array to prevent invalid values from being
@@ -847,7 +880,7 @@ def main(**kwargs):
                 ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
-            elif ".B" in determine_table(mytab):
+            elif gain_type is 'B':
                 cparam = subtab.getcol('CPARAM')
                 nchan = cparam.shape[1]
                 chans = np.arange(0, nchan, dtype='int')
@@ -861,7 +894,7 @@ def main(**kwargs):
                 ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
 
-            elif ".K" in determine_table(mytab):
+            elif gain_type is 'K':
                 antenna = subtab.getcol('ANTENNA1')
                 fparam = subtab.getcol('FPARAM')
                 masked_data = np.ma.masked_array(data=fparam, mask=flagcol)
@@ -874,10 +907,6 @@ def main(**kwargs):
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
 
-            elif determine_table(mytab) == -1:
-                print "Invalid table"
-                sys.exit(-1)
-
             p1, p1_err, p2, p2_err = make_plots(
                 source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
 
@@ -885,7 +914,7 @@ def main(**kwargs):
             ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
 
         elif doplot == 'ri':
-            if ".G" in determine_table(mytab):
+            if gain_type is 'G':
                 cparam = subtab.getcol('CPARAM')
                 times = subtab.getcol('TIME')
                 times = times - times[0]
@@ -901,7 +930,7 @@ def main(**kwargs):
                 ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
-            elif ".B" in determine_table(mytab):
+            elif gain_type is 'B':
                 cparam = subtab.getcol('CPARAM')
                 nchan = cparam.shape[1]
                 chans = np.arange(0, nchan, dtype='int')
@@ -915,13 +944,9 @@ def main(**kwargs):
                 ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
 
-            elif ".K" in determine_table(mytab):
+            elif gain_type is 'K':
                 print "No complex values to plot"
                 sys.exit()
-
-            elif determine_table(mytab) == -1:
-                print "Invalid table"
-                sys.exit(-1)
 
             p1, p1_err, p2, p2_err = make_plots(
                 source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
@@ -1084,22 +1109,23 @@ def main(**kwargs):
                       plot_width=700, plot_height=600)
 
     if not NB_RENDER:
-        # uncomment next line to automatically plot on web browser
-        output_file(pngname + ".html")
-        # show(layout)
+        if html_name:
+            save_html(html_name, layout)
 
-        if pngname == '':
+        else:
             # Remove path (if any) from table name
             if '/' in mytab:
                 mytab = mytab.split('/')[-1]
 
-            pngname = 'plot_' + mytab + '_corr' + \
-                str(corr) + '_' + doplot + '_field' + str(field)
-            output = save(layout, pngname + ".html", title=pngname)
-        else:
-            save_svg_image(pngname, ax1, ax2,
+            html_name = mytab + '_corr' + str(corr) + \
+                '_' + doplot + '_field' + str(field)
+
+            save_html(html_name, layout)
+        if image_name:
+            save_svg_image(image_name, ax1, ax2,
                            legend_items_ax1, legend_items_ax2)
-        print 'Rendered: ' + pngname
+
+        print 'Rendered: ' + html_name
     else:
         output_notebook()
         show(layout)
@@ -1139,7 +1165,7 @@ def plot_table(mytab, **kwargs):
                       (default = coolwarm)',default='coolwarm')
         myms        : Measurement Set to consult for proper antenna names',
                       (default='')
-        pngname     : Output PNG name (default = something sensible)'
+        image_name     : Output image name (default = something sensible)'
 
     Ouputs
     ------
