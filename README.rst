@@ -2,6 +2,10 @@
 ragavi
 ======
 
+|Pypi Version|
+|Build Version|
+|Python Versions|
+
 Radio Astronomy Gain and Visibility Inspector
 
 
@@ -11,14 +15,16 @@ Introduction
 
 This library mainly requires
     1. Bokeh
-    2. Nodejs for js
+    2. Nodejs>=8
     3. casacore-dev
 
 **- Install build dependencies:**
 
 .. code-block:: bash
     
-    $ apt-get install nodejs, casacore-dev
+    $ apt-get install casacore-dev
+    $ curl -sL https://deb.nodesource.com/setup_8.x | bash -
+    $ apt-get install -y nodejs
 
 All python requirements are found in requirements.txt
 
@@ -69,6 +75,17 @@ Contribute
 ===========
 
 Contributions are always welcome! Please ensure that you adhere to our coding standards pep8_.
+
+.. |Pypi Version| image:: https://img.shields.io/pypi/v/ragavi.svg
+                  :target: https://pypi.python.org/pypi/ragavi
+                  :alt:
+.. |Build Version| image:: https://api.travis-ci.com/ratt-ru/ragavi.svg?token=D5EL86dsmbhnuc9sNiRM&branch=master
+                  :target: https://travis-ci.com/ratt-ru/ragavi
+                  :alt:
+
+.. |Python Versions| image:: https://img.shields.io/pypi/pyversions/ragavi.svg
+                     :target: https://pypi.python.org/pypi/ragavi/
+                     :alt:
 
 .. _here: https://pypi.org/project/nodeenv
 .. _source: https://github.com/ratt-ru/ragavi
