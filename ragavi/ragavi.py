@@ -554,7 +554,7 @@ def save_html(hname, plot_layout):
 
 
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
-    """Preparing the data for plotting
+    """Preparing the data for plotting gain cal-table
 
     Inputs
     ------
@@ -592,7 +592,7 @@ def data_prep_G(masked_data, masked_data_err, doplot, corr):
 
 
 def data_prep_B(masked_data, masked_data_err, doplot, corr):
-    """Preparing the data for plotting
+    """Preparing the data for plotting bandpass cal-table
 
     INPUTS
     =====================
@@ -629,7 +629,7 @@ def data_prep_B(masked_data, masked_data_err, doplot, corr):
 
 
 def data_prep_K(masked_data, masked_data_err, corr):
-    """Preparing the data for plotting. Doplot must be 'ap'.
+    """Preparing the data for plotting delay cal-table. Doplot must be 'ap'.
 
     Inputs
     ------
@@ -652,6 +652,44 @@ def data_prep_K(masked_data, masked_data_err, corr):
     y2 = masked_data[:, 0, int(not corr)]
     y2 = np.array(y2)
     y2_err = masked_data_err
+
+    return y1, y1_err, y2, y2_err
+
+
+def data_prep_F(masked_data, masked_data_err, doplot, corr):
+    """Preparing the data for plotting flux cal table
+
+    Inputs
+    ------
+    masked_data: numpy.ndarray
+        Flagged data from CPARAM column to be plotted.
+    masked_data_err : numpy.ndarray
+        Flagged data from the PARAMERR column to be plotted
+    doplot: str
+        Either 'ap' or 'ri'
+    corr: int
+        Correlation to plot (0,1 e.t.c)
+
+    Outputs
+    -------
+    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array) : tuple
+        Tuple with arrays of the different data
+
+    """
+
+    if doplot == 'ap':
+        y1 = np.abs(masked_data)[:, 0, corr]
+        y1_err = np.abs(masked_data_err)[:, 0, corr]
+        y2 = np.angle(masked_data)[:, 0, corr]
+        # Remove phase limit from -pi to pi
+        y2 = np.unwrap(y2)
+        y2 = np.rad2deg(y2)
+        y2_err = None
+    else:
+        y1 = np.real(masked_data)[:, 0, corr]
+        y1_err = np.abs(masked_data_err)[:, 0, corr]
+        y2 = np.imag(masked_data)[:, 0, corr]
+        y2_err = None
 
     return y1, y1_err, y2, y2_err
 
@@ -697,7 +735,7 @@ def get_argparser():
     parser.add_option('-p', '--plotname', dest='image_name',
                       help='Output image name', default='')
     parser.add_option('-g', '--gaintype', type='choice', dest='gain_type',
-                      choices=['B', 'G', 'K'],
+                      choices=['B', 'G', 'K', 'F'],
                       help='Type of table to be plotted', default='B')
     parser.add_option('-H', '--htmlname', dest='html_name',
                       help='Output HTMLfile name', default='')
@@ -811,9 +849,9 @@ def main(**kwargs):
     ax1 = figure(sizing_mode='scale_both', **TOOLS)
     ax2 = figure(sizing_mode='scale_both', x_range=ax1.x_range, **TOOLS)
 
-    hover = HoverTool(tooltips=[("(time,y1)", "($x,$y)")], mode='mouse')
+    hover = HoverTool(tooltips=[("(x,y)", "($x,$y)")], mode='mouse')
     hover.point_policy = 'snap_to_data'
-    hover2 = HoverTool(tooltips=[("(time,y2)", "($x,$y)")], mode='mouse')
+    hover2 = HoverTool(tooltips=[("(x,y)", "($x,$y)")], mode='mouse')
     hover2.point_policy = 'snap_to_data'
 
     # forming Legend object items for data and errors
@@ -898,14 +936,27 @@ def main(**kwargs):
                 antenna = subtab.getcol('ANTENNA1')
                 fparam = subtab.getcol('FPARAM')
                 masked_data = np.ma.masked_array(data=fparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
+                masked_data_err = np.ma.masked_array(data=paramerr,
+                                                     mask=flagcol)
 
                 y1, y1_err, y2, y2_err = data_prep_K(
                     masked_data, masked_data_err, corr)
                 source = ColumnDataSource(data=dict(x=antenna, y1=y1, y2=y2))
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
+
+            elif gain_type is 'F':
+                cparam = subtab.getcol('CPARAM')
+                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+                masked_data_err = np.ma.masked_array(data=paramerr,
+                                                     mask=flagcol)
+
+                y1, y1_err, y2, y2_err = data_prep_F(
+                    masked_data, masked_data_err, doplot, corr)
+                # setting up glyph data source
+                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
+                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
             p1, p1_err, p2, p2_err = make_plots(
                 source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
@@ -920,8 +971,8 @@ def main(**kwargs):
                 times = times - times[0]
 
                 masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
+                masked_data_err = np.ma.masked_array(data=paramerr,
+                                                     mask=flagcol)
 
                 y1, y1_err, y2, y2_err = data_prep_G(
                     masked_data, masked_data_err, doplot, corr)
@@ -947,6 +998,19 @@ def main(**kwargs):
             elif gain_type is 'K':
                 print "No complex values to plot"
                 sys.exit()
+
+            elif gain_type is 'F':
+                cparam = subtab.getcol('CPARAM')
+                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+                masked_data_err = np.ma.masked_array(data=paramerr,
+                                                     mask=flagcol)
+
+                y1, y1_err, y2, y2_err = data_prep_F(
+                    masked_data, masked_data_err, doplot, corr)
+                # setting up glyph data source
+                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
+                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
             p1, p1_err, p2, p2_err = make_plots(
                 source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
