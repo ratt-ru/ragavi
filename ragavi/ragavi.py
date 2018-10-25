@@ -14,7 +14,7 @@ from bokeh.models.widgets import Div
 from bokeh.layouts import row, column, gridplot, widgetbox
 from bokeh.io import output_file, show, output_notebook, export_svgs, export_png, save
 from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
-                          FixedTicker, Legend, Toggle, CustomJS, Title,
+                          BasicTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
 
 
@@ -553,6 +553,28 @@ def save_html(hname, plot_layout):
     # show(layout)
 
 
+def add_axis(fig, axis_range):
+    """Add an extra axis to the current figure
+
+    Inputs
+    ------
+    fig: bokeh figure
+         The figure onto which to add extra axis 
+
+    axis_range: tuple
+                Starting and ending point for the range
+
+    Ouputs
+    ------
+    Nothing
+    """
+    fig.extra_x_ranges = {"fxtra": Range1d(
+        start=axis_range[0], end=axis_range[-1])}
+    linaxis = LinearAxis(x_range_name="fxtra", axis_label='Frequencies GHz',
+                         major_label_orientation='horizontal', ticker=BasicTicker(desired_num_ticks=12))
+    return linaxis
+
+
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
     """Preparing the data for plotting gain cal-table
 
@@ -806,9 +828,13 @@ def main(**kwargs):
     PLOT_HEIGHT = 600
 
     tt = table(mytab, ack=False)
+    spw_table = table(mytab + '::SPECTRAL_WINDOW', ack=False)
+
     ants = np.unique(tt.getcol('ANTENNA1'))
     fields = np.unique(tt.getcol('FIELD_ID'))
     flags = tt.getcol('FLAG')
+
+    frequencies = spw_table.getcol('CHAN_FREQ')[0] / 1e9
 
     # setting up colors for the antenna plots
     cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
@@ -836,7 +862,7 @@ def main(**kwargs):
         plotants = ants
 
     if myms != '':
-        anttab = table(myms.rstrip('/') + '/ANTENNA')
+        anttab = table(myms.rstrip('/') + '::ANTENNA', ack=False)
         antnames = anttab.getcol('NAME')
         anttab.done()
     else:
@@ -871,8 +897,14 @@ def main(**kwargs):
     # for each antenna
     for ant in plotants:
         # creating legend labels
-        legend = "A" + str(ant)
-        legend_err = "E" + str(ant)
+        if antnames == '':
+            antlabel = str(ant)
+            legend = "A" + str(ant)
+            legend_err = "E" + str(ant)
+        else:
+            antlabel = antnames[ant]
+            legend = antnames[ant]
+            legend_err = "E" + antnames[ant]
 
         # creating colors for maps
         y1col = scalarMap.to_rgba(float(ant))
@@ -931,6 +963,10 @@ def main(**kwargs):
                 source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
                 ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
+
+                if ant == plotants[-1]:
+                    linax = add_axis(ax1, (frequencies[0], frequencies[-1]))
+                    linax2 = add_axis(ax2, (frequencies[0], frequencies[-1]))
 
             elif gain_type is 'K':
                 antenna = subtab.getcol('ANTENNA1')
@@ -1031,12 +1067,6 @@ def main(**kwargs):
 
         subtab.close()
 
-        # dx = 1.0/float(len(ants)-1)
-        if antnames == '':
-            antlabel = str(ant)
-        else:
-            antlabel = antnames[ant]
-
         if np.min(times) < xmin:
             xmin = np.min(times)
         if np.max(times) > xmax:
@@ -1116,6 +1146,8 @@ def main(**kwargs):
         ax1.add_layout(legend_objs_ax1_err['leg_%s' % str(i)], 'left')
         ax2.add_layout(legend_objs_ax2_err['leg_%s' % str(i)], 'left')
 
+    ax1.add_layout(linax, 'above')
+    ax2.add_layout(linax2, 'above')
     # adding plot titles
     ax2.add_layout(ax2_title, 'above')
     ax1.add_layout(ax1_title, 'above')
