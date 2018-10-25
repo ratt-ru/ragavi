@@ -14,7 +14,7 @@ from bokeh.models.widgets import Div
 from bokeh.layouts import row, column, gridplot, widgetbox
 from bokeh.io import output_file, show, output_notebook, export_svgs, export_png, save
 from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
-                          FixedTicker, Legend, Toggle, CustomJS, Title,
+                          BasicTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
 
 
@@ -553,8 +553,30 @@ def save_html(hname, plot_layout):
     # show(layout)
 
 
+def add_axis(fig, axis_range, ax_label):
+    """Add an extra axis to the current figure
+
+    Inputs
+    ------
+    fig: bokeh figure
+         The figure onto which to add extra axis 
+
+    axis_range: tuple
+                Starting and ending point for the range
+
+    Ouputs
+    ------
+    Nothing
+    """
+    fig.extra_x_ranges = {"fxtra": Range1d(
+        start=axis_range[0], end=axis_range[-1])}
+    linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
+                         major_label_orientation='horizontal', ticker=BasicTicker(desired_num_ticks=12))
+    return linaxis
+
+
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
-    """Preparing the data for plotting
+    """Preparing the data for plotting gain cal-table
 
     Inputs
     ------
@@ -592,7 +614,7 @@ def data_prep_G(masked_data, masked_data_err, doplot, corr):
 
 
 def data_prep_B(masked_data, masked_data_err, doplot, corr):
-    """Preparing the data for plotting
+    """Preparing the data for plotting bandpass cal-table
 
     INPUTS
     =====================
@@ -629,7 +651,7 @@ def data_prep_B(masked_data, masked_data_err, doplot, corr):
 
 
 def data_prep_K(masked_data, masked_data_err, corr):
-    """Preparing the data for plotting. Doplot must be 'ap'.
+    """Preparing the data for plotting delay cal-table. Doplot must be 'ap'.
 
     Inputs
     ------
@@ -652,6 +674,44 @@ def data_prep_K(masked_data, masked_data_err, corr):
     y2 = masked_data[:, 0, int(not corr)]
     y2 = np.array(y2)
     y2_err = masked_data_err
+
+    return y1, y1_err, y2, y2_err
+
+
+def data_prep_F(masked_data, masked_data_err, doplot, corr):
+    """Preparing the data for plotting flux cal table
+
+    Inputs
+    ------
+    masked_data: numpy.ndarray
+        Flagged data from CPARAM column to be plotted.
+    masked_data_err : numpy.ndarray
+        Flagged data from the PARAMERR column to be plotted
+    doplot: str
+        Either 'ap' or 'ri'
+    corr: int
+        Correlation to plot (0,1 e.t.c)
+
+    Outputs
+    -------
+    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array) : tuple
+        Tuple with arrays of the different data
+
+    """
+
+    if doplot == 'ap':
+        y1 = np.abs(masked_data)[:, 0, corr]
+        y1_err = np.abs(masked_data_err)[:, 0, corr]
+        y2 = np.angle(masked_data)[:, 0, corr]
+        # Remove phase limit from -pi to pi
+        y2 = np.unwrap(y2)
+        y2 = np.rad2deg(y2)
+        y2_err = None
+    else:
+        y1 = np.real(masked_data)[:, 0, corr]
+        y1_err = np.abs(masked_data_err)[:, 0, corr]
+        y2 = np.imag(masked_data)[:, 0, corr]
+        y2_err = None
 
     return y1, y1_err, y2, y2_err
 
@@ -697,7 +757,7 @@ def get_argparser():
     parser.add_option('-p', '--plotname', dest='image_name',
                       help='Output image name', default='')
     parser.add_option('-g', '--gaintype', type='choice', dest='gain_type',
-                      choices=['B', 'G', 'K'],
+                      choices=['B', 'G', 'K', 'F'],
                       help='Type of table to be plotted', default='B')
     parser.add_option('-H', '--htmlname', dest='html_name',
                       help='Output HTMLfile name', default='')
@@ -768,9 +828,13 @@ def main(**kwargs):
     PLOT_HEIGHT = 600
 
     tt = table(mytab, ack=False)
+    spw_table = table(mytab + '::SPECTRAL_WINDOW', ack=False)
+
     ants = np.unique(tt.getcol('ANTENNA1'))
     fields = np.unique(tt.getcol('FIELD_ID'))
     flags = tt.getcol('FLAG')
+
+    frequencies = spw_table.getcol('CHAN_FREQ')[0] / 1e9
 
     # setting up colors for the antenna plots
     cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
@@ -798,7 +862,7 @@ def main(**kwargs):
         plotants = ants
 
     if myms != '':
-        anttab = table(myms.rstrip('/') + '/ANTENNA')
+        anttab = table(myms.rstrip('/') + '::ANTENNA', ack=False)
         antnames = anttab.getcol('NAME')
         anttab.done()
     else:
@@ -811,9 +875,9 @@ def main(**kwargs):
     ax1 = figure(sizing_mode='scale_both', **TOOLS)
     ax2 = figure(sizing_mode='scale_both', x_range=ax1.x_range, **TOOLS)
 
-    hover = HoverTool(tooltips=[("(time,y1)", "($x,$y)")], mode='mouse')
+    hover = HoverTool(tooltips=[("(x,y)", "($x,$y)")], mode='mouse')
     hover.point_policy = 'snap_to_data'
-    hover2 = HoverTool(tooltips=[("(time,y2)", "($x,$y)")], mode='mouse')
+    hover2 = HoverTool(tooltips=[("(x,y)", "($x,$y)")], mode='mouse')
     hover2.point_policy = 'snap_to_data'
 
     # forming Legend object items for data and errors
@@ -833,8 +897,14 @@ def main(**kwargs):
     # for each antenna
     for ant in plotants:
         # creating legend labels
-        legend = "A" + str(ant)
-        legend_err = "E" + str(ant)
+        if antnames == '':
+            antlabel = str(ant)
+            legend = "A" + str(ant)
+            legend_err = "E" + str(ant)
+        else:
+            antlabel = antnames[ant]
+            legend = antnames[ant]
+            legend_err = "E" + antnames[ant]
 
         # creating colors for maps
         y1col = scalarMap.to_rgba(float(ant))
@@ -861,96 +931,88 @@ def main(**kwargs):
 
         paramerr = subtab.getcol('PARAMERR')
 
-        if doplot == 'ap':
-            if gain_type is 'G':
-                cparam = subtab.getcol('CPARAM')
+        if gain_type is 'G':
+            cparam = subtab.getcol('CPARAM')
 
-                # creating a masked array to prevent invalid values from being
-                # computed. IF mask is true, then the element is masked, and thus
-                # won't be used in the calculation
-                # removing flagged data from cparams
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
+            # creating a masked array to prevent invalid values from being
+            # computed. IF mask is true, then the element is masked, and thus
+            # won't be used in the calculation
+            # removing flagged data from cparams
+            masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+            masked_data_err = np.ma.masked_array(data=paramerr,
+                                                 mask=flagcol)
 
-                y1, y1_err, y2, y2_err = data_prep_G(
-                    masked_data, masked_data_err, doplot, corr)
-                # setting up glyph data source
-                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
+            y1, y1_err, y2, y2_err = data_prep_G(masked_data,
+                                                 masked_data_err,
+                                                 doplot, corr)
+            # setting up glyph data source
+            source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+            ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
+            ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
-            elif gain_type is 'B':
-                cparam = subtab.getcol('CPARAM')
-                nchan = cparam.shape[1]
-                chans = np.arange(0, nchan, dtype='int')
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
+        elif gain_type is 'B':
+            cparam = subtab.getcol('CPARAM')
+            nchan = cparam.shape[1]
+            chans = np.arange(0, nchan, dtype='int')
+            masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+            masked_data_err = np.ma.masked_array(data=paramerr,
+                                                 mask=flagcol)
 
-                y1, y1_err, y2, y2_err = data_prep_B(
-                    masked_data, masked_data_err, doplot, corr)
-                source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
+            y1, y1_err, y2, y2_err = data_prep_B(masked_data,
+                                                 masked_data_err,
+                                                 doplot, corr)
+            source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
+            ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
+            ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
 
-            elif gain_type is 'K':
+            if ant == plotants[-1]:
+                linax1 = add_axis(ax1, (frequencies[0], frequencies[-1]),
+                                  ax_label='Frequency [GHz]')
+                linax2 = add_axis(ax2, (frequencies[0], frequencies[-1]),
+                                  ax_label='Frequency [GHz]')
+                ax1.add_layout(linax1, 'above')
+                ax2.add_layout(linax2, 'above')
+
+        elif gain_type is 'K':
+            if doplot == 'ap':
                 antenna = subtab.getcol('ANTENNA1')
                 fparam = subtab.getcol('FPARAM')
                 masked_data = np.ma.masked_array(data=fparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
+                masked_data_err = np.ma.masked_array(data=paramerr,
+                                                     mask=flagcol)
 
                 y1, y1_err, y2, y2_err = data_prep_K(
                     masked_data, masked_data_err, corr)
                 source = ColumnDataSource(data=dict(x=antenna, y1=y1, y2=y2))
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
-
-            p1, p1_err, p2, p2_err = make_plots(
-                source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
-
-            ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
-            ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
-
-        elif doplot == 'ri':
-            if gain_type is 'G':
-                cparam = subtab.getcol('CPARAM')
-                times = subtab.getcol('TIME')
-                times = times - times[0]
-
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
-
-                y1, y1_err, y2, y2_err = data_prep_G(
-                    masked_data, masked_data_err, doplot, corr)
-                # setting up glyph data source
-                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
-
-            elif gain_type is 'B':
-                cparam = subtab.getcol('CPARAM')
-                nchan = cparam.shape[1]
-                chans = np.arange(0, nchan, dtype='int')
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
-
-                y1, y1_err, y2, y2_err = data_prep_B(
-                    masked_data, masked_data_err, doplot, corr)
-                source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
-
-            elif gain_type is 'K':
+            else:
                 print "No complex values to plot"
                 sys.exit()
 
-            p1, p1_err, p2, p2_err = make_plots(
-                source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
+        elif gain_type is 'F':
+            cparam = subtab.getcol('CPARAM')
+            masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+            masked_data_err = np.ma.masked_array(data=paramerr,
+                                                 mask=flagcol)
 
+            y1, y1_err, y2, y2_err = data_prep_F(
+                masked_data, masked_data_err, doplot, corr)
+            # setting up glyph data source
+            source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+            ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
+            ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
+
+        p1, p1_err, p2, p2_err = make_plots(
+            source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
+
+        if doplot == 'ap':
+            ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
+            ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
+            if gain_type is 'K':
+                ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude[Corr1]'
+                ax2.yaxis.axis_label = ax2_ylabel = 'Amplitude[Corr2]'
+        elif doplot == 'ri':
             ax1.yaxis.axis_label = ax1_ylabel = 'Real'
             ax2.yaxis.axis_label = ax2_ylabel = 'Imaginary'
 
@@ -966,12 +1028,6 @@ def main(**kwargs):
         legend_items_err_ax2.append((legend_err, [p2_err]))
 
         subtab.close()
-
-        # dx = 1.0/float(len(ants)-1)
-        if antnames == '':
-            antlabel = str(ant)
-        else:
-            antlabel = antnames[ant]
 
         if np.min(times) < xmin:
             xmin = np.min(times)
@@ -1019,6 +1075,7 @@ def main(**kwargs):
     ax2.y_range = Range1d(ylmin, ylmax)
 
     tt.close()
+    spw_table.close()
 
     # configuring titles for the plots
     ax1_title = Title(text=ax1_ylabel + ' vs ' + ax1_xlabel,
