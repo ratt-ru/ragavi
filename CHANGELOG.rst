@@ -2,6 +2,7 @@
 -----
 - Travis realease on tag
 - Now plotting Flux callibration tables
+- Extra frequency axis for bandpass plot
 
 0.0.2
 -----

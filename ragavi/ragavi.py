@@ -553,7 +553,7 @@ def save_html(hname, plot_layout):
     # show(layout)
 
 
-def add_axis(fig, axis_range):
+def add_axis(fig, axis_range, ax_label):
     """Add an extra axis to the current figure
 
     Inputs
@@ -570,7 +570,7 @@ def add_axis(fig, axis_range):
     """
     fig.extra_x_ranges = {"fxtra": Range1d(
         start=axis_range[0], end=axis_range[-1])}
-    linaxis = LinearAxis(x_range_name="fxtra", axis_label='Frequencies GHz',
+    linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
                          major_label_orientation='horizontal', ticker=BasicTicker(desired_num_ticks=12))
     return linaxis
 
@@ -931,44 +931,50 @@ def main(**kwargs):
 
         paramerr = subtab.getcol('PARAMERR')
 
-        if doplot == 'ap':
-            if gain_type is 'G':
-                cparam = subtab.getcol('CPARAM')
+        if gain_type is 'G':
+            cparam = subtab.getcol('CPARAM')
 
-                # creating a masked array to prevent invalid values from being
-                # computed. IF mask is true, then the element is masked, and thus
-                # won't be used in the calculation
-                # removing flagged data from cparams
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
+            # creating a masked array to prevent invalid values from being
+            # computed. IF mask is true, then the element is masked, and thus
+            # won't be used in the calculation
+            # removing flagged data from cparams
+            masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+            masked_data_err = np.ma.masked_array(data=paramerr,
+                                                 mask=flagcol)
 
-                y1, y1_err, y2, y2_err = data_prep_G(
-                    masked_data, masked_data_err, doplot, corr)
-                # setting up glyph data source
-                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
+            y1, y1_err, y2, y2_err = data_prep_G(masked_data,
+                                                 masked_data_err,
+                                                 doplot, corr)
+            # setting up glyph data source
+            source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+            ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
+            ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
-            elif gain_type is 'B':
-                cparam = subtab.getcol('CPARAM')
-                nchan = cparam.shape[1]
-                chans = np.arange(0, nchan, dtype='int')
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
+        elif gain_type is 'B':
+            cparam = subtab.getcol('CPARAM')
+            nchan = cparam.shape[1]
+            chans = np.arange(0, nchan, dtype='int')
+            masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+            masked_data_err = np.ma.masked_array(data=paramerr,
+                                                 mask=flagcol)
 
-                y1, y1_err, y2, y2_err = data_prep_B(
-                    masked_data, masked_data_err, doplot, corr)
-                source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
+            y1, y1_err, y2, y2_err = data_prep_B(masked_data,
+                                                 masked_data_err,
+                                                 doplot, corr)
+            source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
+            ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
+            ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
 
-                if ant == plotants[-1]:
-                    linax = add_axis(ax1, (frequencies[0], frequencies[-1]))
-                    linax2 = add_axis(ax2, (frequencies[0], frequencies[-1]))
+            if ant == plotants[-1]:
+                linax1 = add_axis(ax1, (frequencies[0], frequencies[-1]),
+                                  ax_label='Frequency [GHz]')
+                linax2 = add_axis(ax2, (frequencies[0], frequencies[-1]),
+                                  ax_label='Frequency [GHz]')
+                ax1.add_layout(linax1, 'above')
+                ax2.add_layout(linax2, 'above')
 
-            elif gain_type is 'K':
+        elif gain_type is 'K':
+            if doplot == 'ap':
                 antenna = subtab.getcol('ANTENNA1')
                 fparam = subtab.getcol('FPARAM')
                 masked_data = np.ma.masked_array(data=fparam, mask=flagcol)
@@ -980,77 +986,33 @@ def main(**kwargs):
                 source = ColumnDataSource(data=dict(x=antenna, y1=y1, y2=y2))
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
-
-            elif gain_type is 'F':
-                cparam = subtab.getcol('CPARAM')
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(data=paramerr,
-                                                     mask=flagcol)
-
-                y1, y1_err, y2, y2_err = data_prep_F(
-                    masked_data, masked_data_err, doplot, corr)
-                # setting up glyph data source
-                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
-
-            p1, p1_err, p2, p2_err = make_plots(
-                source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
-
-            ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
-            ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
-
-        elif doplot == 'ri':
-            if gain_type is 'G':
-                cparam = subtab.getcol('CPARAM')
-                times = subtab.getcol('TIME')
-                times = times - times[0]
-
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(data=paramerr,
-                                                     mask=flagcol)
-
-                y1, y1_err, y2, y2_err = data_prep_G(
-                    masked_data, masked_data_err, doplot, corr)
-                # setting up glyph data source
-                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
-
-            elif gain_type is 'B':
-                cparam = subtab.getcol('CPARAM')
-                nchan = cparam.shape[1]
-                chans = np.arange(0, nchan, dtype='int')
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(
-                    data=paramerr, mask=flagcol)
-
-                y1, y1_err, y2, y2_err = data_prep_B(
-                    masked_data, masked_data_err, doplot, corr)
-                source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
-
-            elif gain_type is 'K':
+            else:
                 print "No complex values to plot"
                 sys.exit()
 
-            elif gain_type is 'F':
-                cparam = subtab.getcol('CPARAM')
-                masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
-                masked_data_err = np.ma.masked_array(data=paramerr,
-                                                     mask=flagcol)
+        elif gain_type is 'F':
+            cparam = subtab.getcol('CPARAM')
+            masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
+            masked_data_err = np.ma.masked_array(data=paramerr,
+                                                 mask=flagcol)
 
-                y1, y1_err, y2, y2_err = data_prep_F(
-                    masked_data, masked_data_err, doplot, corr)
-                # setting up glyph data source
-                source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
-                ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
-                ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
+            y1, y1_err, y2, y2_err = data_prep_F(
+                masked_data, masked_data_err, doplot, corr)
+            # setting up glyph data source
+            source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+            ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
+            ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
-            p1, p1_err, p2, p2_err = make_plots(
-                source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
+        p1, p1_err, p2, p2_err = make_plots(
+            source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
 
+        if doplot == 'ap':
+            ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
+            ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
+            if gain_type is 'K':
+                ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude[Corr1]'
+                ax2.yaxis.axis_label = ax2_ylabel = 'Amplitude[Corr2]'
+        elif doplot == 'ri':
             ax1.yaxis.axis_label = ax1_ylabel = 'Real'
             ax2.yaxis.axis_label = ax2_ylabel = 'Imaginary'
 
@@ -1113,6 +1075,7 @@ def main(**kwargs):
     ax2.y_range = Range1d(ylmin, ylmax)
 
     tt.close()
+    spw_table.close()
 
     # configuring titles for the plots
     ax1_title = Title(text=ax1_ylabel + ' vs ' + ax1_xlabel,
@@ -1146,8 +1109,6 @@ def main(**kwargs):
         ax1.add_layout(legend_objs_ax1_err['leg_%s' % str(i)], 'left')
         ax2.add_layout(legend_objs_ax2_err['leg_%s' % str(i)], 'left')
 
-    ax1.add_layout(linax, 'above')
-    ax2.add_layout(linax2, 'above')
     # adding plot titles
     ax2.add_layout(ax2_title, 'above')
     ax1.add_layout(ax1_title, 'above')
