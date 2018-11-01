@@ -575,6 +575,37 @@ def add_axis(fig, axis_range, ax_label):
     return linaxis
 
 
+def name_2id(val, dic):
+    """Translate field name to field id
+
+    Input
+    -----
+    val: string
+         Field ID name to convert
+    dic: dict
+         Dictionary containing enumerated source ID names
+
+    Output
+    ------
+    key: int
+         Integer field id
+    """
+    upperfy = lambda x: x.upper()
+    values = dic.values()
+    values = map(upperfy, values)
+    val = val.upper()
+
+    if val in values:
+        val_index = values.index(val)
+        keys = dic.keys()
+
+        # get the key to thatindex from the key values
+        key = keys[val_index]
+        return int(key)
+    else:
+        return -1
+
+
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
     """Preparing the data for plotting gain cal-table
 
@@ -774,7 +805,7 @@ def main(**kwargs):
         parser = get_argparser()
         (options, args) = parser.parse_args()
 
-        field = int(options.field)
+        field = str(options.field)
         doplot = options.doplot
         plotants = options.plotants
         corr = int(options.corr)
@@ -820,7 +851,8 @@ def main(**kwargs):
 
     # by default is ap: amplitude and phase
     if doplot not in ['ap', 'ri']:
-        print "Plot selection must be either ap (amp and phase) or ri (real and imag)"
+        print "Plot selection must be either ap (amp and phase)\
+               or ri (real and imag)"
         sys.exit(-1)
 
     # configuring the plot dimensions
@@ -829,6 +861,10 @@ def main(**kwargs):
 
     tt = table(mytab, ack=False)
     spw_table = table(mytab + '::SPECTRAL_WINDOW', ack=False)
+
+    field_tab = table(mytab + '::FIELD', ack=False)
+    field_names = field_tab.getcol('NAME')
+    field_src_ids = dict(enumerate(field_names))
 
     ants = np.unique(tt.getcol('ANTENNA1'))
     fields = np.unique(tt.getcol('FIELD_ID'))
@@ -840,6 +876,11 @@ def main(**kwargs):
     cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
     mymap = cm = pylab.get_cmap(mycmap)
     scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
+
+    if field.isdigit():
+        field = int(field)
+    else:
+        field = name_2id(field, field_src_ids)
 
     if int(field) not in fields.tolist():
         print 'Field ID ' + str(field) + ' not found'
