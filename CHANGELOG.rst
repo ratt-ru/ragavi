@@ -4,6 +4,8 @@
 - Now plotting Flux callibration tables
 - Extra frequency axis for bandpass plot
 - Support for string field names in addition to field indices
+- Removed msname flag, Antenna names now referenced by default
+
 
 0.0.2
 -----

@@ -28,7 +28,7 @@ def save_svg_image(img_name, figa, figb, glax1, glax2):
     img_name: string
               Desired image name
     figa: figure object
-          First figure 
+          First figure
     figb: figure object
           Second figure
     glax1: list
@@ -545,7 +545,7 @@ def save_html(hname, plot_layout):
 
     Output
     ------
-    Nothing 
+    Nothing
     """
     output_file(hname + ".html")
     output = save(plot_layout, hname + ".html", title=hname)
@@ -559,7 +559,7 @@ def add_axis(fig, axis_range, ax_label):
     Inputs
     ------
     fig: bokeh figure
-         The figure onto which to add extra axis 
+         The figure onto which to add extra axis
 
     axis_range: tuple
                 Starting and ending point for the range
@@ -782,9 +782,6 @@ def get_argparser():
     parser.add_option('--cmap', dest='mycmap',
                       help='Matplotlib colour map to use for antennas (default=coolwarm)',
                       default='coolwarm')
-    parser.add_option('--ms', dest='myms',
-                      help='Measurement Set to consult for proper antenna names',
-                      default='')
     parser.add_option('-p', '--plotname', dest='image_name',
                       help='Output image name', default='')
     parser.add_option('-g', '--gaintype', type='choice', dest='gain_type',
@@ -816,38 +813,43 @@ def main(**kwargs):
         yl0 = float(options.yl0)
         yl1 = float(options.yl1)
         mycmap = options.mycmap
-        myms = options.myms
         image_name = str(options.image_name)
         mytab = str(options.mytab)
         html_name = str(options.html_name)
         gain_type = str(options.gain_type)
-
-        if mytab:
-            # getting the name of the gain table specified
-            mytab = mytab.rstrip("/")
-        else:
-            print 'Please specify a gain table to plot.'
-            sys.exit(-1)
-
     else:
         NB_RENDER = True
 
-        field = kwargs.get('field', "0")
+        field = str(kwargs.get('field', "0"))
         doplot = kwargs.get('doplot', 'ap')
         plotants = kwargs.get('plotants', [-1])
-        corr = kwargs.get('corr', 0)
-        t0 = kwargs.get('t0', -1)
-        t1 = kwargs.get('t1', -1)
-        yu0 = kwargs.get('yu0', -1)
-        yu1 = kwargs.get('yu1', -1)
-        yl0 = kwargs.get('yl0', -1)
-        yl1 = kwargs.get('yl1', -1)
-        mycmap = kwargs.get('mycmap', 'coolwarm')
-        myms = kwargs.get('myms', '')
-        image_name = kwargs.get('image_name', '')
-        mytab = kwargs.get('mytab')
-        html_name = kwargs.get('html_name', '')
-        gain_type = kwargs.get('gain_type', '')
+        corr = int(kwargs.get('corr', 0))
+        t0 = float(kwargs.get('t0', -1))
+        t1 = float(kwargs.get('t1', -1))
+        yu0 = float(kwargs.get('yu0', -1))
+        yu1 = float(kwargs.get('yu1', -1))
+        yl0 = float(kwargs.get('yl0', -1))
+        yl1 = float(kwargs.get('yl1', -1))
+        mycmap = str(kwargs.get('mycmap', 'coolwarm'))
+        image_name = str(kwargs.get('image_name', ''))
+        mytab = str(kwargs.get('mytab'))
+        gain_type = str(kwargs.get('gain_type', ''))
+
+    if mytab:
+            # getting the name of the gain table specified
+        mytab = mytab.rstrip("/")
+    else:
+        print 'Please specify a gain table to plot.'
+        sys.exit(-1)
+
+    if gain_type:
+        GAIN_TYPES = ['B', 'F', 'G', 'K']
+        if gain_type.upper() not in GAIN_TYPES:
+            print 'Choose appropriate gain_type: ', GAIN_TYPES
+            sys.exit(-1)
+    else:
+        print "No gaintype chosen.\nExiting"
+        sys.exit(-1)
 
     # by default is ap: amplitude and phase
     if doplot not in ['ap', 'ri']:
@@ -859,17 +861,19 @@ def main(**kwargs):
     PLOT_WIDTH = 700
     PLOT_HEIGHT = 600
 
+    # get main table and useful subtables
     tt = table(mytab, ack=False)
     spw_table = table(mytab + '::SPECTRAL_WINDOW', ack=False)
-
     field_tab = table(mytab + '::FIELD', ack=False)
+    anttab = table(mytab + '::ANTENNA', ack=False)
+
+    # get columns from selected tables
     field_names = field_tab.getcol('NAME')
     field_src_ids = dict(enumerate(field_names))
-
+    antnames = anttab.getcol('NAME')
     ants = np.unique(tt.getcol('ANTENNA1'))
     fields = np.unique(tt.getcol('FIELD_ID'))
     flags = tt.getcol('FLAG')
-
     frequencies = spw_table.getcol('CHAN_FREQ')[0] / 1e9
 
     # setting up colors for the antenna plots
@@ -902,13 +906,6 @@ def main(**kwargs):
     else:
         plotants = ants
 
-    if myms != '':
-        anttab = table(myms.rstrip('/') + '::ANTENNA', ack=False)
-        antnames = anttab.getcol('NAME')
-        anttab.done()
-    else:
-        antnames = ''
-
     # creating bokeh figures for plots
     # linking plots ax1 and ax2 via the x_axes because fo similarities in range
     TOOLS = dict(
@@ -938,14 +935,9 @@ def main(**kwargs):
     # for each antenna
     for ant in plotants:
         # creating legend labels
-        if antnames == '':
-            antlabel = str(ant)
-            legend = "A" + str(ant)
-            legend_err = "E" + str(ant)
-        else:
-            antlabel = antnames[ant]
-            legend = antnames[ant]
-            legend_err = "E" + antnames[ant]
+        antlabel = antnames[ant]
+        legend = antnames[ant]
+        legend_err = "E" + antnames[ant]
 
         # creating colors for maps
         y1col = scalarMap.to_rgba(float(ant))
@@ -959,8 +951,6 @@ def main(**kwargs):
         mytaql += '&&FIELD_ID==' + str(field)
 
         # querying the table for the 2 columns
-        # getting data from the antennas, cparam contains the correlated data,
-        # time is the time stamps
 
         subtab = tt.query(query=mytaql)
         # Selecting values from the table for antenna ants
@@ -1206,6 +1196,9 @@ def main(**kwargs):
     layout = gridplot([[plot_widgets, ax1, ax2]],
                       plot_width=700, plot_height=600)
 
+    if image_name:
+        save_svg_image(image_name, ax1, ax2,
+                       legend_items_ax1, legend_items_ax2)
     if not NB_RENDER:
         if html_name:
             save_html(html_name, layout)
@@ -1219,11 +1212,9 @@ def main(**kwargs):
                 '_' + doplot + '_field' + str(field)
 
             save_html(html_name, layout)
-        if image_name:
-            save_svg_image(image_name, ax1, ax2,
-                           legend_items_ax1, legend_items_ax2)
 
         print 'Rendered: ' + html_name
+
     else:
         output_notebook()
         show(layout)
@@ -1238,6 +1229,8 @@ def plot_table(mytab, **kwargs):
     Required
     --------
         mytab       : The table to be plotted
+        gain_type   : Cal-table type to be plotted.
+                      Can be either 'B'-bandpass, 'G'-gains, 'K'-delay or 'F'-flux (default=None)
 
     Optional
     --------
@@ -1261,9 +1254,8 @@ def plot_table(mytab, **kwargs):
                       (default = full range)',default=-1)
         mycmap      : Matplotlib colour map to use for antennas 
                       (default = coolwarm)',default='coolwarm')
-        myms        : Measurement Set to consult for proper antenna names',
-                      (default='')
-        image_name     : Output image name (default = something sensible)'
+        image_name  : Output image name (default = something sensible)'
+
 
     Ouputs
     ------
