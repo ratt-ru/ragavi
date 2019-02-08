@@ -753,7 +753,7 @@ def get_argparser():
     parser.add_option('-t', '--table', dest='mytab',
                       help='Table to plot (default = None)', default='')
     parser.add_option('-f', '--field', dest='field',
-                      help='Field ID to plot (default = 0)', default=0)
+                      help='Field ID / NAME to plot (default = 0)', default=0)
     parser.add_option('-d', '--doplot', dest='doplot',
                       help='Plot complex values as amp and phase (ap)'
                       'or real and imag (ri) (default = ap)', default='ap')
@@ -786,7 +786,7 @@ def get_argparser():
                       help='Output image name', default='')
     parser.add_option('-g', '--gaintype', type='choice', dest='gain_type',
                       choices=['B', 'G', 'K', 'F'],
-                      help='Type of table to be plotted', default='B')
+                      help='Type of table to be plotted: B, G, K, F (default B)', default='B')
     parser.add_option('-H', '--htmlname', dest='html_name',
                       help='Output HTMLfile name', default='')
 
@@ -1235,7 +1235,7 @@ def plot_table(mytab, **kwargs):
     Optional
     --------
 
-        field       : Field ID to plot (default = 0)',default=0)
+        field       : Field ID / Name to plot (default = 0)',default=0)
         doplot      : Plot complex values as amp and phase (ap) or real and
                       imag (ri) (default = ap)',default='ap')
         plotants    : Plot only this antenna, or comma-separated list of 
