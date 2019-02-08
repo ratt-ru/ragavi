@@ -67,7 +67,7 @@ def determine_table(table_name):
     Input
     -----
     table_name: str
-                Name of table /  gaintype to be plotted
+                Name of table /  gain type to be plotted
 
     """
     pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
@@ -436,7 +436,7 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, ba
 
     j = 0
     for i in range(num_leg_objs):
-        # incase the number is not a multiple of 16
+        # in case the number is not a multiple of 16
         if i == num_leg_objs:
             bax1.extend([li_ax1[j:]])
             bax2.extend([li_ax2[j:]])
@@ -466,17 +466,17 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
    bax2: list
          Batches for antenna legends of 2nd figure
    baerr_ax1: list
-         Batches for errorbar legends of 1st figure
+         Batches for error bar legends of 1st figure
    baerr_ax2: list
-         Batches for errorbar legends of 2nd figure
+         Batches for error bar legends of 2nd figure
 
 
    Outputs
    -------
    (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
             Tuple containing dictionaries with legend objects for
-            ax1 antenna legend objects, ax1 errorbar legend objects,
-            ax2 antenna legend objects, ax2 errorbar legend objects
+            ax1 antenna legend objects, ax1 error bar legend objects,
+            ax2 antenna legend objects, ax2 error bar legend objects
 
             e.g.
             leg_0 : Legend(items=batch_0, location='top_right', click_policy='hide')
@@ -509,7 +509,7 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
 
 
 def gen_checkbox_labels(batch_size, num_leg_objs):
-    """ Autogenerating checkbox labels
+    """ Auto-generating Checkbox labels
 
     Inputs
     ------
@@ -517,10 +517,10 @@ def gen_checkbox_labels(batch_size, num_leg_objs):
                 Number of items in a single batch
     num_leg_objs: int
                 Number of legend objects / Number of batches
-    Ouputs
+    Outputs
     ------
     labels: list
-            Batch labels for the checkbox
+            Batch labels for the check box
     """
 
     labels = []
@@ -536,15 +536,15 @@ def gen_checkbox_labels(batch_size, num_leg_objs):
 
 def save_html(hname, plot_layout):
     """Save [and show] resultant HTML file
-    Input
-    -----
+    Inputs
+    ------
     hname: str
            HTML Output file name
     plot_layout: Bokeh layout object
-                 Layout of the bokeh plot, could be row, column, gridplot
+                 Layout of the Bokeh plot, could be row, column, gridplot
 
-    Output
-    ------
+    Outputs
+    -------
     Nothing
     """
     output_file(hname + ".html")
@@ -556,15 +556,15 @@ def save_html(hname, plot_layout):
 def add_axis(fig, axis_range, ax_label):
     """Add an extra axis to the current figure
 
-    Inputs
+    Input
     ------
-    fig: bokeh figure
+    fig: Bokeh figure
          The figure onto which to add extra axis
 
     axis_range: tuple
                 Starting and ending point for the range
 
-    Ouputs
+    Output
     ------
     Nothing
     """
@@ -578,15 +578,15 @@ def add_axis(fig, axis_range, ax_label):
 def name_2id(val, dic):
     """Translate field name to field id
 
-    Input
+    Inputs
     -----
     val: string
          Field ID name to convert
     dic: dict
          Dictionary containing enumerated source ID names
 
-    Output
-    ------
+    Outputs
+    -------
     key: int
          Integer field id
     """
@@ -599,7 +599,7 @@ def name_2id(val, dic):
         val_index = values.index(val)
         keys = dic.keys()
 
-        # get the key to thatindex from the key values
+        # get the key to that index from the key values
         key = keys[val_index]
         return int(key)
     else:
@@ -647,8 +647,8 @@ def data_prep_G(masked_data, masked_data_err, doplot, corr):
 def data_prep_B(masked_data, masked_data_err, doplot, corr):
     """Preparing the data for plotting bandpass cal-table
 
-    INPUTS
-    =====================
+    Inputs
+    ------
     masked_data     : numpy.ndarray
         Flagged data from CPARAM column to be plotted.
     masked_data_err : numpy.ndarray
@@ -839,22 +839,22 @@ def main(**kwargs):
             # getting the name of the gain table specified
         mytab = mytab.rstrip("/")
     else:
-        print 'Please specify a gain table to plot.'
+        print("Please specify a gain table to plot.")
         sys.exit(-1)
 
     if gain_type:
         GAIN_TYPES = ['B', 'F', 'G', 'K']
         if gain_type.upper() not in GAIN_TYPES:
-            print 'Choose appropriate gain_type: ', GAIN_TYPES
+            print("Choose appropriate gain_type: ", GAIN_TYPES)
             sys.exit(-1)
     else:
-        print "No gaintype chosen.\nExiting"
+        print("No gain type chosen.\nExiting")
         sys.exit(-1)
 
     # by default is ap: amplitude and phase
     if doplot not in ['ap', 'ri']:
-        print "Plot selection must be either ap (amp and phase)\
-               or ri (real and imag)"
+        print("Plot selection must be either ap (amp and phase)\
+               or ri (real and imag)")
         sys.exit(-1)
 
     # configuring the plot dimensions
@@ -887,7 +887,7 @@ def main(**kwargs):
         field = name_2id(field, field_src_ids)
 
     if int(field) not in fields.tolist():
-        print 'Field ID ' + str(field) + ' not found'
+        print("Field ID " + str(field) + " not found")
         sys.exit(-1)
 
     if plotants[0] != -1:
@@ -897,9 +897,9 @@ def main(**kwargs):
         for ant in plotants:
             if int(ant) not in ants:
                 plotants.remove(ant)
-                print 'Requested antenna ID ' + str(ant) + ' not found'
+                print('Requested antenna ID ' + str(ant) + ' not found')
         if len(plotants) == 0:
-            print 'No valid antennas have been requested'
+            print("No valid antennas have been requested")
             sys.exit(-1)
         else:
             plotants = np.array(plotants, dtype=int)
@@ -1018,7 +1018,7 @@ def main(**kwargs):
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
             else:
-                print "No complex values to plot"
+                print("No complex values to plot")
                 sys.exit()
 
         elif gain_type is 'F':
@@ -1213,7 +1213,7 @@ def main(**kwargs):
 
             save_html(html_name, layout)
 
-        print 'Rendered: ' + html_name
+        print("Rendered: " + html_name)
 
     else:
         output_notebook()
@@ -1257,13 +1257,13 @@ def plot_table(mytab, **kwargs):
         image_name  : Output image name (default = something sensible)'
 
 
-    Ouputs
+    Outputs
     ------
     Returns nothing
 
     """
     if mytab is None:
-        print 'Please specify a gain table to plot.'
+        print("Please specify a gain table to plot.")
         sys.exit(-1)
     else:
         # getting the name of the gain table specified
