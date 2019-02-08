@@ -28,7 +28,7 @@ def save_svg_image(img_name, figa, figb, glax1, glax2):
     img_name: string
               Desired image name
     figa: figure object
-          First figure 
+          First figure
     figb: figure object
           Second figure
     glax1: list
@@ -67,7 +67,7 @@ def determine_table(table_name):
     Input
     -----
     table_name: str
-                Name of table /  gaintype to be plotted
+                Name of table /  gain type to be plotted
 
     """
     pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
@@ -436,7 +436,7 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, ba
 
     j = 0
     for i in range(num_leg_objs):
-        # incase the number is not a multiple of 16
+        # in case the number is not a multiple of 16
         if i == num_leg_objs:
             bax1.extend([li_ax1[j:]])
             bax2.extend([li_ax2[j:]])
@@ -466,17 +466,17 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
    bax2: list
          Batches for antenna legends of 2nd figure
    baerr_ax1: list
-         Batches for errorbar legends of 1st figure
+         Batches for error bar legends of 1st figure
    baerr_ax2: list
-         Batches for errorbar legends of 2nd figure
+         Batches for error bar legends of 2nd figure
 
 
    Outputs
    -------
    (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
             Tuple containing dictionaries with legend objects for
-            ax1 antenna legend objects, ax1 errorbar legend objects,
-            ax2 antenna legend objects, ax2 errorbar legend objects
+            ax1 antenna legend objects, ax1 error bar legend objects,
+            ax2 antenna legend objects, ax2 error bar legend objects
 
             e.g.
             leg_0 : Legend(items=batch_0, location='top_right', click_policy='hide')
@@ -509,7 +509,7 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
 
 
 def gen_checkbox_labels(batch_size, num_leg_objs):
-    """ Autogenerating checkbox labels
+    """ Auto-generating Checkbox labels
 
     Inputs
     ------
@@ -517,10 +517,10 @@ def gen_checkbox_labels(batch_size, num_leg_objs):
                 Number of items in a single batch
     num_leg_objs: int
                 Number of legend objects / Number of batches
-    Ouputs
+    Outputs
     ------
     labels: list
-            Batch labels for the checkbox
+            Batch labels for the check box
     """
 
     labels = []
@@ -536,16 +536,16 @@ def gen_checkbox_labels(batch_size, num_leg_objs):
 
 def save_html(hname, plot_layout):
     """Save [and show] resultant HTML file
-    Input
-    -----
+    Inputs
+    ------
     hname: str
            HTML Output file name
     plot_layout: Bokeh layout object
-                 Layout of the bokeh plot, could be row, column, gridplot
+                 Layout of the Bokeh plot, could be row, column, gridplot
 
-    Output
-    ------
-    Nothing 
+    Outputs
+    -------
+    Nothing
     """
     output_file(hname + ".html")
     output = save(plot_layout, hname + ".html", title=hname)
@@ -556,15 +556,15 @@ def save_html(hname, plot_layout):
 def add_axis(fig, axis_range, ax_label):
     """Add an extra axis to the current figure
 
-    Inputs
+    Input
     ------
-    fig: bokeh figure
-         The figure onto which to add extra axis 
+    fig: Bokeh figure
+         The figure onto which to add extra axis
 
     axis_range: tuple
                 Starting and ending point for the range
 
-    Ouputs
+    Output
     ------
     Nothing
     """
@@ -573,6 +573,37 @@ def add_axis(fig, axis_range, ax_label):
     linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
                          major_label_orientation='horizontal', ticker=BasicTicker(desired_num_ticks=12))
     return linaxis
+
+
+def name_2id(val, dic):
+    """Translate field name to field id
+
+    Inputs
+    -----
+    val: string
+         Field ID name to convert
+    dic: dict
+         Dictionary containing enumerated source ID names
+
+    Outputs
+    -------
+    key: int
+         Integer field id
+    """
+    upperfy = lambda x: x.upper()
+    values = dic.values()
+    values = map(upperfy, values)
+    val = val.upper()
+
+    if val in values:
+        val_index = values.index(val)
+        keys = dic.keys()
+
+        # get the key to that index from the key values
+        key = keys[val_index]
+        return int(key)
+    else:
+        return -1
 
 
 def data_prep_G(masked_data, masked_data_err, doplot, corr):
@@ -616,8 +647,8 @@ def data_prep_G(masked_data, masked_data_err, doplot, corr):
 def data_prep_B(masked_data, masked_data_err, doplot, corr):
     """Preparing the data for plotting bandpass cal-table
 
-    INPUTS
-    =====================
+    Inputs
+    ------
     masked_data     : numpy.ndarray
         Flagged data from CPARAM column to be plotted.
     masked_data_err : numpy.ndarray
@@ -722,7 +753,7 @@ def get_argparser():
     parser.add_option('-t', '--table', dest='mytab',
                       help='Table to plot (default = None)', default='')
     parser.add_option('-f', '--field', dest='field',
-                      help='Field ID to plot (default = 0)', default=0)
+                      help='Field ID / NAME to plot (default = 0)', default=0)
     parser.add_option('-d', '--doplot', dest='doplot',
                       help='Plot complex values as amp and phase (ap)'
                       'or real and imag (ri) (default = ap)', default='ap')
@@ -751,14 +782,11 @@ def get_argparser():
     parser.add_option('--cmap', dest='mycmap',
                       help='Matplotlib colour map to use for antennas (default=coolwarm)',
                       default='coolwarm')
-    parser.add_option('--ms', dest='myms',
-                      help='Measurement Set to consult for proper antenna names',
-                      default='')
     parser.add_option('-p', '--plotname', dest='image_name',
                       help='Output image name', default='')
     parser.add_option('-g', '--gaintype', type='choice', dest='gain_type',
                       choices=['B', 'G', 'K', 'F'],
-                      help='Type of table to be plotted', default='B')
+                      help='Type of table to be plotted: B, G, K, F (default B)', default='B')
     parser.add_option('-H', '--htmlname', dest='html_name',
                       help='Output HTMLfile name', default='')
 
@@ -774,7 +802,7 @@ def main(**kwargs):
         parser = get_argparser()
         (options, args) = parser.parse_args()
 
-        field = int(options.field)
+        field = str(options.field)
         doplot = options.doplot
         plotants = options.plotants
         corr = int(options.corr)
@@ -785,55 +813,67 @@ def main(**kwargs):
         yl0 = float(options.yl0)
         yl1 = float(options.yl1)
         mycmap = options.mycmap
-        myms = options.myms
         image_name = str(options.image_name)
         mytab = str(options.mytab)
         html_name = str(options.html_name)
         gain_type = str(options.gain_type)
-
-        if mytab:
-            # getting the name of the gain table specified
-            mytab = mytab.rstrip("/")
-        else:
-            print 'Please specify a gain table to plot.'
-            sys.exit(-1)
-
     else:
         NB_RENDER = True
 
-        field = kwargs.get('field', "0")
+        field = str(kwargs.get('field', "0"))
         doplot = kwargs.get('doplot', 'ap')
         plotants = kwargs.get('plotants', [-1])
-        corr = kwargs.get('corr', 0)
-        t0 = kwargs.get('t0', -1)
-        t1 = kwargs.get('t1', -1)
-        yu0 = kwargs.get('yu0', -1)
-        yu1 = kwargs.get('yu1', -1)
-        yl0 = kwargs.get('yl0', -1)
-        yl1 = kwargs.get('yl1', -1)
-        mycmap = kwargs.get('mycmap', 'coolwarm')
-        myms = kwargs.get('myms', '')
-        image_name = kwargs.get('image_name', '')
-        mytab = kwargs.get('mytab')
-        html_name = kwargs.get('html_name', '')
-        gain_type = kwargs.get('gain_type', '')
+        corr = int(kwargs.get('corr', 0))
+        t0 = float(kwargs.get('t0', -1))
+        t1 = float(kwargs.get('t1', -1))
+        yu0 = float(kwargs.get('yu0', -1))
+        yu1 = float(kwargs.get('yu1', -1))
+        yl0 = float(kwargs.get('yl0', -1))
+        yl1 = float(kwargs.get('yl1', -1))
+        mycmap = str(kwargs.get('mycmap', 'coolwarm'))
+        image_name = str(kwargs.get('image_name', ''))
+        mytab = str(kwargs.get('mytab'))
+        gain_type = str(kwargs.get('gain_type', ''))
+
+    if mytab:
+            # getting the name of the gain table specified
+        mytab = mytab.rstrip("/")
+    else:
+        print("Please specify a gain table to plot.")
+        sys.exit(-1)
+
+    if gain_type:
+        GAIN_TYPES = ['B', 'F', 'G', 'K']
+        if gain_type.upper() not in GAIN_TYPES:
+            print("Choose appropriate gain_type: ", GAIN_TYPES)
+            sys.exit(-1)
+    else:
+        print("No gain type chosen.\nExiting")
+        sys.exit(-1)
 
     # by default is ap: amplitude and phase
     if doplot not in ['ap', 'ri']:
-        print "Plot selection must be either ap (amp and phase) or ri (real and imag)"
+        print("Plot selection must be either ap (amp and phase)\
+               or ri (real and imag)")
         sys.exit(-1)
 
     # configuring the plot dimensions
     PLOT_WIDTH = 700
     PLOT_HEIGHT = 600
 
+    # get main table and useful subtables
     tt = table(mytab, ack=False)
     spw_table = table(mytab + '::SPECTRAL_WINDOW', ack=False)
+    field_tab = table(mytab + '::FIELD', ack=False)
+    anttab = table(mytab + '::ANTENNA', ack=False)
 
+    # get columns from selected tables
+    field_names = field_tab.getcol('NAME')
+    field_src_ids = dict(enumerate(field_names))
+    antnames = anttab.getcol('NAME')
     ants = np.unique(tt.getcol('ANTENNA1'))
     fields = np.unique(tt.getcol('FIELD_ID'))
     flags = tt.getcol('FLAG')
-
     frequencies = spw_table.getcol('CHAN_FREQ')[0] / 1e9
 
     # setting up colors for the antenna plots
@@ -841,8 +881,13 @@ def main(**kwargs):
     mymap = cm = pylab.get_cmap(mycmap)
     scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
 
+    if field.isdigit():
+        field = int(field)
+    else:
+        field = name_2id(field, field_src_ids)
+
     if int(field) not in fields.tolist():
-        print 'Field ID ' + str(field) + ' not found'
+        print("Field ID " + str(field) + " not found")
         sys.exit(-1)
 
     if plotants[0] != -1:
@@ -852,21 +897,14 @@ def main(**kwargs):
         for ant in plotants:
             if int(ant) not in ants:
                 plotants.remove(ant)
-                print 'Requested antenna ID ' + str(ant) + ' not found'
+                print('Requested antenna ID ' + str(ant) + ' not found')
         if len(plotants) == 0:
-            print 'No valid antennas have been requested'
+            print("No valid antennas have been requested")
             sys.exit(-1)
         else:
             plotants = np.array(plotants, dtype=int)
     else:
         plotants = ants
-
-    if myms != '':
-        anttab = table(myms.rstrip('/') + '::ANTENNA', ack=False)
-        antnames = anttab.getcol('NAME')
-        anttab.done()
-    else:
-        antnames = ''
 
     # creating bokeh figures for plots
     # linking plots ax1 and ax2 via the x_axes because fo similarities in range
@@ -897,14 +935,9 @@ def main(**kwargs):
     # for each antenna
     for ant in plotants:
         # creating legend labels
-        if antnames == '':
-            antlabel = str(ant)
-            legend = "A" + str(ant)
-            legend_err = "E" + str(ant)
-        else:
-            antlabel = antnames[ant]
-            legend = antnames[ant]
-            legend_err = "E" + antnames[ant]
+        antlabel = antnames[ant]
+        legend = antnames[ant]
+        legend_err = "E" + antnames[ant]
 
         # creating colors for maps
         y1col = scalarMap.to_rgba(float(ant))
@@ -918,8 +951,6 @@ def main(**kwargs):
         mytaql += '&&FIELD_ID==' + str(field)
 
         # querying the table for the 2 columns
-        # getting data from the antennas, cparam contains the correlated data,
-        # time is the time stamps
 
         subtab = tt.query(query=mytaql)
         # Selecting values from the table for antenna ants
@@ -987,7 +1018,7 @@ def main(**kwargs):
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
             else:
-                print "No complex values to plot"
+                print("No complex values to plot")
                 sys.exit()
 
         elif gain_type is 'F':
@@ -1165,6 +1196,9 @@ def main(**kwargs):
     layout = gridplot([[plot_widgets, ax1, ax2]],
                       plot_width=700, plot_height=600)
 
+    if image_name:
+        save_svg_image(image_name, ax1, ax2,
+                       legend_items_ax1, legend_items_ax2)
     if not NB_RENDER:
         if html_name:
             save_html(html_name, layout)
@@ -1178,11 +1212,9 @@ def main(**kwargs):
                 '_' + doplot + '_field' + str(field)
 
             save_html(html_name, layout)
-        if image_name:
-            save_svg_image(image_name, ax1, ax2,
-                           legend_items_ax1, legend_items_ax2)
 
-        print 'Rendered: ' + html_name
+        print("Rendered: " + html_name)
+
     else:
         output_notebook()
         show(layout)
@@ -1197,11 +1229,13 @@ def plot_table(mytab, **kwargs):
     Required
     --------
         mytab       : The table to be plotted
+        gain_type   : Cal-table type to be plotted.
+                      Can be either 'B'-bandpass, 'G'-gains, 'K'-delay or 'F'-flux (default=None)
 
     Optional
     --------
 
-        field       : Field ID to plot (default = 0)',default=0)
+        field       : Field ID / Name to plot (default = 0)',default=0)
         doplot      : Plot complex values as amp and phase (ap) or real and
                       imag (ri) (default = ap)',default='ap')
         plotants    : Plot only this antenna, or comma-separated list of 
@@ -1220,17 +1254,16 @@ def plot_table(mytab, **kwargs):
                       (default = full range)',default=-1)
         mycmap      : Matplotlib colour map to use for antennas 
                       (default = coolwarm)',default='coolwarm')
-        myms        : Measurement Set to consult for proper antenna names',
-                      (default='')
-        image_name     : Output image name (default = something sensible)'
+        image_name  : Output image name (default = something sensible)'
 
-    Ouputs
+
+    Outputs
     ------
     Returns nothing
 
     """
     if mytab is None:
-        print 'Please specify a gain table to plot.'
+        print("Please specify a gain table to plot.")
         sys.exit(-1)
     else:
         # getting the name of the gain table specified
