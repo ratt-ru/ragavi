@@ -702,9 +702,10 @@ def data_prep_K(masked_data, masked_data_err, corr):
     y1 = masked_data[:, 0, corr]
     y1 = np.array(y1)
     y1_err = masked_data_err
-    y2 = masked_data[:, 0, int(not corr)]
-    y2 = np.array(y2)
-    y2_err = masked_data_err
+
+    # quick fix to hide plot without generating errors
+    y2 = y1
+    y2_err = y1
 
     return y1, y1_err, y2, y2_err
 
@@ -1066,8 +1067,8 @@ def main(**kwargs):
             ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
             ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
             if gain_type is 'K':
-                ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude[Corr1]'
-                ax2.yaxis.axis_label = ax2_ylabel = 'Amplitude[Corr2]'
+                ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
+                ax2.yaxis.axis_label = ax2_ylabel = 'Amplitude'
         elif doplot == 'ri':
             ax1.yaxis.axis_label = ax1_ylabel = 'Real'
             ax2.yaxis.axis_label = ax2_ylabel = 'Imaginary'
@@ -1217,8 +1218,12 @@ def main(**kwargs):
     plot_widgets = widgetbox(
         [ant_select, batch_select, toggle_err, legend_toggle])
 
-    layout = gridplot([[plot_widgets, ax1, ax2]],
-                      plot_width=700, plot_height=600)
+    if gain_type is not 'K':
+        layout = gridplot([[plot_widgets, ax1, ax2]],
+                          plot_width=700, plot_height=600)
+    else:
+        layout = gridplot([[plot_widgets, ax1]],
+                          plot_width=700, plot_height=600)
 
     if image_name:
         save_svg_image(image_name, ax1, ax2,
