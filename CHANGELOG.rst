@@ -2,7 +2,8 @@
 -----
 - Removed msname flag, Antenna names now show up in legends by default
 - Support for string field names in addition to field indices
-
+- Spectral window id, antenna name and scan id displayed on tooltip
+- Remove second plot (for correlation 2) from delay table
 
 0.0.3
 -----
