@@ -662,18 +662,20 @@ def data_prep_B(masked_data, masked_data_err, doplot, corr):
         Tuple with arrays of the different data
 
     """
+    masked_data = masked_data[:, :, corr]
+    masked_data_err = masked_data_err[:, :, corr]
 
     if doplot == 'ap':
-        y1 = np.abs(masked_data)[0, :, corr]
-        y1_err = np.abs(masked_data_err)[0, :, corr]
-        y2 = np.array(np.angle(masked_data[0, :, corr], deg=True))
+        y1 = np.abs(masked_data)
+        y1_err = np.abs(masked_data_err)
+        y2 = np.array(np.angle(masked_data, deg=True))
         y2 = np.unwrap(y2)
-        y2_err = np.array(np.angle(masked_data_err[0, :, corr], deg=True))
+        y2_err = np.array(np.angle(masked_data_err, deg=True))
         y2_err = np.unwrap(y2_err)
     else:
-        y1 = np.real(masked_data)[0, :, corr]
-        y1_err = np.abs(masked_data_err)[0, :, corr]
-        y2 = np.imag(masked_data)[0, :, corr]
+        y1 = np.real(masked_data)
+        y1_err = np.abs(masked_data_err)
+        y2 = np.imag(masked_data)
         y2_err = None
 
     return y1, y1_err, y2, y2_err
@@ -954,6 +956,7 @@ def main(**kwargs):
 
         paramerr = subtab.getcol('PARAMERR')
 
+        # for tooltips
         spw_id = subtab.getcol('SPECTRAL_WINDOW_ID')
         scan_no = subtab.getcol('SCAN_NUMBER')
         sub_ants = subtab.getcol('ANTENNA1')
@@ -994,6 +997,16 @@ def main(**kwargs):
             cparam = subtab.getcol('CPARAM')
             nchan = cparam.shape[1]
             chans = np.arange(0, nchan, dtype='int')
+
+            # for tooltips
+            spw_id = spw_id.reshape(spw_id.size, 1)
+            spw_id = spw_id.repeat(nchan, axis=1)
+            scan_no = scan_no.reshape(scan_no.size, 1)
+            scan_no = scan_no.repeat(nchan, axis=1)
+            sub_ants = sub_ants.reshape(sub_ants.size, 1)
+            sub_ants = sub_ants.repeat(nchan, axis=1)
+            ttip_antnames = [antlabel] * nchan
+
             masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
             masked_data_err = np.ma.masked_array(data=paramerr,
                                                  mask=flagcol)
