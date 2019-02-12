@@ -1,5 +1,5 @@
 language: python
-dist: trusty
+dist: xenial
 sudo: required
 python:
 - '2.7'
@@ -9,13 +9,13 @@ script:
 - true
 before_install:
 - sudo apt-get update
-- sudo apt-get install nodejs
+- sudo apt-get install -y nodejs
 - pip install --upgrade pip
 deploy:
   provider: pypi
   user: mulan-94
   password:
-    secure: OZRwMuTUyk0m8zyg6TfxnU6+6uu+SoeDc9bXkx2GY9rF/HSU3pD8XxWl/Ectb7MZWxFzlWaNr5S7/g+ZBwaeRsg4na80D0XmU1Qdu/eKaKW1Ji6J/JSf525u/p/XkIGR8IHD2BGuzRLxT7MBs3VpGfkJdrHOXN75mFrvIe7LSRCxpIzTWFHbT9zrqxXE8VEDJO5lZEyWyCsstGImT0wr/wQHXc5YhnjpSsVoSxXpryGot95J3Uv7rjO3CeziNZ14LndSFhmRQixxtY6P+IMDg1++NvyRQUHC5hMIynsNiQa+BUaCrN95MAmO7SY36eGvrrurJZ5LRZ2Zl90j92HW+M0hD1HPo8ba1SDvzCH4qrJgq/vlvUGH/UYN6awReegEk2fnXk9pFw3rNRQPXQnbFU3yhAC/TzDXl7ARE8A/MBDpgOG6A79r3B0dlvFzp0KuCYDG8bVkqJiLyEIiQpQhA/mxhuaiKWdhF5BpJjU8Z/4gQzecow2bNUuXNAD7zxup7PCLiyHRBDD+cUuDnSRUPK+AdJJIydsp/yoyIMHlDYsTqT/RSPP24eSnZytkgUGFyKJzUgiGruou6JUmkSjAUGPmjg1+Wlm53kGbHBHJXxcAvJ96SiQ6mox2LUDa8Zc4yRK4Ag11qZOJOZ5QUYlOqOU+cQYCizuEG4h0gsxhfQA=
+    secure: VmmMC4BaMCr/VxkH773/+wIW6zsa8mtd3qtaMhJFmB0BeIPO27wRmg6nd/kigzc0gPhOzWC8oyP5JXBvwfCGdhuimXZc8NZsvxVFPXkr60U1hAalPTlhufX9Rbuj+zat+mmuooocxFvs3mrhmHgP0v19V5OgItzmg7xFInDmVNrQGW0nnJe3Ug446n2j8mIDkKvvoyACtVrnoVKlaQsGtpVJ9uPE6NHq+sdnqwR8+YgzODjd0R/IsJDjFqzBYDOqFzwkYp4wVvvtaME/oToKYqH0BRMP4D2lg8stH4VFEQX99GmOVgDM4m2dlRG+WJ7KZRXZJwpR32z0TXFA0I1ET7+y1Q/+E3BGm7gwCmCEU+Er2vXO5sOGzTrI1gWPvP8goK3gcuKMZf0PAvX0TEJww4zDgagA9XlzKrXmQjQScX7TZZmkH9kRIWxPScaHqLHaPsNdK9neE4tc4xEt+OWNx8wT0jynmHWwsbKJrOrxw5viAzxLsTmLpwKvAhhLppotvy60U9ZMDDhkg37DFcSmZhaqPAjaYrs+mxMXgwwqjogPA1l4MwLXBx88hPTDIT954ANXww95FqFq/12bPQpZ6y0Oxze2X/4bT7oetKVP2qwJhjHWxiVWKBTulstzT9pfJS6vrSlMDCwVjXIcFF6huyXaDkHTDEtlKUMjXuey4/8=
   on:
     tags: true
     distributions: sdist bdist_wheel
