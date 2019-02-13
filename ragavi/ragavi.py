@@ -88,7 +88,8 @@ def color_denormalize(ycol):
     return ycol
 
 
-def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},         error_kwargs={}):
+def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
+             error_kwargs={}):
     """Function to plot the error bars for both x and y.
        Takes in 3 compulsory parameters fig, x and y
 
