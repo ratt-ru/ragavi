@@ -88,8 +88,8 @@ def color_denormalize(ycol):
     return ycol
 
 
-def errorbar(fig, x, y, xerr=None, yerr=None, color='red',
-             point_kwargs={}, error_kwargs={}):
+def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
+             error_kwargs={}):
     """Function to plot the error bars for both x and y.
        Takes in 3 compulsory parameters fig, x and y
 
@@ -630,10 +630,9 @@ def data_prep_G(masked_data, masked_data_err, doplot, corr):
     if doplot == 'ap':
         y1 = np.abs(masked_data)[:, 0, corr]
         y1_err = np.abs(masked_data_err)[:, 0, corr]
-        y2 = np.angle(masked_data)[:, 0, corr]
+        y2 = np.angle(masked_data, deg=True)[:, 0, corr]
         # Remove phase limit from -pi to pi
         y2 = np.unwrap(y2)
-        y2 = np.rad2deg(y2)
         y2_err = None
     else:
         y1 = np.real(masked_data)[:, 0, corr]
@@ -664,18 +663,20 @@ def data_prep_B(masked_data, masked_data_err, doplot, corr):
         Tuple with arrays of the different data
 
     """
+    masked_data = masked_data[:, :, corr]
+    masked_data_err = masked_data_err[:, :, corr]
 
     if doplot == 'ap':
-        y1 = np.abs(masked_data)[0, :, corr]
-        y1_err = np.abs(masked_data_err)[0, :, corr]
-        y2 = np.array(np.angle(masked_data[0, :, corr]))
-        y2 = np.rad2deg(np.unwrap(y2))
-        y2_err = np.array(np.angle(masked_data_err[0, :, corr]))
-        y2_err = np.rad2deg(np.unwrap(y2_err))
+        y1 = np.abs(masked_data)
+        y1_err = np.abs(masked_data_err)
+        y2 = np.array(np.angle(masked_data, deg=True))
+        y2 = np.unwrap(y2)
+        y2_err = np.array(np.angle(masked_data_err, deg=True))
+        y2_err = np.unwrap(y2_err)
     else:
-        y1 = np.real(masked_data)[0, :, corr]
-        y1_err = np.abs(masked_data_err)[0, :, corr]
-        y2 = np.imag(masked_data)[0, :, corr]
+        y1 = np.real(masked_data)
+        y1_err = np.abs(masked_data_err)
+        y2 = np.imag(masked_data)
         y2_err = None
 
     return y1, y1_err, y2, y2_err
@@ -702,9 +703,10 @@ def data_prep_K(masked_data, masked_data_err, corr):
     y1 = masked_data[:, 0, corr]
     y1 = np.array(y1)
     y1_err = masked_data_err
-    y2 = masked_data[:, 0, int(not corr)]
-    y2 = np.array(y2)
-    y2_err = masked_data_err
+
+    # quick fix to hide plot without generating errors
+    y2 = y1
+    y2_err = y1
 
     return y1, y1_err, y2, y2_err
 
@@ -733,10 +735,9 @@ def data_prep_F(masked_data, masked_data_err, doplot, corr):
     if doplot == 'ap':
         y1 = np.abs(masked_data)[:, 0, corr]
         y1_err = np.abs(masked_data_err)[:, 0, corr]
-        y2 = np.angle(masked_data)[:, 0, corr]
+        y2 = np.angle(masked_data, deg=True)[:, 0, corr]
         # Remove phase limit from -pi to pi
         y2 = np.unwrap(y2)
-        y2 = np.rad2deg(y2)
         y2_err = None
     else:
         y1 = np.real(masked_data)[:, 0, corr]
@@ -913,11 +914,6 @@ def main(**kwargs):
     ax1 = figure(sizing_mode='scale_both', **TOOLS)
     ax2 = figure(sizing_mode='scale_both', x_range=ax1.x_range, **TOOLS)
 
-    hover = HoverTool(tooltips=[("(x,y)", "($x,$y)")], mode='mouse')
-    hover.point_policy = 'snap_to_data'
-    hover2 = HoverTool(tooltips=[("(x,y)", "($x,$y)")], mode='mouse')
-    hover2.point_policy = 'snap_to_data'
-
     # forming Legend object items for data and errors
     legend_items_ax1 = []
     legend_items_ax2 = []
@@ -962,6 +958,23 @@ def main(**kwargs):
 
         paramerr = subtab.getcol('PARAMERR')
 
+        # for tooltips
+        spw_id = subtab.getcol('SPECTRAL_WINDOW_ID')
+        scan_no = subtab.getcol('SCAN_NUMBER')
+        sub_ants = subtab.getcol('ANTENNA1')
+        ttip_antnames = [antnames[x] for x in sub_ants]
+
+        tab_tooltips = [("index", "$index"),
+                        ("(x,y)", "($x,$y)"),
+                        ("spw", "@spw"),
+                        ("scan_id", "@scanid"),
+                        ("antenna", "@antname")]
+
+        hover = HoverTool(tooltips=tab_tooltips,
+                          mode='mouse', point_policy='snap_to_data')
+        hover2 = HoverTool(tooltips=tab_tooltips,
+                           mode='mouse', point_policy='snap_to_data')
+
         if gain_type is 'G':
             cparam = subtab.getcol('CPARAM')
 
@@ -977,7 +990,8 @@ def main(**kwargs):
                                                  masked_data_err,
                                                  doplot, corr)
             # setting up glyph data source
-            source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+            source = ColumnDataSource(
+                data=dict(x=times, y1=y1, y2=y2, spw=spw_id, scanid=scan_no, antname=ttip_antnames))
             ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
             ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
@@ -985,6 +999,16 @@ def main(**kwargs):
             cparam = subtab.getcol('CPARAM')
             nchan = cparam.shape[1]
             chans = np.arange(0, nchan, dtype='int')
+
+            # for tooltips
+            spw_id = spw_id.reshape(spw_id.size, 1)
+            spw_id = spw_id.repeat(nchan, axis=1)
+            scan_no = scan_no.reshape(scan_no.size, 1)
+            scan_no = scan_no.repeat(nchan, axis=1)
+            sub_ants = sub_ants.reshape(sub_ants.size, 1)
+            sub_ants = sub_ants.repeat(nchan, axis=1)
+            ttip_antnames = [antlabel] * nchan
+
             masked_data = np.ma.masked_array(data=cparam, mask=flagcol)
             masked_data_err = np.ma.masked_array(data=paramerr,
                                                  mask=flagcol)
@@ -992,7 +1016,8 @@ def main(**kwargs):
             y1, y1_err, y2, y2_err = data_prep_B(masked_data,
                                                  masked_data_err,
                                                  doplot, corr)
-            source = ColumnDataSource(data=dict(x=chans, y1=y1, y2=y2))
+            source = ColumnDataSource(
+                data=dict(x=chans, y1=y1, y2=y2, spw=spw_id, scanid=scan_no, antname=ttip_antnames))
             ax1.xaxis.axis_label = ax1_xlabel = 'Channel'
             ax2.xaxis.axis_label = ax2_xlabel = 'Channel'
 
@@ -1014,7 +1039,8 @@ def main(**kwargs):
 
                 y1, y1_err, y2, y2_err = data_prep_K(
                     masked_data, masked_data_err, corr)
-                source = ColumnDataSource(data=dict(x=antenna, y1=y1, y2=y2))
+                source = ColumnDataSource(
+                    data=dict(x=antenna, y1=y1, y2=y2, spw=spw_id, scanid=scan_no, antname=ttip_antnames))
                 ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                 ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
             else:
@@ -1030,7 +1056,8 @@ def main(**kwargs):
             y1, y1_err, y2, y2_err = data_prep_F(
                 masked_data, masked_data_err, doplot, corr)
             # setting up glyph data source
-            source = ColumnDataSource(data=dict(x=times, y1=y1, y2=y2))
+            source = ColumnDataSource(
+                data=dict(x=times, y1=y1, y2=y2, spw=spw_id, scanid=scan_no, antname=ttip_antnames))
             ax1.xaxis.axis_label = ax1_xlabel = 'Time [s]'
             ax2.xaxis.axis_label = ax2_xlabel = 'Time [s]'
 
@@ -1041,8 +1068,8 @@ def main(**kwargs):
             ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
             ax2.yaxis.axis_label = ax2_ylabel = 'Phase [Deg]'
             if gain_type is 'K':
-                ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude[Corr1]'
-                ax2.yaxis.axis_label = ax2_ylabel = 'Amplitude[Corr2]'
+                ax1.yaxis.axis_label = ax1_ylabel = 'Amplitude'
+                ax2.yaxis.axis_label = ax2_ylabel = 'Amplitude'
         elif doplot == 'ri':
             ax1.yaxis.axis_label = ax1_ylabel = 'Real'
             ax2.yaxis.axis_label = ax2_ylabel = 'Imaginary'
@@ -1114,6 +1141,8 @@ def main(**kwargs):
     ax2_title = Title(text=ax2_ylabel + ' vs ' + ax2_xlabel,
                       align='center', text_font_size='25px')
 
+    ax1.add_tools(hover)
+    ax2.add_tools(hover2)
     # LEGEND CONFIGURATIONS
     BATCH_SIZE = 16
     # determining the number of legend objects required to be created
@@ -1143,9 +1172,6 @@ def main(**kwargs):
     # adding plot titles
     ax2.add_layout(ax2_title, 'above')
     ax1.add_layout(ax1_title, 'above')
-
-    ax1.add_tools(hover)
-    ax2.add_tools(hover2)
 
     # creating and configuring Antenna selection buttons
     ant_select = Toggle(label='Select All Antennas',
@@ -1193,8 +1219,12 @@ def main(**kwargs):
     plot_widgets = widgetbox(
         [ant_select, batch_select, toggle_err, legend_toggle])
 
-    layout = gridplot([[plot_widgets, ax1, ax2]],
-                      plot_width=700, plot_height=600)
+    if gain_type is not 'K':
+        layout = gridplot([[plot_widgets, ax1, ax2]],
+                          plot_width=700, plot_height=600)
+    else:
+        layout = gridplot([[plot_widgets, ax1]],
+                          plot_width=700, plot_height=600)
 
     if image_name:
         save_svg_image(image_name, ax1, ax2,
