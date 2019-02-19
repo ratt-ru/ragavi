@@ -6,7 +6,7 @@ import re
 import matplotlib.cm as cmx
 import matplotlib.pylab as pylab
 from pyrap.tables import table
-from optparse import OptionParser
+from argparse import ArgumentParser
 import matplotlib.colors as colors
 
 from bokeh.plotting import figure
@@ -750,50 +750,52 @@ def data_prep_F(masked_data, masked_data_err, doplot, corr):
 
 def get_argparser():
     """Get argument parser"""
-    parser = OptionParser(usage='%prog [options]')
-    parser.add_option('-a', '--ant', dest='plotants',
-                      help='Plot only this antenna, or comma-separated list of antennas',
-                      default=[-1])
-    parser.add_option('-c', '--corr', dest='corr', type='int',
-                      help='Correlation index to plot (usually just 0 or 1, default = 0)',
-                      default=0)
-    parser.add_option('--cmap', dest='mycmap',
-                      help='Matplotlib colour map to use for antennas (default=coolwarm)',
-                      default='coolwarm')
-    parser.add_option('-d', '--doplot', dest='doplot', type='string',
-                      help='Plot complex values as amp and phase (ap)'
-                      'or real and imag (ri) (default = ap)', default='ap')
-    parser.add_option('-f', '--field', dest='fields', type='string',
-                      help='Field ID / NAME to plot (default = 0)',
-                      default=[], action='append')
-    parser.add_option('-g', '--gaintype', type='choice', dest='gain_types',
-                      choices=['B', 'G', 'K', 'F'],
-                      help='Type of table to be plotted: B, G, K, F (default B)', default=[], action='append')
-    parser.add_option('-H', '--htmlname', dest='html_name', type='string',
-                      help='Output HTMLfile name', default='')
-    parser.add_option('-p', '--plotname', dest='image_name', type='string',
-                      help='Output image name', default='')
-    parser.add_option('-t', '--table', dest='mytabs',
-                      help='Table to plot (default = None)', default=[],
-                      action='append')
-    parser.add_option('--t0', dest='t0', type='float',
-                      help='Minimum time to plot (default = full range)',
-                      default=-1)
-    parser.add_option('--t1', dest='t1', type='float',
-                      help='Maximum time to plot (default = full range)',
-                      default=-1)
-    parser.add_option('--yu0', dest='yu0', type='float',
-                      help='Minimum y-value to plot for upper panel (default=full range)',
-                      default=-1)
-    parser.add_option('--yu1', dest='yu1', type='float',
-                      help='Maximum y-value to plot for upper panel (default=full range)',
-                      default=-1)
-    parser.add_option('--yl0', dest='yl0', type='float',
-                      help='Minimum y-value to plot for lower panel (default=full range)',
-                      default=-1)
-    parser.add_option('--yl1', dest='yl1', type='float',
-                      help='Maximum y-value to plot for lower panel (default=full range)',
-                      default=-1)
+    parser = ArgumentParser(usage='prog [options] <value>')
+    parser.add_argument('-a', '--ant', dest='plotants', type=str,
+                        help='Plot only this antenna, or comma-separated list\
+                              of antennas',
+                        default=[-1])
+    parser.add_argument('-c', '--corr', dest='corr', type=int,
+                        help='Correlation index to plot (usually just 0 or 1,\
+                              default = 0)',
+                        default=0)
+    parser.add_argument('--cmap', dest='mycmap', type=str,
+                        help='Matplotlib colour map to use for antennas\
+                             (default=coolwarm)',
+                        default='coolwarm')
+    parser.add_argument('-d', '--doplot', dest='doplot', type=str,
+                        help='Plot complex values as amp and phase (ap)'
+                        'or real and imag (ri) (default = ap)', default='ap')
+    parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
+                        help='Field ID(s) / NAME(s) to plot')
+    parser.add_argument('-g', '--gaintype', nargs='*', type=str,
+                        dest='gain_types', choices=['B', 'G', 'K', 'F'],
+                        help='Type of table(s) to be plotted: B, G, K, F')
+    parser.add_argument('-H', '--htmlname', dest='html_name', type=str,
+                        help='Output HTMLfile name', default='')
+    parser.add_argument('-p', '--plotname', dest='image_name', type=str,
+                        help='Output image name', default='')
+    parser.add_argument('-t', '--table', dest='mytabs',
+                        nargs='*', type=str,
+                        help='Table(s) to plot (default = None)', default=[])
+    parser.add_argument('--t0', dest='t0', type=float,
+                        help='Minimum time to plot (default = full range)',
+                        default=-1)
+    parser.add_argument('--t1', dest='t1', type=float,
+                        help='Maximum time to plot (default = full range)',
+                        default=-1)
+    parser.add_argument('--yu0', dest='yu0', type=float,
+                        help='Minimum y-value to plot for upper panel (default=full range)',
+                        default=-1)
+    parser.add_argument('--yu1', dest='yu1', type=float,
+                        help='Maximum y-value to plot for upper panel (default=full range)',
+                        default=-1)
+    parser.add_argument('--yl0', dest='yl0', type=float,
+                        help='Minimum y-value to plot for lower panel (default=full range)',
+                        default=-1)
+    parser.add_argument('--yl1', dest='yl1', type=float,
+                        help='Maximum y-value to plot for lower panel (default=full range)',
+                        default=-1)
 
     return parser
 
@@ -806,23 +808,23 @@ def main(**kwargs):
         NB_RENDER = False
 
         parser = get_argparser()
-        (options, args) = parser.parse_args()
+        options = parser.parse_args()
 
         corr = int(options.corr)
         doplot = options.doplot
-        fields = [str(x) for x in options.fields]
-        gain_types = [str(x) for x in options.gain_types]
-        html_name = str(options.html_name)
-        image_name = str(options.image_name)
-        mycmap = str(options.mycmap)
+        fields = options.fields
+        gain_types = options.gain_types
+        html_name = options.html_name
+        image_name = options.image_name
+        mycmap = options.mycmap
         mytabs = options.mytabs
         plotants = options.plotants
-        t0 = float(options.t0)
-        t1 = float(options.t1)
-        yu0 = float(options.yu0)
-        yu1 = float(options.yu1)
-        yl0 = float(options.yl0)
-        yl1 = float(options.yl1)
+        t0 = options.t0
+        t1 = options.t1
+        yu0 = options.yu0
+        yu1 = options.yu1
+        yl0 = options.yl0
+        yl1 = options.yl1
 
     else:
         NB_RENDER = True
