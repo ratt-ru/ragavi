@@ -4,6 +4,7 @@ import numpy as np
 import re
 import logging
 
+from datetime import datetime
 import matplotlib.cm as cmx
 import matplotlib.pylab as pylab
 from pyrap.tables import table
@@ -811,7 +812,6 @@ def get_argparser():
 
 def main(**kwargs):
     """Main function"""
-
     NB_RENDER = None
     if len(kwargs) == 0:
         NB_RENDER = False
@@ -821,7 +821,7 @@ def main(**kwargs):
 
         corr = int(options.corr)
         doplot = options.doplot
-        fields = options.fields
+        field_ids = options.fields
         gain_types = options.gain_types
         html_name = options.html_name
         image_name = options.image_name
@@ -838,7 +838,7 @@ def main(**kwargs):
     else:
         NB_RENDER = True
 
-        fields = kwargs.get('fields', [])
+        field_ids = kwargs.get('fields', [])
         doplot = kwargs.get('doplot', 'ap')
         plotants = kwargs.get('plotants', [-1])
         corr = int(kwargs.get('corr', 0))
@@ -857,7 +857,6 @@ def main(**kwargs):
             # getting the name of the gain table specified
         mytabs = [x.rstrip("/") for x in mytabs]
     else:
-        print("Please specify a gain table to plot.")
         logging.info('ragavi exited: No gain table specified.')
         sys.exit(-1)
 
@@ -866,21 +865,19 @@ def main(**kwargs):
         GAIN_TYPES = ['B', 'F', 'G', 'K']
         for gain_type in gain_types:
             if gain_type.upper() not in GAIN_TYPES:
-                print("Choose appropriate gain_type: ", GAIN_TYPES)
+                logging.info("Choose appropriate gain_type: ", GAIN_TYPES)
                 sys.exit(-1)
     else:
-        print("No gain type chosen.\nExiting")
         logging.info('ragavi exited: No gain type specifed.')
         sys.exit(-1)
 
-    if len(fields) == 0:
-        print('No fields chosen.\nExiting')
+    if len(field_ids) == 0:
         loggging.info('ragavi exited: No field id specified.')
         sys.exit(-1)
 
     # array to store final output image
     final_layout = []
-    for mytab, gain_type, field in zip(mytabs, gain_types, fields):
+    for mytab, gain_type, field in zip(mytabs, gain_types, field_ids):
         # reinitialise plotant list for each table
         if NB_RENDER:
             plotants = plotants = kwargs.get('plotants', [-1])
@@ -889,8 +886,6 @@ def main(**kwargs):
 
         # by default is ap: amplitude and phase
         if doplot not in ['ap', 'ri']:
-            print("Plot selection must be either ap (amp and phase)\
-                   or ri (real and imag).")
             logging.info('ragavi exited: Plot selection must be ap or ri.')
             sys.exit(-1)
         # configuring the plot dimensions
@@ -902,7 +897,6 @@ def main(**kwargs):
             tt = table(mytab, ack=False)
         except RuntimeError as runtime:
             logging.exception('ragavi exited: Runtime error encountered.')
-            print(runtime.message)
             sys.exit(-1)
         spw_table = table(mytab + '::SPECTRAL_WINDOW', ack=False)
         field_tab = table(mytab + '::FIELD', ack=False)
@@ -928,8 +922,7 @@ def main(**kwargs):
             field = name_2id(field, field_src_ids)
 
         if int(field) not in fields.tolist():
-            print("Field ID " + str(field) + " not found")
-            logging.info('ragavi exited: Field id specified not found.')
+            logging.info('ragavi exited: Field id {} not found.'.format(field))
             sys.exit(-1)
 
         if plotants[0] != -1:
@@ -939,9 +932,9 @@ def main(**kwargs):
             for ant in plotants:
                 if int(ant) not in ants:
                     plotants.remove(ant)
-                    print('Requested antenna ID ' + str(ant) + ' not found')
+                    logging.info(
+                        'Requested antenna ID {} not found.'.format(ant))
             if len(plotants) == 0:
-                print("No valid antennas have been requested")
                 logging.info('ragavi exited: No valid antennas requested')
                 sys.exit(-1)
             else:
@@ -1086,7 +1079,6 @@ def main(**kwargs):
                     ax1.xaxis.axis_label = ax1_xlabel = 'Antenna'
                     ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
                 else:
-                    print("No complex values to plot")
                     logging.info('ragavi exited: No complex values to plot')
                     sys.exit()
 
@@ -1283,12 +1275,15 @@ def main(**kwargs):
             if '/' in mytab:
                 mytab = mytab.split('/')[-1]
 
-            html_name = mytab + '_corr' + str(corr) + \
-                '_' + doplot + '_field' + str(field)
+            # if more than one table, give time based name
+            if len(mytabs) > 1:
+                mytab = datetime.now().strftime('%Y%m%d_%H%M%S')
+            html_name = "{}_corr_{}_{}_field_{}".format(mytab, corr,
+                                                        doplot, fields)
 
             save_html(html_name, final_layout)
 
-        print("Rendered: " + html_name)
+        logging.info("Rendered: {}.html".format(html_name))
 
     else:
         output_notebook()
