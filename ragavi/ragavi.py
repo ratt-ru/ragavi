@@ -2,6 +2,7 @@ import sys
 import glob
 import numpy as np
 import re
+import logging
 
 import matplotlib.cm as cmx
 import matplotlib.pylab as pylab
@@ -12,10 +13,17 @@ import matplotlib.colors as colors
 from bokeh.plotting import figure
 from bokeh.models.widgets import Div
 from bokeh.layouts import row, column, gridplot, widgetbox
-from bokeh.io import output_file, show, output_notebook, export_svgs, export_png, save
+from bokeh.io import (output_file, show, output_notebook, export_svgs,
+                      export_png, save)
 from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           BasicTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
+
+logfile_name = 'ragavi.log'
+logging.basicConfig(filename=logfile_name, filemode='a',
+                    format='%(asctime)s %(message)s',
+                    datefmt='%d.%m.%Y @ %I:%M:%S',
+                    level=logging.DEBUG)
 
 
 def save_svg_image(img_name, figa, figb, glax1, glax2):
@@ -770,8 +778,9 @@ def get_argparser():
                         help='Field ID(s) / NAME(s) to plot')
     parser.add_argument('-g', '--gaintype', nargs='*', type=str,
                         dest='gain_types', choices=['B', 'G', 'K', 'F'],
-                        help='Type of table(s) to be plotted: B, G, K, F')
-    parser.add_argument('-H', '--htmlname', dest='html_name', type=str,
+                        help='Type of table(s) to be plotted: B, G, K, F',
+                        default=[])
+    parser.add_argument('--htmlname', dest='html_name', type=str,
                         help='Output HTMLfile name', default='')
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
                         help='Output image name', default='')
@@ -844,6 +853,31 @@ def main(**kwargs):
         mytabs = kwargs.get('mytabs', [])
         gain_types = kwargs.get('gain_types', [])
 
+    if len(mytabs) > 0:
+            # getting the name of the gain table specified
+        mytabs = [x.rstrip("/") for x in mytabs]
+    else:
+        print("Please specify a gain table to plot.")
+        logging.info('ragavi exited: No gain table specified.')
+        sys.exit(-1)
+
+    # Keep this for notebook rendering
+    if len(gain_types) > 0:
+        GAIN_TYPES = ['B', 'F', 'G', 'K']
+        for gain_type in gain_types:
+            if gain_type.upper() not in GAIN_TYPES:
+                print("Choose appropriate gain_type: ", GAIN_TYPES)
+                sys.exit(-1)
+    else:
+        print("No gain type chosen.\nExiting")
+        logging.info('ragavi exited: No gain type specifed.')
+        sys.exit(-1)
+
+    if len(fields) == 0:
+        print('No fields chosen.\nExiting')
+        loggging.info('ragavi exited: No field id specified.')
+        sys.exit(-1)
+
     # array to store final output image
     final_layout = []
     for mytab, gain_type, field in zip(mytabs, gain_types, fields):
@@ -853,34 +887,23 @@ def main(**kwargs):
         else:
             plotants = options.plotants
 
-        if mytab:
-                # getting the name of the gain table specified
-            mytab = mytab.rstrip("/")
-        else:
-            print("Please specify a gain table to plot.")
-            sys.exit(-1)
-
-        if gain_type:
-            GAIN_TYPES = ['B', 'F', 'G', 'K']
-            if gain_type.upper() not in GAIN_TYPES:
-                print("Choose appropriate gain_type: ", GAIN_TYPES)
-                sys.exit(-1)
-        else:
-            print("No gain type chosen.\nExiting")
-            sys.exit(-1)
-
         # by default is ap: amplitude and phase
         if doplot not in ['ap', 'ri']:
             print("Plot selection must be either ap (amp and phase)\
-                   or ri (real and imag)")
+                   or ri (real and imag).")
+            logging.info('ragavi exited: Plot selection must be ap or ri.')
             sys.exit(-1)
-
         # configuring the plot dimensions
         PLOT_WIDTH = 700
         PLOT_HEIGHT = 600
 
         # get main table and useful subtables
-        tt = table(mytab, ack=False)
+        try:
+            tt = table(mytab, ack=False)
+        except RuntimeError as runtime:
+            logging.exception('ragavi exited: Runtime error encountered.')
+            print(runtime.message)
+            sys.exit(-1)
         spw_table = table(mytab + '::SPECTRAL_WINDOW', ack=False)
         field_tab = table(mytab + '::FIELD', ack=False)
         anttab = table(mytab + '::ANTENNA', ack=False)
@@ -906,6 +929,7 @@ def main(**kwargs):
 
         if int(field) not in fields.tolist():
             print("Field ID " + str(field) + " not found")
+            logging.info('ragavi exited: Field id specified not found.')
             sys.exit(-1)
 
         if plotants[0] != -1:
@@ -918,6 +942,7 @@ def main(**kwargs):
                     print('Requested antenna ID ' + str(ant) + ' not found')
             if len(plotants) == 0:
                 print("No valid antennas have been requested")
+                logging.info('ragavi exited: No valid antennas requested')
                 sys.exit(-1)
             else:
                 plotants = np.array(plotants, dtype=int)
@@ -1062,6 +1087,7 @@ def main(**kwargs):
                     ax2.xaxis.axis_label = ax2_xlabel = 'Antenna'
                 else:
                     print("No complex values to plot")
+                    logging.info('ragavi exited: No complex values to plot')
                     sys.exit()
 
             elif gain_type is 'F':
@@ -1315,6 +1341,7 @@ def plot_table(mytabs, gain_types, fields, **kwargs):
     """
     if mytabs is None:
         print("Please specify a gain table to plot.")
+        logging.info('ragavi exited: No gain table specfied.')
         sys.exit(-1)
     else:
         # getting the name of the gain table specified
