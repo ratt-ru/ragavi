@@ -3,6 +3,6 @@ matplotlib
 nodeenv
 notebook
 ipython
-ipykerne
+ipykernel
 numpy
 #python-casacore
