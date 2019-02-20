@@ -2,7 +2,7 @@ bokeh
 matplotlib
 nodeenv
 notebook
-ipython
-ipykernel
+ipython>=5.8.0,<6.0
+ipykernel>=4.8.2,<5.0
 numpy
 #python-casacore
