@@ -58,7 +58,7 @@ working directory where source is checked out
   
     $ pip install .
 
-This package will soon be available on *PYPI*, allowing
+This package is available on *PYPI* via
 
 .. code-block:: bash
       

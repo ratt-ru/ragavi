@@ -5,4 +5,4 @@ notebook==5.5.0
 ipython>=5.8.0,<6.0
 ipykernel>=4.8.2,<5.0
 numpy==1.15.1
-#python-casacore==2.2.1
+#python-casacore
