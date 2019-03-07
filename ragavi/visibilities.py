@@ -6,12 +6,13 @@ import logging
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
 import matplotlib.pylab as pylab
+import matplotlib.pyplot as plt
 import xarrayms as xm
 import xarray as xa
 import dask.array as da
 import numpy as np
 
-from africanus.averaging.dask import time_and_channel as tc_avg
+from africanus.averaging import time_and_channel as ntc
 from dask import compute, delayed
 from pyrap.tables import table
 from argparse import ArgumentParser
@@ -26,12 +27,6 @@ from bokeh.io import (output_file, show, output_notebook, export_svgs,
 from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           BasicTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
-
-logfile_name = 'ragavi.log'
-logging.basicConfig(filename=logfile_name, filemode='a',
-                    format='%(asctime)s %(message)s',
-                    datefmt='%d.%m.%Y @ %I:%M:%S',
-                    level=logging.DEBUG)
 
 
 def save_svg_image(img_name, figa, figb, glax1, glax2):
@@ -185,17 +180,23 @@ def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
         Tuple of glyphs
 
     """
-    p1 = ax1.circle('x', 'y1', size=8, alpha=1, color=color, source=source,
-                    nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
-    p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
-                      color=color, yerr=y1_err)
+    x, y1, y2 = source.data['x'], source.data['y1'], source.data['y2']
+    x, y1, y2 = compute(x, y1, y2)
+    loopies = y1.shape[-1][:10]
+    source.data['x'], source.data['y1'], source.data['y2'] = x, y1, y2
 
-    p2 = ax2.circle('x', 'y2', size=8, alpha=1, color=color, source=source,
-                    nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
-    p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
-                      color=color, yerr=y2_err)
+    for i in list(range(loopies)):
 
-    return p1, p1_err, p2, p2_err
+        p1 = ax1.circle(x=source.data['x'], y1=source.data['y1'][i],
+                        size=8, alpha=1, color=color,
+                        nonselection_color='#7D7D7D',
+                        nonselection_fill_alpha=0.3)
+        p2 = ax1.circle(x=source.data['x'], y2=source.data['y2'][i],
+                        size=8, alpha=1, color=color,
+                        nonselection_color='#7D7D7D',
+                        nonselection_fill_alpha=0.3)
+
+    return p1, p2
 
 
 def ant_select_callback():
@@ -607,12 +608,12 @@ def name_2id(val, dic):
     """
     upperfy = lambda x: x.upper()
     values = dic.values()
-    values = map(upperfy, values)
+    values = [upperfy(x) for x in values]
     val = val.upper()
 
     if val in values:
         val_index = values.index(val)
-        keys = dic.keys()
+        keys = [x for x in dic.keys()]
 
         # get the key to that index from the key values
         key = keys[val_index]
@@ -711,7 +712,7 @@ def get_errors(xds_table_obj, corr=None):
 
     Outputs
     errors: ndarray
-            Error data. 
+            Error data.
     """
     errors = xds_table_obj.PARAMERR
     return errors
@@ -828,7 +829,7 @@ def calc_uvwave(uvw, freq):
     # speed of light
     C = 3e8
 
-    #wavelength = velocity / frequency
+    # wavelength = velocity / frequency
     wavelength = C / freq
     uvdist = calc_uvdist(uvw)
 
@@ -952,7 +953,7 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=True
     """Function to process data for the y-axis. Part of the processing includes:
     - Selecting correlation for the data and error
     - Flagging
-    - Complex correlation parameter conversion to amplitude, phase, real and 
+    - Complex correlation parameter conversion to amplitude, phase, real and
       imaginary for processing
     Data selection and flagging are done by this function itself, however ap and ri conversion are done by specified functions.
 
@@ -985,13 +986,13 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=True
     """
     # select data correlation for both the data and the errors
     ydata = ydata.sel(corr=corr)
-    #ydata_errors = get_errors(ms_name).sel(corr=corr)
-    #ydata_errors = get_errors(table_obj)[:, :, corr]
+    # ydata_errors = get_errors(ms_name).sel(corr=corr)
+    # ydata_errors = get_errors(table_obj)[:, :, corr]
 
     if flag:
         flags = get_flags(xds_table_obj).sel(corr=corr)
         ydata = da.ma.masked_array(data=ydata, mask=flags)
-        #ydata_errors = da.ma.masked_array(data=ydata_errors, mask=flags)
+        # ydata_errors = da.ma.masked_array(data=ydata_errors, mask=flags)
 
     y1, y2 = process_data(ydata, ptype=ptype)
 
@@ -1050,14 +1051,16 @@ def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=True, ititl
     fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(40, 20))
 
     # plt.tight_layout()
-
     if xaxis == 'uvwave':
         freqs = get_frequencies(ms_name).compute()
         for freq in freqs:
             x_prepd = prep_xaxis_data(x_data, xaxis, freq=freq)
+
             f1, f2 = plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
     else:
         x_prepd = prep_xaxis_data(x_data, xaxis)
+        # for bokeh
+        # for mpl
         f1, f2 = plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
 
     f1.set_xlabel(xlabel)
@@ -1201,11 +1204,7 @@ def get_argparser():
                         help='Plot complex values as amp and phase (ap)'
                         'or real and imag (ri) (default = ap)', default='ap')
     parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
-                        help='Field ID(s) / NAME(s) to plot')
-    parser.add_argument('-g', '--gaintype', nargs='*', type=str,
-                        dest='gain_types', choices=['B', 'G', 'K', 'F'],
-                        help='Type of table(s) to be plotted: B, G, K, F',
-                        default=[])
+                        help='Field ID(s) / NAME(s) to plot', default=None)
     parser.add_argument('--htmlname', dest='html_name', type=str,
                         help='Output HTMLfile name', default='')
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
@@ -1231,23 +1230,130 @@ def get_argparser():
     parser.add_argument('--yl1', dest='yl1', type=float,
                         help='Maximum y-value to plot for lower panel (default=full range)',
                         default=-1)
+    parser.add_argument('--xaxis', dest='xaxis', type=str,
+                        help='x-axis to plot', default='time')
+
+    parser.add_argument('--iterate', dest='iterate', type=str,
+                        choices=['scan', 'corr', 'spw'],
+                        help='Select which variable to iterate over \
+                              (defaults to none)',
+                        default=None)
+    parser.add_argument('--timebin', dest='timebin', type=str,
+                        help='Number of timestamsp in each bin')
+    parser.add_argument('--chanbin', dest='chanbin', type=str,
+                        help='Number of channels in each bin')
 
     return parser
 
 
+def config_logger():
+    logfile_name = 'ragavi.log'
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    ragavi_logger = logging.getLogger('ragavi')
+    ragavi_logger.setLevel(logging.ERROR)
+    rfh = logging.FileHandler(logfile_name)
+    rfh.setLevel(logging.DEBUG)
+    rfh.setFormatter(formatter)
+    ragavi_logger.addHandler(rfh)
+
+    xm_logger = logging.getLogger('xarrayms')
+    xm_logger.setLevel(logging.ERROR)
+
+    fh = logging.FileHandler('vis.log')
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    xm_logger.addHandler(fh)
+
+
 def main(**kwargs):
-    field_ids = kwargs.get('fields', [])
-    doplot = kwargs.get('doplot', 'ap')
-    plotants = kwargs.get('plotants', [-1])
-    corr = int(kwargs.get('corr', 0))
-    t0 = float(kwargs.get('t0', -1))
-    t1 = float(kwargs.get('t1', -1))
-    yu0 = float(kwargs.get('yu0', -1))
-    yu1 = float(kwargs.get('yu1', -1))
-    yl0 = float(kwargs.get('yl0', -1))
-    yl1 = float(kwargs.get('yl1', -1))
-    mycmajup = str(kwargs.get('mycmap', 'coolwarm'))
-    image_name = str(kwargs.get('image_name', ''))
-    mytabs = kwargs.get('mytabs', [])
-    gain_types = kwargs.get('gain_types', [])
-    pass
+    # disable all warnings
+    # logging.disable(logging.WARNING)
+    config_logger()
+
+    if len(kwargs) == 0:
+        NB_RENDER = False
+
+        parser = get_argparser()
+        options = parser.parse_args()
+
+        corr = int(options.corr)
+        doplot = options.doplot
+        field_ids = options.fields
+        html_name = options.html_name
+        image_name = options.image_name
+        mycmap = options.mycmap
+        mytabs = options.mytabs
+        plotants = options.plotants
+        t0 = options.t0
+        t1 = options.t1
+        yu0 = options.yu0
+        yu1 = options.yu1
+        yl0 = options.yl0
+        yl1 = options.yl1
+        xaxis = options.xaxis
+        iterate = options.iterate
+        timebin = options.timebin
+        chanbin = options.chanbin
+
+    else:
+        NB_RENDER = True
+
+        field_ids = kwargs.get('fields', [])
+        doplot = kwargs.get('doplot', 'ap')
+        plotants = kwargs.get('plotants', [-1])
+        corr = int(kwargs.get('corr', 0))
+        t0 = float(kwargs.get('t0', -1))
+        t1 = float(kwargs.get('t1', -1))
+        yu0 = float(kwargs.get('yu0', -1))
+        yu1 = float(kwargs.get('yu1', -1))
+        yl0 = float(kwargs.get('yl0', -1))
+        yl1 = float(kwargs.get('yl1', -1))
+        mycmap = str(kwargs.get('mycmap', 'coolwarm'))
+        image_name = str(kwargs.get('image_name', ''))
+        mytabs = kwargs.get('mytabs', [])
+
+    if len(mytabs) > 0:
+        mytabs = [x.rstrip("/") for x in mytabs]
+    else:
+        logging.info('ragavi exited: No gain table specified.')
+        sys.exit(-1)
+
+    if len(field_ids) == 0:
+        loggging.info('ragavi exited: No field id specified.')
+        sys.exit(-1)
+
+    for mytab, field in zip(mytabs, field_ids):
+
+        field_names = get_fields(mytab).data.compute()
+        # get id: field_name pairs
+        field_ids = dict(enumerate(field_names))
+        if field.isdigit():
+            field = int(field)
+        else:
+            field = name_2id(field, field_ids)
+
+        # by default data is grouped in field ids and data description
+        partitions = list(xm.xds_from_ms(mytab))
+
+        for chunk in partitions:
+            # only plot specified field
+            if chunk.FIELD_ID == field:
+                if iterate is None:
+                    blackbox(chunk, mytab, xaxis, doplot, corr,
+                             showFlagged=True, ititle=None)
+                else:
+                    if iterate == 'scan':
+                        iter_scan(mytab, xaxis, doplot, corr,
+                                  showFlagged=True)
+                    elif iterate == 'corr':
+                        iter_correlation(mytab, xaxis, doplot)
+                    elif iterate == 'spw':
+                        iter_specwin(mytab, xaxis, doplot, corr,
+                                     showFlagged=True)
+
+
+# for demo
+if __name__ == '__main__':
+    main()
