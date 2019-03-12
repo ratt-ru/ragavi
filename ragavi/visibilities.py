@@ -830,7 +830,7 @@ def calc_uvwave(uvw, freq):
     C = 3e8
 
     # wavelength = velocity / frequency
-    wavelength = C / freq
+    wavelength = (C / freq)
     uvdist = calc_uvdist(uvw)
 
     uvwave = uvdist / wavelength
@@ -1053,15 +1053,12 @@ def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=True, ititl
     # plt.tight_layout()
     if xaxis == 'uvwave':
         freqs = get_frequencies(ms_name).compute()
-        for freq in freqs:
-            x_prepd = prep_xaxis_data(x_data, xaxis, freq=freq)
-
-            f1, f2 = plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
+        x_prepd = prep_xaxis_data(x_data, xaxis, freq=freqs)
     else:
         x_prepd = prep_xaxis_data(x_data, xaxis)
         # for bokeh
         # for mpl
-        f1, f2 = plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
+    f1, f2 = plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
 
     f1.set_xlabel(xlabel)
     f2.set_xlabel(xlabel)
