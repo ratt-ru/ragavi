@@ -2,6 +2,7 @@
 -----
 - Added support for multiple table, fields and gaintype inputs
 - Plots from multiple tables plotted on single html file
+- Added slider to change plot sizes
 
 0.0.4
 -----

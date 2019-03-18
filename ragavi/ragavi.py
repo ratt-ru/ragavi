@@ -18,7 +18,7 @@ from bokeh.io import (output_file, show, output_notebook, export_svgs,
                       export_png, save)
 from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           BasicTicker, Legend, Toggle, CustomJS, Title,
-                          CheckboxGroup, Select, Text)
+                          CheckboxGroup, Select, Text, Slider)
 
 logfile_name = 'ragavi.log'
 logging.basicConfig(filename=logfile_name, filemode='a',
@@ -179,12 +179,12 @@ def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
         Tuple of glyphs
 
     """
-    p1 = ax1.circle('x', 'y1', size=8, alpha=1, color=color, source=source,
+    p1 = ax1.circle('x', 'y1', size=4, alpha=1, color=color, source=source,
                     nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
     p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
                       color=color, yerr=y1_err)
 
-    p2 = ax2.circle('x', 'y2', size=8, alpha=1, color=color, source=source,
+    p2 = ax2.circle('x', 'y2', size=4, alpha=1, color=color, source=source,
                     nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
     p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
                       color=color, yerr=y2_err)
@@ -403,6 +403,25 @@ def legend_toggle_callback():
     return code
 
 
+def size_slider_callback():
+    """JS callback to sel
+    """
+
+    code = """
+            
+            var pos, i, numplots;
+
+            numplots = p1.length;
+            pos = slide.value;
+
+            for (i=0; i<numplots; i++){
+                p1[i].glyph.size = pos;
+                p2[i].glyph.size = pos;
+            }
+           """
+    return code
+
+
 def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, batch_size=16):
     """Automates creation of antenna batches of 16 each unless otherwise
 
@@ -499,10 +518,12 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
     for i in range(num_leg_objs):
         lo_ax1['leg_%s' % str(i)] = Legend(items=bax1[i],
                                            location='top_right',
-                                           click_policy='hide')
+                                           click_policy='hide',
+                                           visible=False)
         lo_ax2['leg_%s' % str(i)] = Legend(items=bax2[i],
                                            location='top_right',
-                                           click_policy='hide')
+                                           click_policy='hide',
+                                           visible=False)
         loerr_ax1['leg_%s' % str(i)] = Legend(
             items=baerr_ax1[i],
             location='top_right',
@@ -636,15 +657,15 @@ def data_prep_G(masked_data, masked_data_err, doplot):
     """
 
     if doplot == 'ap':
-        y1 = np.abs(masked_data)
+        y1 = np.ma.abs(masked_data)
         y1_err = np.ma.abs(masked_data_err)
         y2 = np.ma.angle(masked_data, deg=True)
         # Remove phase limit from -pi to pi
-        y2 = np.unwrap(y2)
+        #y2 = np.unwrap(y2)
         y2_err = None
     else:
         y1 = np.real(masked_data)
-        y1_err = np.abs(masked_data_err)
+        y1_err = np.ma.abs(masked_data_err)
         y2 = np.imag(masked_data)
         y2_err = None
 
@@ -670,11 +691,11 @@ def data_prep_B(masked_data, masked_data_err, doplot):
 
     """
     if doplot == 'ap':
-        y1 = np.abs(masked_data)
-        y1_err = np.abs(masked_data_err)
-        y2 = np.array(np.angle(masked_data, deg=True))
-        y2 = np.unwrap(y2)
-        y2_err = np.array(np.angle(masked_data_err, deg=True))
+        y1 = np.ma.abs(masked_data)
+        y1_err = np.ma.abs(masked_data_err)
+        y2 = np.ma.angle(masked_data, deg=True)
+        #y2 = np.unwrap(y2)
+        y2_err = np.ma.angle(masked_data_err, deg=True)
         y2_err = np.unwrap(y2_err)
     else:
         y1 = np.real(masked_data)
@@ -731,15 +752,15 @@ def data_prep_F(masked_data, masked_data_err, doplot):
     """
 
     if doplot == 'ap':
-        y1 = np.abs(masked_data)
-        y1_err = np.abs(masked_data_err)
-        y2 = np.angle(masked_data, deg=True)
+        y1 = np.ma.abs(masked_data)
+        y1_err = np.ma.abs(masked_data_err)
+        y2 = np.ma.angle(masked_data, deg=True)
         # Remove phase limit from -pi to pi
-        y2 = np.unwrap(y2)
+        #y2 = np.unwrap(y2)
         y2_err = None
     else:
         y1 = np.real(masked_data)
-        y1_err = np.abs(masked_data_err)
+        y1_err = np.ma.abs(masked_data_err)
         y2 = np.imag(masked_data)
         y2_err = None
     return y1, y1_err, y2, y2_err
@@ -763,7 +784,7 @@ def get_yaxis_data(table_obj, gtype, ptype):
 
     Outputs
     -------
-    Returns np.ndarray dataa as well as the y-axis labels (str) for both plots.
+    Returns np.ndarray data as well as the y-axis labels (str) for both plots.
     """
     if ptype == 'ap':
         y1_label = 'Amplitude'
@@ -1059,7 +1080,7 @@ def stats_display(table_obj, gtype, ptype, corr, field):
 
     if ptype == 'ap':
         y1 = np.ma.abs(m_ydata)
-        y2 = np.unwrap(np.ma.angle(m_ydata, deg=True))
+        y2 = np.ma.angle(m_ydata, deg=True)
         med_y1 = np.ma.median(y1)
         med_y2 = np.ma.median(y2)
         text = "Median Amplitude: {}\nMedian Phase: {} deg".format(
@@ -1077,24 +1098,6 @@ def stats_display(table_obj, gtype, ptype, corr, field):
     pre = PreText(text=text)
 
     return pre
-
-
-def stringify(inp):
-    """Function to convert multiple strings in a list into a single string.
-    Inputs
-    ------
-    inp: iterable sequence
-         sequence of strings
-
-    Outputs
-    -------
-    text: str
-          A single string combining all the strings in the input sequence.
-    """
-    text = ''
-    for item in inp:
-        text = text + item
-    return text
 
 
 def get_argparser():
@@ -1289,6 +1292,10 @@ def main(**kwargs):
 
         stats_text = stats_display(tt, gain_type, doplot, corr, field)
 
+        # list for collecting plot states
+        ax1_plots = []
+        ax2_plots = []
+
         # forming Legend object items for data and errors
         legend_items_ax1 = []
         legend_items_ax2 = []
@@ -1386,6 +1393,10 @@ def main(**kwargs):
             if ant > 0:
                 p1.visible = p2.visible = False
 
+            # collecting plot states for each iterations
+            ax1_plots.append(p1)
+            ax2_plots.append(p2)
+
             # forming legend object items
             legend_items_ax1.append((legend, [p1]))
             legend_items_ax2.append((legend, [p2]))
@@ -1480,6 +1491,10 @@ def main(**kwargs):
         ax2.add_layout(ax2_title, 'above')
         ax1.add_layout(ax1_title, 'above')
 
+        # creating size slider for the plots
+        size_slider = Slider(end=10, start=1, step=0.5,
+                             value=4, title='Scatter point size')
+
         # creating and configuring Antenna selection buttons
         ant_select = Toggle(label='Select All Antennas',
                             button_type='success', width=200)
@@ -1493,7 +1508,7 @@ def main(**kwargs):
         batch_select = CheckboxGroup(labels=ant_labs, active=[])
 
         # Dropdown to hide and show legends
-        legend_toggle = Select(title="Showing Legends: ", value="alo",
+        legend_toggle = Select(title="Showing Legends: ", value="non",
                                options=[("all", "All"), ("alo", "Antennas"),
                                         ("elo", "Errors"), ("non", "None")])
 
@@ -1523,10 +1538,14 @@ def main(**kwargs):
                 loax2_err=legend_objs_ax2_err.values()),
             code=legend_toggle_callback())
 
-        # pre = PreText(text="Median Amplitude: {}".format(np.median(
-        #    np.abs(axis_data))))
-        plot_widgets = widgetbox(
-            [ant_select, batch_select, toggle_err, legend_toggle, stats_text])
+        size_slider.callback = CustomJS(args={'slide': size_slider,
+                                              'p1': ax1_plots,
+                                              'p2': ax2_plots},
+                                        code=size_slider_callback())
+
+        plot_widgets = widgetbox([ant_select, batch_select,
+                                  toggle_err, legend_toggle,
+                                  stats_text, size_slider])
 
         if gain_type is not 'K':
             layout = gridplot([[plot_widgets, ax1, ax2]],
@@ -1555,7 +1574,7 @@ def main(**kwargs):
                 mytab = datetime.now().strftime('%Y%m%d_%H%M%S')
             html_name = "{}_corr_{}_{}_field_{}".format(mytab, corr,
                                                         doplot,
-                                                        stringify(field_ids))
+                                                        ''.join(field_ids))
             save_html(html_name, final_layout)
 
         logging.info("Rendered: {}.html".format(html_name))
