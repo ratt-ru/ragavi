@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import re
 import logging
+import warnings
 
 from datetime import datetime
 import matplotlib.cm as cmx
@@ -20,11 +21,61 @@ from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           BasicTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text, Slider)
 
-logfile_name = 'ragavi.log'
-logging.basicConfig(filename=logfile_name, filemode='a',
-                    format='%(asctime)s %(message)s',
-                    datefmt='%d.%m.%Y @ %I:%M:%S',
-                    level=logging.DEBUG)
+
+PLOT_WIDTH = 700
+PLOT_HEIGHT = 600
+GAIN_TYPES = ['B', 'F', 'G', 'K']
+GHZ = 1e9
+
+
+def config_logger():
+    """This function is used to configure the logger for ragavi and catch
+        all warnings output by sys.stdout.
+    """
+    logfile_name = 'ragavi.log'
+    # capture only a single instance of a matching repeated warning
+    warnings.filterwarnings('default')
+
+    # setting the format for the logging messages
+    start = " (O_o) ".center(80, "=")
+    form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    form = form.format(start)
+    formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
+
+    # setup for ragavi logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
+    # capture all stdout warnings
+    logging.captureWarnings(True)
+    warnings_logger = logging.getLogger('py.warnings')
+    warnings_logger.setLevel(logging.DEBUG)
+
+    # setup for logfile handing ragavi
+    fh = logging.FileHandler(logfile_name)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(formatter)
+
+    logger.addHandler(fh)
+    warnings_logger.addHandler(logger)
+    return logger
+
+
+def _handle_uncaught_exceptions(extype, exval, extraceback):
+    """Function to Capture all uncaught exceptions into the log file
+
+       Inputs to this function are acquired from sys.excepthook. This
+       is because this function overrides sys.excepthook 
+
+       https://docs.python.org/3/library/sys.html#sys.excepthook
+
+    """
+    message = "Oops ... !"
+    logger.error(message, exc_info=(extype, exval, extraceback))
+
+
+logger = config_logger()
+sys.excepthook = _handle_uncaught_exceptions
 
 
 def save_svg_image(img_name, figa, figb, glax1, glax2):
@@ -1100,6 +1151,37 @@ def stats_display(table_obj, gtype, ptype, corr, field):
     return pre
 
 
+def autofill_gains_fields(t, g, f):
+    """Normalise length of f and g lists to the length of
+       t list. This function is meant to support  the ability to specify multiple gain tables while only specifying single values for field ids and gain table types. An assumption will be made that for all the specified tables, the same field id and gain table type will be used.
+
+    Inputs
+    ------
+    t: list
+          list of the gain tables.
+    f: str
+            field id to be plotted.
+    g: list 
+           type of gain table [B,G,K,F].
+
+
+    Outputs
+    -------
+    f, g: list
+                    lists of length lengthof(t) containing field ids and gain types.
+    """
+    ltab = len(t)
+    lfields = len(f)
+    lgains = len(g)
+
+    if ltab != lgains and lgains == 1:
+        g = g * ltab
+    if ltab != lfields and lfields == 1:
+        f = f * ltab
+
+    return g, f
+
+
 def get_argparser():
     """Get argument parser"""
     parser = ArgumentParser(usage='prog [options] <value>')
@@ -1196,60 +1278,54 @@ def main(**kwargs):
         mytabs = kwargs.get('mytabs', [])
         gain_types = kwargs.get('gain_types', [])
 
-    if len(mytabs) > 0:
-            # getting the name of the gain table specified
-        mytabs = [x.rstrip("/") for x in mytabs]
-    else:
-        logging.info('ragavi exited: No gain table specified.')
+    if len(mytabs) == 0:
+        logger.error('Exiting: No gain table specified.')
         sys.exit(-1)
 
-    # Keep this for notebook rendering
-    if len(gain_types) > 0:
-        GAIN_TYPES = ['B', 'F', 'G', 'K']
-        for gain_type in gain_types:
-            if gain_type.upper() not in GAIN_TYPES:
-                logging.info("Choose appropriate gain_type: ", GAIN_TYPES)
-                sys.exit(-1)
-    else:
-        logging.info('ragavi exited: No gain type specifed.')
+    mytabs = [x.rstrip("/") for x in mytabs]
+
+    if len(gain_types) == 0:
+        logger.error('Exiting: No gain type specified.')
         sys.exit(-1)
+
+    gain_types = [x.upper() for x in gain_types]
 
     if len(field_ids) == 0:
-        loggging.info('ragavi exited: No field id specified.')
+        logger.error('Exiting: No field id specified.')
         sys.exit(-1)
 
+    if doplot not in ['ap', 'ri']:
+        logger.error('Exiting: Plot selection must be ap or ri.')
+        sys.exit(-1)
+
+    # for notebook
+    for gain_type in gain_types:
+        if gain_type not in GAIN_TYPES:
+            logger.error("Exiting: gtype {} invalid".format(gain_type))
+            sys.exit(-1)
+
+    gain_types, field_ids = autofill_gains_fields(mytabs, gain_types,
+                                                  field_ids)
     # array to store final output image
     final_layout = []
+
     for mytab, gain_type, field in zip(mytabs, gain_types, field_ids):
+
         # reinitialise plotant list for each table
         if NB_RENDER:
-            plotants = plotants = kwargs.get('plotants', [-1])
+            plotants = kwargs.get('plotants', [-1])
         else:
             plotants = options.plotants
 
-        # by default is ap: amplitude and phase
-        if doplot not in ['ap', 'ri']:
-            logging.info('ragavi exited: Plot selection must be ap or ri.')
-            sys.exit(-1)
-        # configuring the plot dimensions
-        PLOT_WIDTH = 700
-        PLOT_HEIGHT = 600
+        tt = table(mytab, ack=False)
 
-        # get main table and useful subtables
-        try:
-            tt = table(mytab, ack=False)
-        except RuntimeError as runtime:
-            logging.exception('ragavi exited: Runtime error encountered.')
-            sys.exit(-1)
-
-        # get columns from selected tables
         field_names = get_fields(tt)
         field_src_ids = dict(enumerate(field_names))
         antnames = get_antennas(tt)
         ants = np.unique(tt.getcol('ANTENNA1'))
         fields = np.unique(tt.getcol('FIELD_ID'))
 
-        frequencies = get_frequencies(tt) / 1e9
+        frequencies = get_frequencies(tt) / GHZ
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
@@ -1262,8 +1338,9 @@ def main(**kwargs):
             field = name_2id(field, field_src_ids)
 
         if int(field) not in fields.tolist():
-            logging.info('ragavi exited: Field id {} not found.'.format(field))
-            sys.exit(-1)
+            logger.info(
+                'Skipping table: {} : Field id {} not found.'.format(mytab, field))
+            continue
 
         if plotants[0] != -1:
             # creating a list for the antennas to be plotted
@@ -1272,10 +1349,11 @@ def main(**kwargs):
             for ant in plotants:
                 if int(ant) not in ants:
                     plotants.remove(ant)
-                    logging.info(
-                        'Requested antenna ID {} not found.'.format(ant))
+                    logger.info('Antenna ID {} not found.'.format(ant))
+
+            # check if plotants still has items
             if len(plotants) == 0:
-                logging.info('ragavi exited: No valid antennas requested')
+                logger.error('Exiting: No valid antennas requested')
                 sys.exit(-1)
             else:
                 plotants = np.array(plotants, dtype=int)
@@ -1285,8 +1363,8 @@ def main(**kwargs):
         # creating bokeh figures for plots
         # linking plots ax1 and ax2 via the x_axes because of similarities in
         # range
-        TOOLS = dict(
-            tools='box_select, box_zoom, reset, pan, save, wheel_zoom, lasso_select')
+        TOOLS = dict(tools='box_select, box_zoom, reset, pan, save,\
+                            wheel_zoom, lasso_select')
         ax1 = figure(sizing_mode='scale_both', **TOOLS)
         ax2 = figure(sizing_mode='scale_both', x_range=ax1.x_range, **TOOLS)
 
@@ -1372,7 +1450,7 @@ def main(**kwargs):
 
             if gain_type is 'K':
                 if doplot == 'ri':
-                    logging.info('ragavi exited: No complex values to plot')
+                    logger.error('Exiting: No complex values to plot')
                     # break #[for when there'r multiple tables to be plotted]
                     sys.exit(-1)
 
@@ -1577,7 +1655,7 @@ def main(**kwargs):
                                                         ''.join(field_ids))
             save_html(html_name, final_layout)
 
-        logging.info("Rendered: {}.html".format(html_name))
+        logger.info("Rendered: {}.html".format(html_name))
 
     else:
         output_notebook()
@@ -1630,7 +1708,7 @@ def plot_table(mytabs, gain_types, fields, **kwargs):
     """
     if mytabs is None:
         print("Please specify a gain table to plot.")
-        logging.info('ragavi exited: No gain table specfied.')
+        logger.error('Exiting: No gain table specfied.')
         sys.exit(-1)
     else:
         # getting the name of the gain table specified
