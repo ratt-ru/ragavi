@@ -1,7 +1,11 @@
 0.0.5
 -----
 - Added support for multiple table, fields and gaintype inputs
+- Multiple table single field single gaintype input also allowed
 - Plots from multiple tables plotted on single html file
+- Added slider to change plot sizes
+- All notifications and errors now logged to ragavi.log
+
 
 0.0.4
 -----
