@@ -29,6 +29,56 @@ from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           CheckboxGroup, Select, Text)
 
 
+def config_logger():
+    """This function is used to configure the logger for ragavi and catch
+        all warnings output by sys.stdout.
+    """
+    logfile_name = 'ragavi.log'
+    # capture only a single instance of a matching repeated warning
+    warnings.filterwarnings('default')
+
+    # setting the format for the logging messages
+    start = " (O_o) ".center(80, "=")
+    form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    form = form.format(start)
+    formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
+
+    # setup for ragavi logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+
+    # capture all stdout warnings
+    logging.captureWarnings(True)
+    warnings_logger = logging.getLogger('py.warnings')
+    warnings_logger.setLevel(logging.DEBUG)
+
+    # setup for logfile handing ragavi
+    fh = logging.FileHandler(logfile_name)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(formatter)
+
+    logger.addHandler(fh)
+    warnings_logger.addHandler(logger)
+    return logger
+
+
+def _handle_uncaught_exceptions(extype, exval, extraceback):
+    """Function to Capture all uncaught exceptions into the log file
+
+       Inputs to this function are acquired from sys.excepthook. This
+       is because this function overrides sys.excepthook 
+
+       https://docs.python.org/3/library/sys.html#sys.excepthook
+
+    """
+    message = "Oops ... !"
+    logger.error(message, exc_info=(extype, exval, extraceback))
+
+
+logger = config_logger()
+sys.excepthook = _handle_uncaught_exceptions
+
+
 def save_svg_image(img_name, figa, figb, glax1, glax2):
     """To save plots as svg
 
@@ -1243,31 +1293,7 @@ def get_argparser():
     return parser
 
 
-def config_logger():
-    logfile_name = 'ragavi.log'
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    ragavi_logger = logging.getLogger('ragavi')
-    ragavi_logger.setLevel(logging.ERROR)
-    rfh = logging.FileHandler(logfile_name)
-    rfh.setLevel(logging.DEBUG)
-    rfh.setFormatter(formatter)
-    ragavi_logger.addHandler(rfh)
-
-    xm_logger = logging.getLogger('xarrayms')
-    xm_logger.setLevel(logging.ERROR)
-
-    fh = logging.FileHandler('vis.log')
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(formatter)
-    xm_logger.addHandler(fh)
-
-
 def main(**kwargs):
-    # disable all warnings
-    # logging.disable(logging.WARNING)
-    config_logger()
 
     if len(kwargs) == 0:
         NB_RENDER = False
@@ -1314,11 +1340,11 @@ def main(**kwargs):
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
     else:
-        logging.info('ragavi exited: No gain table specified.')
+        logger.error('ragavi exited: No gain table specified.')
         sys.exit(-1)
 
     if len(field_ids) == 0:
-        loggging.info('ragavi exited: No field id specified.')
+        logger.error('ragavi exited: No field id specified.')
         sys.exit(-1)
 
     for mytab, field in zip(mytabs, field_ids):
