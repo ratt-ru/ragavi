@@ -7,10 +7,9 @@ import warnings
 
 from datetime import datetime
 import matplotlib.cm as cmx
-import matplotlib.pylab as pylab
+import matplotlib.colors as colors
 from pyrap.tables import table
 from argparse import ArgumentParser
-import matplotlib.colors as colors
 
 from bokeh.plotting import figure
 from bokeh.models.widgets import Div, PreText
@@ -137,15 +136,6 @@ def determine_table(table_name):
         return result.upper()
     except AttributeError:
         return -1
-
-
-def color_denormalize(ycol):
-    """Converting rgb values from 0 to 255"""
-    ycol = np.array(ycol)
-    ycol = np.array(ycol * 255, dtype=int)
-    ycol = ycol.tolist()
-    ycol = tuple(ycol)[:-1]
-    return ycol
 
 
 def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
@@ -1329,7 +1319,7 @@ def main(**kwargs):
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
-        mymap = cm = pylab.get_cmap(mycmap)
+        mymap = cm = cmx.get_cmap(mycmap)
         scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
 
         if field.isdigit():
@@ -1396,12 +1386,7 @@ def main(**kwargs):
             legend_err = "E" + antnames[ant]
 
             # creating colors for maps
-            y1col = scalarMap.to_rgba(float(ant))
-            y2col = scalarMap.to_rgba(float(ant))
-
-            # denormalizing the color array
-            y1col = color_denormalize(y1col)
-            y2col = color_denormalize(y2col)
+            y1col = y2col = scalarMap.to_rgba(float(ant), bytes=True)[:-1]
 
             mytaql = 'ANTENNA1==' + str(ant)
             mytaql += '&&FIELD_ID==' + str(field)
