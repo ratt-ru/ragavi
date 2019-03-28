@@ -28,7 +28,8 @@ setup(name='ragavi',
       classifiers=[
           "Intended Audience :: Developers",
           "Operating System :: OS Independent",
-          "Programming Language :: Python :: 2",
+          "Programming Language :: Python :: 2.7",
+          "Programming Language :: Python :: 3.5"
           "Topic :: Software Development :: Libraries :: Python Modules",
           "Topic :: Scientific/Engineering :: Astronomy"],
       author='Lexy Andati',
