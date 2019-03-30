@@ -12,7 +12,9 @@ before_install:
 - sudo apt-get update
 - sudo apt-get install -y nodejs
 - pip install --upgrade pip
-- sudo apt-get install casacore-dev
+- sudo apt-get install python-casacore
+- sudo apt-get install python3-casacore
+
 deploy:
   provider: pypi
   user: mulan-94
