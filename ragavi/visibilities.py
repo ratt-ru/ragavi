@@ -1,7 +1,10 @@
+from __future__ import division
+
 import sys
 import glob
 import re
 import logging
+import warnings
 
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
@@ -11,12 +14,16 @@ import xarrayms as xm
 import xarray as xa
 import dask.array as da
 import numpy as np
+import holoviews as hv
+import holoviews.operation.datashader as hd
 
+from holoviews import opts, dim
 from africanus.averaging import time_and_channel as ntc
 from dask import compute, delayed
 from pyrap.tables import table
 from argparse import ArgumentParser
 from datetime import datetime
+from colorcet import colorwheel as colcet
 
 
 from bokeh.plotting import figure
@@ -912,7 +919,10 @@ def get_xaxis_data(xds_table_obj, ms_name, xaxis):
         xaxis_label = 'Antenna2'
     elif xaxis == 'frequency' or xaxis == 'channel':
         xdata = get_frequencies(ms_name)
-        xaxis_label = 'Channel'
+        if xaxis == 'channel':
+            xaxis_label = 'Channel'
+        else:
+            xaxis_label = 'Frequency'
     elif xaxis == 'scan':
         xdata = xds_table_obj.SCAN_NUMBER
         xaxis_label = 'Scan'
@@ -954,17 +964,17 @@ def prep_xaxis_data(xdata, xaxis, freq=None):
             Data for the x-axid of the plots
     """
     if xaxis == 'channel':
-        prepdx = delayed(xdata.chan.data)
+        prepdx = xdata.chan
     elif xaxis == 'frequency':
-        prepdx = xdata.data
+        prepdx = xdata
     elif xaxis == 'time':
-        prepdx = (xdata - xdata[0]).data
+        prepdx = xdata - xdata[0]
     elif xaxis == 'uvdistance':
-        prepdx = calc_uvdist(xdata).data
+        prepdx = calc_uvdist(xdata)
     elif xaxis == 'uvwave':
-        prepdx = calc_uvwave(xdata, freq).data
+        prepdx = calc_uvwave(xdata, freq)
     elif xaxis == 'antenna1' or xaxis == 'antenna2' or xaxis == 'scan':
-        prepdx = xdata.data
+        prepdx = xdata
     return prepdx
 
 
@@ -999,7 +1009,7 @@ def get_yaxis_data(xds_table_obj, ms_name, ptype):
     return ydata, y1_label, y2_label
 
 
-def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=True):
+def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=False):
     """Function to process data for the y-axis. Part of the processing includes:
     - Selecting correlation for the data and error
     - Flagging
@@ -1038,7 +1048,6 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=True
     ydata = ydata.sel(corr=corr)
     # ydata_errors = get_errors(ms_name).sel(corr=corr)
     # ydata_errors = get_errors(table_obj)[:, :, corr]
-
     if flag:
         flags = get_flags(xds_table_obj).sel(corr=corr)
         ydata = da.ma.masked_array(data=ydata, mask=flags)
@@ -1049,7 +1058,7 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=True
     return y1, y2
 
 
-def get_phase(ydata, unwrap=True):
+def get_phase(ydata, unwrap=False):
     phase = xa.ufuncs.angle(ydata, deg=True)
     if unwrap:
         # delay dispatching of unwrapped phase
@@ -1059,22 +1068,16 @@ def get_phase(ydata, unwrap=True):
 
 def get_amplitude(ydata):
     amplitude = da.absolute(ydata)
-    if hasattr(amplitude, 'data'):
-        amplitude = amplitude.data
     return amplitude
 
 
 def get_real(ydata):
     real = ydata.real
-    if hasattr(real, 'data'):
-        real = real.data
     return real
 
 
 def get_imaginary(ydata):
     imag = ydata.imag
-    if hasattr(imag, 'data'):
-        imag = imag.data
     return imag
 
 
@@ -1089,7 +1092,7 @@ def process_data(ydata, ptype):
     return y1,  y2
 
 
-def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=True, ititle=None):
+def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=False, ititle=None, color='blue'):
     x_data, xlabel = get_xaxis_data(xds_table_obj, ms_name, xaxis)
     y_data, y1label, y2label = get_yaxis_data(xds_table_obj, ms_name, ptype)
     y1_prepd, y2_prepd = prep_yaxis_data(xds_table_obj, ms_name, y_data,
@@ -1098,7 +1101,7 @@ def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=True, ititl
     if xaxis == 'channel' or xaxis == 'frequency':
         y1_prepd = y1_prepd.transpose()
         y2_prepd = y2_prepd.transpose()
-    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(40, 20))
+    #fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(40, 20))
 
     # plt.tight_layout()
     if xaxis == 'uvwave':
@@ -1108,59 +1111,124 @@ def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=True, ititl
         x_prepd = prep_xaxis_data(x_data, xaxis)
         # for bokeh
         # for mpl
-    f1, f2 = plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
+    #f1, f2 = mpl_plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
+    """mpl_plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd, xaxis, xlab=xlabel,
+                            ptype=ptype, y1lab=y1label, y2lab=y2label, ititle=ititle, color=color)"""
+    f1, f2 = hv_plotter(x_prepd, y1_prepd, y2_prepd, xaxis, xlab=xlabel,
+                        ptype=ptype, y1lab=y1label, y2lab=y2label, ititle=ititle)
+    return f1, f2
 
-    f1.set_xlabel(xlabel)
-    f2.set_xlabel(xlabel)
 
-    f1.set_ylabel(y1label)
-    f2.set_ylabel(y2label)
+def mpl_plotter(ax1, ax2, x, y1, y2, xaxis, xlab='', ptype='ap',
+                y1lab='', y2lab='', ititle=None, color='blue'):
+    x, y1, y2 = compute(x, y1, y2)
+    ax1.plot(x, y1, marker='o', markersize=0.5, linewidth=0, color=color)
+    ax2.plot(x, y2, marker='o', markersize=0.5, linewidth=0, color=color)
+
+    ax1.set_xlabel(xlab)
+    ax2.set_xlabel(xlab)
+
+    ax1.set_ylabel(y1lab)
+    ax2.set_ylabel(y2lab)
 
     if ititle is not None:
-        f1.set_title("{}: {} vs {}".format(ititle, y1label, xlabel))
-        f2.set_title("{}: {} vs {}".format(ititle, y2label, xlabel))
+        ax1.set_title("{}: {} vs {}".format(ititle, y1lab, xlab))
+        ax2.set_title("{}: {} vs {}".format(ititle, y2lab, xlab))
         plt.savefig(fname="{}_{}_{}".format(ititle, ptype, xaxis))
     else:
-        f1.set_title("{} vs {}".format(y1label, xlabel))
-        f2.set_title("{} vs {}".format(y2label, xlabel))
+        ax1.set_title("{} vs {}".format(y1lab, xlab))
+        ax2.set_title("{} vs {}".format(y2lab, xlab))
         plt.savefig(fname="{}_{}".format(ptype, xaxis))
-    # plt.clf()
     plt.close('all')
 
+    return None, None
+    # return ax1, ax2
 
-def plotter(ax1, ax2, x, y1, y2):
-    x, y1, y2 = compute(x, y1, y2)
-    ax1.plot(x, y1, marker='o', markersize=0.5, linewidth=0)
-    ax2.plot(x, y2, marker='o', markersize=0.5, linewidth=0)
 
+def hv_plotter(x, y1, y2, xaxis, xlab='', ptype='ap',
+               y1lab='', y2lab='', ititle=None, color='blue'):
+
+    #x, y1, y2 = compute(x, y1, y2)
+    hv.extension('bokeh', logo=False)
+    w = 900
+    h = 700
+    if ititle:
+        w, h = 400, 400
+    #xcol_name = x.name
+    #y1col_name = y1.name
+    #y2col_name = y2.name
+    x.name = xaxis
+    y1.name = y1lab
+    y2.name = y2lab
+
+    if ititle is not None:
+        title1 = "{}: {} vs {}".format(ititle, y1lab, xlab)
+        title2 = "{}: {} vs {}".format(ititle, y2lab, xlab)
+    else:
+        title1 = "{} vs {}".format(y1lab, xlab)
+        title2 = "{} vs {}".format(y2lab, xlab)
+
+    if xaxis == 'channel' or xaxis == 'frequency':
+        y1 = y1.assign_coords(table_row=x.table_row)
+        y2 = y2.assign_coords(table_row=x.table_row)
+
+    res_ds = xa.merge([x, y1, y2])
+    res_df = res_ds.to_dask_dataframe()
+
+    res_tab1 = hv.Table(res_df, xaxis, y1lab)
+    res_tab2 = hv.Table(res_df, xaxis, y2lab)
+    ax1 = hd.datashade(res_tab1, dynamic=True, cmap=color).opts(title=title1,
+                                                                width=w,
+                                                                height=h)
+    ax2 = hd.datashade(res_tab2, dynamic=True, cmap=color).opts(title=title2,
+                                                                width=w,
+                                                                height=h)
+    #oup = ax1 + ax2
+    #hv.save(oup, 'test.html')
     return ax1, ax2
 
-
-def iter_scan(ms_name, xaxis, ptype, corr, showFlagged=True):
-    scans = list(xm.xds_from_ms(ms_name, group_cols='SCAN_NUMBER'))
+"""
+def iter_scan(ms_name, xaxis, ptype, corr, showFlagged=False, color='blue'):
     for scan in scans:
-        title = "Scan_{}".format(scan.SCAN_NUMBER)
-        blackbox(scan, ms_name, xaxis, ptype, corr, showFlagged=True,
-                 ititle=title)
+
+        f1, f2 = blackbox(scan, ms_name, xaxis, ptype, corr, showFlagged=True,
+                          ititle=title, color=color)
+        out1.apend(f1)
+        out2.append(f2)
+    return out1, out2
 
 
-def iter_specwin(ms_name, xaxis, ptype, corr, showFlagged=True):
+def iter_specwin(ms_name, xaxis, ptype, corr, showFlagged=False,
+                 color='blue'):
+    out_1 = []
+    out_2 = []
     specwins = list(xm.xds_from_ms(ms_name, group_cols='DATA_DESC_ID'))
     for spw in specwins:
         title = "SPW_{}".format(spw.DATA_DESC_ID)
-        blackbox(spw, ms_name, xaxis, ptype, corr, showFlagged=True,
-                 ititle=title)
+        f1, f2 = blackbox(spw, ms_name, xaxis, ptype, corr, showFlagged=True,
+                          ititle=title, color=color)
+        out1.apend(f1)
+        out2.append(f2)
+    return out1, out2
 
 
-def iter_correlation(ms_name, xaxis, ptype):
+def iter_correlation(ms_name, xaxis, ptype, color='blue'):
     # data selection will be done over each spectral window
     specwins = list(xm.xds_from_ms(ms_name, group_cols='DATA_DESC_ID'))
     corr_names = get_polarizations(ms_name)
+    # store outputs for all spws
+    out_1 = []
+    out_2 = []
     for spw in specwins:
         for corr in spw.corr.data:
             title = "Corr_{}".format(corr_names[corr])
-            blackbox(spw, ms_name, xaxis, ptype, corr=corr, showFlagged=True,
-                     ititle=title)
+            f1, f2 = blackbox(spw, ms_name, xaxis, ptype, corr=corr, showFlagged=True,
+                              ititle=title, color=color)
+            out1.apend(f1)
+            out2.append(f2)
+    return out1, out2
+
+"""
 
 
 def stats_display(table_obj, gtype, ptype, corr, field):
@@ -1357,25 +1425,79 @@ def main(**kwargs):
         else:
             field = name_2id(field, field_ids)
 
-        # by default data is grouped in field ids and data description
-        partitions = list(xm.xds_from_ms(mytab))
+        if iterate == 'scan':
+            # group per scan
+            partitions = list(xm.xds_from_ms(mytab,
+                                             group_cols='SCAN_NUMBER'))
+        elif iterate == 'corr':
+            # group per spw first
+            partitions = list(xm.xds_from_ms(mytab,
+                                             group_cols='DATA_DESC_ID'))
+            corr_names = get_polarizations(mytab)
 
-        for chunk in partitions:
-            # only plot specified field
-            if chunk.FIELD_ID == field:
-                if iterate is None:
-                    blackbox(chunk, mytab, xaxis, doplot, corr,
-                             showFlagged=True, ititle=None)
-                else:
-                    if iterate == 'scan':
-                        iter_scan(mytab, xaxis, doplot, corr,
-                                  showFlagged=True)
-                    elif iterate == 'corr':
-                        iter_correlation(mytab, xaxis, doplot)
-                    elif iterate == 'spw':
-                        iter_specwin(mytab, xaxis, doplot, corr,
-                                     showFlagged=True)
+        elif iterate == 'spw':
+            partitions = list(xm.xds_from_ms(mytab,
+                                             group_cols='DATA_DESC_ID'))
+        elif iterate is None:
+            # iterate over spw and field ids by default
+            # by default data is grouped in field ids and data description
+            partitions = list(xm.xds_from_ms(mytab))
 
+        cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
+        mymap = cmx.get_cmap(mycmap)
+        scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
+
+        oup_a = []
+        oup_b = []
+        for count, chunk in enumerate(partitions):
+
+            #colour = scalarMap.to_rgba(float(count * 3), bytes=True)[:-1]
+            colour = colcet[count]
+            if iterate == 'scan':
+                title = "Scan_{}".format(chunk.SCAN_NUMBER)
+                f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
+                                  showFlagged=False, ititle=title,
+                                  color=colour)
+            elif iterate == 'spw':
+                title = "SPW_{}".format(chunk.DATA_DESC_ID)
+                f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
+                                  showFlagged=False, ititle=title,
+                                  color=colour)
+
+            elif iterate == 'corr':
+                for corr in chunk.corr.data:
+                    title = "Corr_{}".format(corr_names[corr])
+                    f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr=corr,
+                                      showFlagged=False, ititle=title, color=colour)
+            else:
+                f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
+                                  showFlagged=False, ititle=None,
+                                  color=colour)
+
+            # store resulting dynamicmaps
+            oup_a.append(f1)
+            oup_b.append(f2)
+
+        if iterate == None:
+            # overlay
+            number = len(oup_a)
+            l = oup_a[0]
+            r = oup_b[0]
+            for i in range(number):
+                l *= oup_a[i]
+                r *= oup_b[i]
+        else:
+            # side by side
+            number = len(oup_a)
+            l = oup_a[0]
+            r = oup_b[0]
+            for i in range(number):
+                l += oup_a[i]
+                r += oup_b[i]
+
+        layout = l + r
+        fname = "{}_{}.html".format(doplot, xaxis)
+        hv.save(layout, fname)
 
 # for demo
 if __name__ == '__main__':
