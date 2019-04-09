@@ -685,7 +685,7 @@ def get_polarizations(ms_name):
     stokes_types = ['I', 'Q', 'U', 'V', 'RR', 'RL', 'LR', 'LL', 'XX', 'XY', 'YX', 'YY', 'RX', 'RY', 'LX', 'LY', 'XR', 'XL', 'YR',
                     'YL', 'PP', 'PQ', 'QP', 'QQ', 'RCircular', 'LCircular', 'Linear', 'Ptotal', 'Plinear', 'PFtotal', 'PFlinear', 'Pangle']
     subname = "::".join((ms_name, 'POLARIZATION'))
-    pol_subtable = list(xm.xds_from_table(subname))
+    pol_subtable = list(xm.xds_from_table(subname, ack=False))
     pol_subtable = pol_subtable[0]
     # ofsetting the acquired corr typeby one to match correctly the stokes type
     corr_types = pol_subtable.CORR_TYPE.sel(row=0).data.compute() - 1
@@ -709,7 +709,8 @@ def get_frequencies(ms_name, spwid=0):
            Channel centre frequencies for specified spectral window.
     """
     subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
-    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
+    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__',
+                                        ack=False))
     spw = spw_subtab[spwid]
     freqs = spw.CHAN_FREQ
     # spw_subtab('close')
@@ -729,7 +730,7 @@ def get_antennas(ms_name):
 
     """
     subname = "::".join((ms_name, 'ANTENNA'))
-    ant_subtab = list(xm.xds_from_table(subname))
+    ant_subtab = list(xm.xds_from_table(subname, ack=False))
     ant_subtab = ant_subtab[0]
     ant_names = ant_subtab.NAME
     # ant_subtab('close')
@@ -1115,7 +1116,7 @@ def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=False, itit
     """mpl_plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd, xaxis, xlab=xlabel,
                             ptype=ptype, y1lab=y1label, y2lab=y2label, ititle=ititle, color=color)"""
     f1, f2 = hv_plotter(x_prepd, y1_prepd, y2_prepd, xaxis, xlab=xlabel,
-                        ptype=ptype, y1lab=y1label, y2lab=y2label, ititle=ititle)
+                        ptype=ptype, y1lab=y1label, y2lab=y2label, ititle=ititle, color=color)
     return f1, f2
 
 
@@ -1161,12 +1162,8 @@ def hv_plotter(x, y1, y2, xaxis, xlab='', ptype='ap',
     y1.name = y1lab
     y2.name = y2lab
 
-    if ititle is not None:
-        title1 = "{}: {} vs {}".format(ititle, y1lab, xlab)
-        title2 = "{}: {} vs {}".format(ititle, y2lab, xlab)
-    else:
-        title1 = "{} vs {}".format(y1lab, xlab)
-        title2 = "{} vs {}".format(y2lab, xlab)
+    title1 = "{} vs {}".format(y1lab, xlab)
+    title2 = "{} vs {}".format(y2lab, xlab)
 
     if xaxis == 'channel' or xaxis == 'frequency':
         y1 = y1.assign_coords(table_row=x.table_row)
@@ -1177,12 +1174,12 @@ def hv_plotter(x, y1, y2, xaxis, xlab='', ptype='ap',
 
     res_tab1 = hv.Table(res_df, xaxis, y1lab)
     res_tab2 = hv.Table(res_df, xaxis, y2lab)
-    ax1 = hd.datashade(res_tab1, dynamic=True, cmap=color).opts(title=title1,
-                                                                width=w,
-                                                                height=h)
-    ax2 = hd.datashade(res_tab2, dynamic=True, cmap=color).opts(title=title2,
-                                                                width=w,
-                                                                height=h)
+    ax1 = hd.datashade(res_tab1, dynamic=False, cmap=color).opts(title=title1,
+                                                                 width=w,
+                                                                 height=h)
+    ax2 = hd.datashade(res_tab2, dynamic=False, cmap=color).opts(title=title2,
+                                                                 width=w,
+                                                                 height=h)
     #oup = ax1 + ax2
     #hv.save(oup, 'test.html')
     return ax1, ax2
@@ -1428,20 +1425,23 @@ def main(**kwargs):
         if iterate == 'scan':
             # group per scan
             partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols='SCAN_NUMBER'))
+                                             group_cols='SCAN_NUMBER',
+                                             ack=False))
         elif iterate == 'corr':
             # group per spw first
             partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols='DATA_DESC_ID'))
+                                             group_cols='DATA_DESC_ID',
+                                             ack=False))
             corr_names = get_polarizations(mytab)
 
         elif iterate == 'spw':
             partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols='DATA_DESC_ID'))
+                                             group_cols='DATA_DESC_ID',
+                                             ack=False))
         elif iterate is None:
             # iterate over spw and field ids by default
             # by default data is grouped in field ids and data description
-            partitions = list(xm.xds_from_ms(mytab))
+            partitions = list(xm.xds_from_ms(mytab, ack=False))
 
         cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
         mymap = cmx.get_cmap(mycmap)
@@ -1451,8 +1451,9 @@ def main(**kwargs):
         oup_b = []
         for count, chunk in enumerate(partitions):
 
-            #colour = scalarMap.to_rgba(float(count * 3), bytes=True)[:-1]
-            colour = colcet[count]
+            colour = scalarMap.to_rgba(float(count), bytes=True)[:-1]
+            #colour = colors.to_hex(mymap(count)).encode('utf-8')
+            #colour = mymap(count)[:-1]
             if iterate == 'scan':
                 title = "Scan_{}".format(chunk.SCAN_NUMBER)
                 f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
@@ -1478,24 +1479,14 @@ def main(**kwargs):
             oup_a.append(f1)
             oup_b.append(f2)
 
-        if iterate == None:
-            # overlay
-            number = len(oup_a)
-            l = oup_a[0]
-            r = oup_b[0]
-            for i in range(number):
-                l *= oup_a[i]
-                r *= oup_b[i]
-        else:
-            # side by side
-            number = len(oup_a)
-            l = oup_a[0]
-            r = oup_b[0]
-            for i in range(number):
-                l += oup_a[i]
-                r += oup_b[i]
+        l = hv.Overlay(oup_a).collate().opts(width=900, height=700)
 
-        layout = l + r
+        r = hv.Overlay(oup_b).collate().opts(width=900, height=700)
+
+        lega = hv.NdOverlay({count: hv.Points([0, 0]).opts(color=scalarMap.to_rgba(
+            float(count), bytes=True)[:-1]) for count, des in enumerate(oup_a)})
+
+        layout = hv.Layout([l, r])
         fname = "{}_{}.html".format(doplot, xaxis)
         hv.save(layout, fname)
 
