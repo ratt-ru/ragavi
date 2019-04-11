@@ -10,3 +10,6 @@ dask
 codex-africanus[complete]
 xarray
 xarray-ms
+holoviews
+datashader
+

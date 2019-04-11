@@ -1425,25 +1425,32 @@ def main(**kwargs):
         if iterate == 'scan':
             # group per scan
             partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols='SCAN_NUMBER',
+                                             group_cols=['FIELD_ID',
+                                                         'DATA_DESC_ID'],
                                              ack=False))
         elif iterate == 'corr':
             # group per spw first
             partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols='DATA_DESC_ID',
+                                             group_cols=['FIELD_ID',
+                                                         'DATA_DESC_ID'],
                                              ack=False))
             corr_names = get_polarizations(mytab)
 
         elif iterate == 'spw':
             partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols='DATA_DESC_ID',
+                                             group_cols=['FIELD_ID',
+                                                         'DATA_DESC_ID'],
                                              ack=False))
         elif iterate is None:
             # iterate over spw and field ids by default
             # by default data is grouped in field ids and data description
             partitions = list(xm.xds_from_ms(mytab, ack=False))
 
-        cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
+        if iterate == 'scan':
+            cNorm = colors.Normalize(vmin=0, vmax=len(field_names) - 1)
+        else:
+            cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
+
         mymap = cmx.get_cmap(mycmap)
         scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
 
@@ -1455,6 +1462,8 @@ def main(**kwargs):
             #colour = colors.to_hex(mymap(count)).encode('utf-8')
             #colour = mymap(count)[:-1]
             if iterate == 'scan':
+                colour = scalarMap.to_rgba(
+                    float(chunk.FIELD_ID), bytes=True)[:-1]
                 title = "Scan_{}".format(chunk.SCAN_NUMBER)
                 f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
                                   showFlagged=False, ititle=title,
