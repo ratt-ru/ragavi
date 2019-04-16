@@ -16,14 +16,15 @@ import dask.array as da
 import numpy as np
 import holoviews as hv
 import holoviews.operation.datashader as hd
+import datashader as ds
 
 from holoviews import opts, dim
 from africanus.averaging import time_and_channel as ntc
 from dask import compute, delayed
-from pyrap.tables import table
+import pyrap.quanta as qa
 from argparse import ArgumentParser
 from datetime import datetime
-from colorcet import colorwheel as colcet
+from itertools import cycle
 
 
 from bokeh.plotting import figure
@@ -128,34 +129,6 @@ def save_png_image(img_name, disp_layout):
     export_png(img_name, disp_layout)
 
 
-def determine_table(table_name):
-    """Find pattern at end of string to determine table to be plotted.
-       The search is not case sensitive
-
-    Input
-    -----
-    table_name: str
-                Name of table /  gain type to be plotted
-
-    """
-    pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
-    found = pattern.search(table_name)
-    try:
-        result = found.group()
-        return result.upper()
-    except AttributeError:
-        return -1
-
-
-def color_denormalize(ycol):
-    """Converting rgb values from 0 to 255"""
-    ycol = np.array(ycol)
-    ycol = np.array(ycol * 255, dtype=int)
-    ycol = ycol.tolist()
-    ycol = tuple(ycol)[:-1]
-    return ycol
-
-
 def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={}, error_kwargs={}):
     """Function to plot the error bars for both x and y.
        Takes in 3 compulsory parameters fig, x and y
@@ -210,420 +183,6 @@ def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={}, erro
     fig.legend.click_policy = 'hide'
 
     return h
-
-
-def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
-    """Generate a plot
-
-    Inputs
-    ------
-
-    source: ColumnDataSource
-        Main data to plot
-    ax1: figure
-        First figure
-    ax2: figure
-        Second Figure
-    color: str
-        Data points' color
-    y1_err: numpy.ndarray
-        y1 error data
-    y2_err: numpy.ndarray
-        y2 error data
-
-    Outputs
-    -------
-    (p1, p1_err, p2, p2_err ): tuple
-        Tuple of glyphs
-
-    """
-    x, y1, y2 = source.data['x'], source.data['y1'], source.data['y2']
-    x, y1, y2 = compute(x, y1, y2)
-    loopies = y1.shape[-1][:10]
-    source.data['x'], source.data['y1'], source.data['y2'] = x, y1, y2
-
-    for i in list(range(loopies)):
-
-        p1 = ax1.circle(x=source.data['x'], y1=source.data['y1'][i],
-                        size=8, alpha=1, color=color,
-                        nonselection_color='#7D7D7D',
-                        nonselection_fill_alpha=0.3)
-        p2 = ax1.circle(x=source.data['x'], y2=source.data['y2'][i],
-                        size=8, alpha=1, color=color,
-                        nonselection_color='#7D7D7D',
-                        nonselection_fill_alpha=0.3)
-
-    return p1, p2
-
-
-def ant_select_callback():
-    """JS callback for the selection and deselection of antennas
-        Returns : string
-    """
-
-    code = """
-            var i;
-             //if toggle button active
-            if (this.active==false)
-                {
-                    this.label='Select all Antennas';
-
-
-                    for(i=0; i<glyph1.length; i++){
-                        glyph1[i][1][0].visible = false;
-                        glyph2[i][1][0].visible = false;
-                    }
-
-                    batchsel.active = []
-                }
-            else{
-                    this.label='Deselect all Antennas';
-                    for(i=0; i<glyph1.length; i++){
-                        glyph1[i][1][0].visible = true;
-                        glyph2[i][1][0].visible = true;
-
-                    }
-
-                    batchsel.active = [0,1,2,3]
-                }
-            """
-
-    return code
-
-
-def toggle_err_callback():
-    """JS callback for Error toggle  Toggle button
-        Returns : string
-    """
-    code = """
-            var i;
-             //if toggle button active
-            if (this.active==false)
-                {
-                    this.label='Show All Error bars';
-
-
-                    for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = false;
-                        //checking for error on phase and imaginary planes as these tend to go off
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = false;
-                        }
-
-
-
-                    }
-                }
-            else{
-                    this.label='Hide All Error bars';
-                    for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = true;
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = true;
-                        }
-                    }
-                }
-            """
-    return code
-
-
-def batch_select_callback():
-    """JS callback for batch selection Checkboxes
-        Returns : string
-    """
-    code = """
-            # bax = [ [batch1], [batch2], [batch3] ]
-
-            # j is batch number
-            # i is glyph number
-            j=0
-            i=0
-
-            if 0 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[0][i][1][0].visible = true
-                    bax2[0][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[0][i][1][0].visible = false
-                    bax2[0][i][1][0].visible = false
-                    i++
-
-            if 1 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[1][i][1][0].visible = true
-                    bax2[1][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[1][i][1][0].visible = false
-                    bax2[1][i][1][0].visible = false
-                    i++
-
-            if 2 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[2][i][1][0].visible = true
-                    bax2[2][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[2][i][1][0].visible = false
-                    bax2[2][i][1][0].visible = false
-                    i++
-
-            if 3 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[3][i][1][0].visible = true
-                    bax2[3][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[3][i][1][0].visible = false
-                    bax2[3][i][1][0].visible = false
-                    i++
-
-
-
-            if this.active.length == 4
-                antsel.active = true
-                antsel.label =  "Deselect all Antennas"
-            else if this.active.length == 0
-                antsel.active = false
-                antsel.label = "Select all Antennas"
-           """
-    return code
-
-
-def legend_toggle_callback():
-    """JS callback for legend toggle Dropdown menu
-        Returns : string
-    """
-    code = """
-                var len = loax1.length;
-                var i ;
-                if (this.value == "alo"){
-                    for(i=0; i<len; i++){
-                        loax1[i].visible = true;
-                        loax2[i].visible = true;
-
-                    }
-                }
-
-                else{
-                    for(i=0; i<len; i++){
-                        loax1[i].visible = false;
-                        loax2[i].visible = false;
-
-                    }
-                }
-
-
-
-                if (this.value == "elo"){
-                    for(i=0; i<len; i++){
-                        loax1_err[i].visible = true;
-                        loax2_err[i].visible = true;
-
-                    }
-                }
-
-                else{
-                    for(i=0; i<len; i++){
-                        loax1_err[i].visible = false;
-                        loax2_err[i].visible = false;
-
-                    }
-                }
-
-                if (this.value == "all"){
-                    for(i=0; i<len; i++){
-                        loax1[i].visible = true;
-                        loax2[i].visible = true;
-                        loax1_err[i].visible = true;
-                        loax2_err[i].visible = true;
-
-                    }
-                }
-
-                if (this.value == "non"){
-                    for(i=0; i<len; i++){
-                        loax1[i].visible = false;
-                        loax2[i].visible = false;
-                        loax1_err[i].visible = false;
-                        loax2_err[i].visible = false;
-
-                    }
-                }
-           """
-    return code
-
-
-def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, batch_size=16):
-    """Automates creation of antenna batches of 16 each unless otherwise
-
-        batch_0 : li_ax1[:16]
-        equivalent to
-        batch_0 = li_ax1[:16]
-
-    Inputs
-    ------
-
-    batch_size: int
-                Number of antennas in a legend object
-    num_leg_objs: int
-                Number of legend objects to be created
-    li_ax1: list
-                List containing all legend items for antennas for 1st figure
-                Items are in the form (antenna_legend, [glyph])
-    li_ax2: list
-                List containing all legend items for antennas for 2nd figure
-                Items are in the form (antenna_legend, [glyph])
-    lierr_ax1: list
-                List containing legend items for errorbars for 1st figure
-                Items are in the form (error_legend, [glyph])
-    lierr_ax2: list
-                List containing legend items for errorbars for 2nd figure
-                Items are in the form (error_legend, [glyph])
-
-    Outputs
-    -------
-
-    (bax1, bax1_err, bax2, bax2_err): Tuple
-                Tuple containing List of lists which have batch_size number of legend items for each batch.
-                Results in batches for figure1 antenna legends, figure1 error legends, figure2 antenna legends, figure2 error legends.
-
-                e.g bax1 = [[batch0], [batch1], ...,  [batch_numOfBatches]]
-
-    """
-
-    bax1, bax1_err, bax2, bax2_err = [], [], [], []
-
-    j = 0
-    for i in range(num_leg_objs):
-        # in case the number is not a multiple of 16
-        if i == num_leg_objs:
-            bax1.extend([li_ax1[j:]])
-            bax2.extend([li_ax2[j:]])
-            bax1_err.extend([lierr_ax1[j:]])
-            bax2_err.extend([lierr_ax2[j:]])
-        else:
-            bax1.extend([li_ax1[j:j + batch_size]])
-            bax2.extend([li_ax2[j:j + batch_size]])
-            bax1_err.extend([lierr_ax1[j:j + batch_size]])
-            bax2_err.extend([lierr_ax2[j:j + batch_size]])
-
-        j += batch_size
-
-    return bax1, bax1_err, bax2, bax2_err
-
-
-def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
-    """Creates legend objects using items from batches list
-       Legend objects allow legends be positioning outside the main plot
-
-   Inputs
-   ------
-   num_leg_objs: int
-                 Number of legend objects to be created
-   bax1: list
-         Batches for antenna legends of 1st figure
-   bax2: list
-         Batches for antenna legends of 2nd figure
-   baerr_ax1: list
-         Batches for error bar legends of 1st figure
-   baerr_ax2: list
-         Batches for error bar legends of 2nd figure
-
-
-   Outputs
-   -------
-   (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
-            Tuple containing dictionaries with legend objects for
-            ax1 antenna legend objects, ax1 error bar legend objects,
-            ax2 antenna legend objects, ax2 error bar legend objects
-
-            e.g.
-            leg_0 : Legend(items=batch_0, location='top_right', click_policy='hide')
-            equivalent to
-            leg_0 = Legend(
-                items=batch_0, location='top_right', click_policy='hide')
-    """
-
-    lo_ax1, lo_ax2, loerr_ax1, loerr_ax2 = {}, {}, {}, {}
-
-    for i in range(num_leg_objs):
-        lo_ax1['leg_%s' % str(i)] = Legend(items=bax1[i],
-                                           location='top_right',
-                                           click_policy='hide')
-        lo_ax2['leg_%s' % str(i)] = Legend(items=bax2[i],
-                                           location='top_right',
-                                           click_policy='hide')
-        loerr_ax1['leg_%s' % str(i)] = Legend(
-            items=baerr_ax1[i],
-            location='top_right',
-            click_policy='hide',
-            visible=False)
-        loerr_ax2['leg_%s' % str(i)] = Legend(
-            items=baerr_ax2[i],
-            location='top_right',
-            click_policy='hide',
-            visible=False)
-
-    return lo_ax1, loerr_ax1, lo_ax2, loerr_ax2
-
-
-def gen_checkbox_labels(batch_size, num_leg_objs):
-    """ Auto-generating Checkbox labels
-
-    Inputs
-    ------
-    batch_size: int
-                Number of items in a single batch
-    num_leg_objs: int
-                Number of legend objects / Number of batches
-    Outputs
-    ------
-    labels: list
-            Batch labels for the check box
-    """
-
-    labels = []
-    s = 0
-    e = batch_size - 1
-    for i in range(num_leg_objs):
-        labels.append("A%s - A%s" % (s, e))
-        s = s + batch_size
-        e = e + batch_size
-
-    return labels
-
-
-def save_html(hname, plot_layout):
-    """Save [and show] resultant HTML file
-    Inputs
-    ------
-    hname: str
-           HTML Output file name
-    plot_layout: Bokeh layout object
-                 Layout of the Bokeh plot, could be row, column, gridplot
-
-    Outputs
-    -------
-    Nothing
-    """
-    output_file(hname + ".html")
-    output = save(plot_layout, hname + ".html", title=hname)
-    # uncomment next line to automatically plot on web browser
-    # show(layout)
 
 
 def add_axis(fig, axis_range, ax_label):
@@ -794,62 +353,6 @@ def get_fields(ms_name):
     return field_names
 
 
-def get_tooltip_data(xds_table_obj, ms_name, xaxis):
-    """Function to get the data to be displayed on the mouse tooltip on the plots.
-    Inputs
-    ------
-    table_obj: pyrap table object
-    gtype: str
-           Type of gain table being plotted
-
-    Outputs
-    -------
-    spw_id: ndarray
-            Spectral window ids
-    scan_no: ndarray
-             scan ids
-    ttip_antnames: array
-                   Antenna names to show up on the tooltips
-
-
-    """
-    spw_id = xds_table_obj.DATA_DESC_ID
-    scan_no = xds_table_obj.SCAN_NUMBER.data.compute()
-    ant1_id = xds_table_obj.ANTENNA1.data.compute()
-    ant2_id = xds_table_obj.ANTENNA2.data.compute()
-
-    # MAYBE  CHANGE THIS TOOLTIP TO baseline!!!!!!!!!
-    antnames = get_antennas(ms_name)
-    # get available antenna names from antenna id
-    ttip_antnames = np.asarray(['({}, {})'.format(
-        antnames[x], antnames[y]) for x, y in zip(ant1_id, ant2_id)])
-
-    freqs = get_frequencies(ms_name)
-    nchan = len(freqs)
-
-    if xaxis == 'channel' or xaxis == 'frequency':
-        """spw_id = spw_id.reshape(spw_id.size, 1)
-                                spw_id = spw_id.repeat(nchan, axis=1)
-                                scan_no = scan_no.reshape(scan_no.size, 1)
-                                scan_no = scan_no.repeat(nchan, axis=1)
-                                ant1_id = ant1_id.reshape(ant1_id.size, 1)
-                                ant1_id = ant1_id.repeat(nchan, axis=1)
-                                ant2_id = ant2_id.reshape(ant2_id.size, 1)
-                                ant2_id = ant2_id.repeat(nchan, axis=1)"""
-        spw_id = spw_id.reshape(1, spw_id.size)
-        spw_id = spw_id.repeat(nchan, axis=0)
-        scan_no = scan_no.reshape(1, scan_no.size)
-        scan_no = scan_no.repeat(nchan, axis=0)
-        ant1_id = ant1_id.reshape(1, ant1_id.size)
-        ant1_id = ant1_id.repeat(nchan, axis=0)
-        ant2_id = ant2_id.reshape(1, ant2_id.size)
-        ant2_id = ant2_id.repeat(nchan, axis=0)
-        ttip_antnames = ttip_antnames.reshape(1, ttip_antnames.size)
-        ttip_antnames = ttip_antnames.repeat(nchan, axis=0)
-
-    return spw_id, scan_no, ttip_antnames
-
-
 def calc_uvdist(uvw):
     """ Function to Calculate uv distance in metres
     Inputs
@@ -895,6 +398,23 @@ def calc_uvwave(uvw, freq):
     return uvwave
 
 
+def time_convert(xdata):
+    # get first time instance
+    init_time = xdata[0].data.compute()
+
+    # get number of seconds from initial time
+    time = xdata - init_time
+
+    # convert the initial time to unix time in seconds
+    init_time = qa.quantity(init_time, 's').to_unix_time()
+
+    # Add the initial unix time in seconds to get actual time progrssion
+    newtime = time + init_time
+
+    newtime = da.array(newtime, dtype='datetime64[s]')
+    return newtime
+
+
 def get_xaxis_data(xds_table_obj, ms_name, xaxis):
     """Function to get x-axis data. It is dependent on the gaintype.
         This function also returns the relevant x-axis labels for both pairs of plots.
@@ -924,6 +444,9 @@ def get_xaxis_data(xds_table_obj, ms_name, xaxis):
             xaxis_label = 'Channel'
         else:
             xaxis_label = 'Frequency'
+    elif xaxis == 'phase':
+        xdata = xds_table_obj.DATA
+        xaxis_label = 'Phase (Deg)'
     elif xaxis == 'scan':
         xdata = xds_table_obj.SCAN_NUMBER
         xaxis_label = 'Scan'
@@ -949,11 +472,6 @@ def prep_xaxis_data(xdata, xaxis, freq=None):
     ------
     xdata: 1-D array
            Data for the xaxis to be prepared
-    gtype: str
-           gain type of the table to plot
-    ptype: str
-           Type of plot, whether ap or ri
-
     freq: float
           REQUIRED ONLY when xaxis specified is 'uvwave'. In this case.
           this function must be the called within a loop containing all
@@ -968,18 +486,23 @@ def prep_xaxis_data(xdata, xaxis, freq=None):
         prepdx = xdata.chan
     elif xaxis == 'frequency':
         prepdx = xdata
+    elif xaxis == 'phase':
+        prepdx = get_phase(xdata, deg=True)
     elif xaxis == 'time':
-        prepdx = xdata - xdata[0]
+        prepdx = time_convert(xdata)
     elif xaxis == 'uvdistance':
         prepdx = calc_uvdist(xdata)
     elif xaxis == 'uvwave':
         prepdx = calc_uvwave(xdata, freq)
     elif xaxis == 'antenna1' or xaxis == 'antenna2' or xaxis == 'scan':
         prepdx = xdata
+    elif xaxis == 'phase':
+        # TODO: add clause for phase. It must be processed
+        pass
     return prepdx
 
 
-def get_yaxis_data(xds_table_obj, ms_name, ptype):
+def get_yaxis_data(xds_table_obj, ms_name, yaxis):
     """ Function to extract the required column for the y-axis data.
     This column is determined by ptype which can be amplitude vs phase 'ap'
     or real vs imaginary 'ri'.
@@ -992,25 +515,27 @@ def get_yaxis_data(xds_table_obj, ms_name, ptype):
     gtype: str
            Gain table type B, F, G or K.
 
-    ptype: str
+    yaxis: str
            Plot type ap / ri
 
     Outputs
     -------
     Returns np.ndarray dataa as well as the y-axis labels (str) for both plots.
     """
-    if ptype == 'ap':
-        y1_label = 'Amplitude'
-        y2_label = 'Phase[deg]'
-    else:
-        y1_label = 'Real'
-        y2_label = 'Imaginary'
+    if yaxis == 'amplitude':
+        y_label = 'Amplitude'
+    elif yaxis == 'imaginary':
+        y_label = 'Imaginary'
+    elif yaxis == 'phase':
+        y_label = 'Phase[deg]'
+    elif yaxis == 'real':
+        y_label = 'Real'
 
     ydata = xds_table_obj.DATA
-    return ydata, y1_label, y2_label
+    return ydata, y_label
 
 
-def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=False):
+def prep_yaxis_data(xds_table_obj, ms_name, ydata, yaxis='amplitude', corr=0, flag=False, iterate=None):
     """Function to process data for the y-axis. Part of the processing includes:
     - Selecting correlation for the data and error
     - Flagging
@@ -1024,9 +549,7 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=Fals
                table object for an already open table
     ydata: ndarray
            Relevant y-axis data to be processed
-    gtype: str
-           Gain table type  B, F, G or K.
-    ptype: str
+    yaxis: str
            Plot type 'ap' / 'ri'
     corr: int
           Correlation number to select
@@ -1035,28 +558,40 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, ptype='ap', corr=0, flag=Fals
 
     Outputs
     -------
-    y1: masked ndarray
+    y: masked ndarray
         Amplitude / real part of the complex input data.
-    y1_err: masked ndarray
+    y_err: masked ndarray
         Error data for y1.
-    y2: masked ndarray
-        Phase angle / Imaginary part of input data.
-    y2_err: masked ndarray
-        Error data for y2.
 
     """
-    # select data correlation for both the data and the errors
-    ydata = ydata.sel(corr=corr)
-    # ydata_errors = get_errors(ms_name).sel(corr=corr)
-    # ydata_errors = get_errors(table_obj)[:, :, corr]
-    if flag:
+    if iterate == 'corr':
+        ydata = list(ydata.groupby('corr'))
+        ydata = [x[1] for x in ydata]
+        flags = get_flags(xds_table_obj).groupby('corr')
+        flags = [x[1] for x in flags]
+    else:
+        ydata = ydata.sel(corr=corr)
         flags = get_flags(xds_table_obj).sel(corr=corr)
-        ydata = da.ma.masked_array(data=ydata, mask=flags)
-        # ydata_errors = da.ma.masked_array(data=ydata_errors, mask=flags)
 
-    y1, y2 = process_data(ydata, ptype=ptype)
+    # if flagging enabled return a list otherwise return a single dataarray
+    if flag:
+        if isinstance(ydata, list):
+            y = []
+            for d, f in zip(ydata, flags):
+                masked = da.ma.masked_array(data=d, mask=f)
+                y.append(process_data(masked, yaxis=yaxis))
+        else:
+            masked = da.ma.masked_array(data=ydata, mask=flags)
+            y = process_data(masked, yaxis=yaxis)
+    else:
+        if isinstance(ydata, list):
+            y = []
+            for d in ydata:
+                y.append(process_data(d, yaxis=yaxis))
+        else:
+            y = process_data(ydata, yaxis=yaxis)
 
-    return y1, y2
+    return y
 
 
 def get_phase(ydata, unwrap=False):
@@ -1082,26 +617,27 @@ def get_imaginary(ydata):
     return imag
 
 
-def process_data(ydata, ptype):
-    if ptype == 'ap':
-        y1 = get_amplitude(ydata)
-        y2 = get_phase(ydata)
-    else:
-        y1 = get_real(ydata)
-        y2 = get_imaginary(ydata)
+def process_data(ydata, yaxis):
+    if yaxis == 'amplitude':
+        y = get_amplitude(ydata)
+    elif yaxis == 'imaginary':
+        y = get_imaginary(ydata)
+    elif yaxis == 'phase':
+        y = get_phase(ydata)
+    elif yaxis == 'real':
+        y = get_real(ydata)
+    return y
 
-    return y1,  y2
 
-
-def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=False, ititle=None, color='blue'):
+def blackbox(xds_table_obj, ms_name, xaxis, yaxis, corr, showFlagged=False, ititle=None, color='blue', iterate=None):
     x_data, xlabel = get_xaxis_data(xds_table_obj, ms_name, xaxis)
-    y_data, y1label, y2label = get_yaxis_data(xds_table_obj, ms_name, ptype)
-    y1_prepd, y2_prepd = prep_yaxis_data(xds_table_obj, ms_name, y_data,
-                                         ptype=ptype, corr=corr,
-                                         flag=showFlagged)
+    y_data, ylabel = get_yaxis_data(xds_table_obj, ms_name, yaxis)
+    y_prepd = prep_yaxis_data(xds_table_obj, ms_name, y_data,
+                              yaxis=yaxis, corr=corr,
+                              flag=showFlagged, iterate=iterate)
     if xaxis == 'channel' or xaxis == 'frequency':
-        y1_prepd = y1_prepd.transpose()
-        y2_prepd = y2_prepd.transpose()
+        y_prepd = y_prepd.transpose()
+        y_prepd = y_prepd.transpose()
     #fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(40, 20))
 
     # plt.tight_layout()
@@ -1114,118 +650,172 @@ def blackbox(xds_table_obj, ms_name, xaxis, ptype, corr, showFlagged=False, itit
         # for mpl
     #f1, f2 = mpl_plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
     """mpl_plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd, xaxis, xlab=xlabel,
-                            ptype=ptype, y1lab=y1label, y2lab=y2label, ititle=ititle, color=color)"""
-    f1, f2 = hv_plotter(x_prepd, y1_prepd, y2_prepd, xaxis, xlab=xlabel,
-                        ptype=ptype, y1lab=y1label, y2lab=y2label, ititle=ititle, color=color)
-    return f1, f2
+                            yaxis=yaxis, y1lab=y1label, y2lab=y2label, ititle=ititle, color=color)"""
+    fig = hv_plotter(x_prepd, y_prepd, xaxis, xlab=xlabel,
+                     yaxis=yaxis, ylab=ylabel, ititle=ititle,
+                     color=color, iterate=iterate,
+                     xds_table_obj=xds_table_obj, ms_name=ms_name)
+    return fig
 
 
-def mpl_plotter(ax1, ax2, x, y1, y2, xaxis, xlab='', ptype='ap',
-                y1lab='', y2lab='', ititle=None, color='blue'):
-    x, y1, y2 = compute(x, y1, y2)
+def mpl_plotter(ax1, x, y1, y2, xaxis, xlab='', yaxis='amplitude',
+                ylab='', ititle=None, color='blue'):
+    x, y = compute(x, y)
     ax1.plot(x, y1, marker='o', markersize=0.5, linewidth=0, color=color)
-    ax2.plot(x, y2, marker='o', markersize=0.5, linewidth=0, color=color)
 
     ax1.set_xlabel(xlab)
-    ax2.set_xlabel(xlab)
-
     ax1.set_ylabel(y1lab)
-    ax2.set_ylabel(y2lab)
 
     if ititle is not None:
         ax1.set_title("{}: {} vs {}".format(ititle, y1lab, xlab))
-        ax2.set_title("{}: {} vs {}".format(ititle, y2lab, xlab))
         plt.savefig(fname="{}_{}_{}".format(ititle, ptype, xaxis))
     else:
         ax1.set_title("{} vs {}".format(y1lab, xlab))
-        ax2.set_title("{} vs {}".format(y2lab, xlab))
         plt.savefig(fname="{}_{}".format(ptype, xaxis))
     plt.close('all')
 
-    return None, None
-    # return ax1, ax2
+    return None
+    # return ax1
 
 
-def hv_plotter(x, y1, y2, xaxis, xlab='', ptype='ap',
-               y1lab='', y2lab='', ititle=None, color='blue'):
+def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
+               iterate=None, ititle=None, color='blue',
+               xds_table_obj=None, ms_name=None):
+    """
+        Plotting with holoviews
+    Input
+    -----
+        x:      xarray.DataArray
+                x to plot
+        y:      xarray.DataArray
+                y to plot
+        xaxis:  str
+                xaxis to be plotted
+        xlab:   str
+                Label to appear on xaxis
+        yaxis:  str
+                yaxis to be plotted
+        ylab:   str
+                Label to appear i  yaxis
+        iterate: str
+                Iteration over axis
+        ititle: str
+                title to appear incasea of iteration
+        color:  str, colormap, cycler object
 
-    #x, y1, y2 = compute(x, y1, y2)
+        xds_table_obj: xarray.Dataset object
+        ms_nmae: str
+                 Path to measurement set
+
+    """
     hv.extension('bokeh', logo=False)
     w = 900
     h = 700
-    if ititle:
-        w, h = 400, 400
-    #xcol_name = x.name
-    #y1col_name = y1.name
-    #y2col_name = y2.name
-    x.name = xaxis
-    y1.name = y1lab
-    y2.name = y2lab
 
-    title1 = "{} vs {}".format(y1lab, xlab)
-    title2 = "{} vs {}".format(y2lab, xlab)
+    ys = {'amplitude': [('Amplitude', 'Amplitude')],
+          'phase': [('Phase', 'Phase (deg)')],
+          'real': [('Real', 'Real')],
+          'imaginary': [('Imaginary', 'Imaginary')]}
+
+    xs = {'time': [('Time', 'Time')],
+          'scan': [('Scan', 'Scan')],
+          'antenna1': [('Antenna1', 'Ant1')],
+          'antenna2': [('Antenna2', 'Ant2')],
+          'uvdistance': [('Uvdist', 'UVDistance (m)')],
+          'uvwave': [('Uvwave', 'UVDistance (lambda)')],
+          'frequency': [('Frequency', 'Frequency')],
+          'channel': [('Channel', 'Channel')],
+          'phase': [('Phase', 'Phase (deg)')]
+          }
+
+    # iteration groups
+    baseline = ['Antenna1', 'Antenna2']
+    grps = ['SCAN_NUMBER']
+
+    # changing the Name of the dataArray to the name provided as xaxis
+    x.name = xaxis.capitalize()
+
+    if isinstance(y, list):
+        for i in y:
+            i.name = yaxis.capitalize()
+    else:
+        y.name = yaxis.capitalize()
 
     if xaxis == 'channel' or xaxis == 'frequency':
-        y1 = y1.assign_coords(table_row=x.table_row)
-        y2 = y2.assign_coords(table_row=x.table_row)
+        y = y.assign_coords(table_row=x.table_row)
 
-    res_ds = xa.merge([x, y1, y2])
-    res_df = res_ds.to_dask_dataframe()
+    # setting dependent variables in the data
+    vdims = ys[yaxis]
+    kdims = xs[xaxis]
 
-    res_tab1 = hv.Table(res_df, xaxis, y1lab)
-    res_tab2 = hv.Table(res_df, xaxis, y2lab)
-    ax1 = hd.datashade(res_tab1, dynamic=False, cmap=color).opts(title=title1,
-                                                                 width=w,
-                                                                 height=h)
-    ax2 = hd.datashade(res_tab2, dynamic=False, cmap=color).opts(title=title2,
-                                                                 width=w,
-                                                                 height=h)
-    #oup = ax1 + ax2
-    #hv.save(oup, 'test.html')
-    return ax1, ax2
+    # get grouping data
+    scans = get_xaxis_data(xds_table_obj, ms_name, 'scan')[0]
+    scans.name = 'Scan'
+    ant1 = get_xaxis_data(xds_table_obj, ms_name, 'antenna1')[0]
+    ant1.name = 'Antenna1'
+    ant2 = get_xaxis_data(xds_table_obj, ms_name, 'antenna2')[0]
+    ant2.name = 'Antenna2'
 
-"""
-def iter_scan(ms_name, xaxis, ptype, corr, showFlagged=False, color='blue'):
-    for scan in scans:
+    # by default, colorize over baseline
+    if iterate == None:
+        title = "{} vs {}".format(ylab, xlab)
+        res_ds = xa.merge([x, y, ant1, ant2])
+        res_df = res_ds.to_dask_dataframe()
+        res_hds = hv.Dataset(res_df, kdims, vdims)
+        #res_hds = hv.NdOverlay(res_hds)
+        ax = hd.datashade(res_hds, dynamic=False,
+                          cmap=color).opts(title=title,
+                                           width=w,
+                                           height=h,
+                                           fontsize={'title': 20,
+                                                     'labels': 16})
 
-        f1, f2 = blackbox(scan, ms_name, xaxis, ptype, corr, showFlagged=True,
-                          ititle=title, color=color)
-        out1.apend(f1)
-        out2.append(f2)
-    return out1, out2
+    else:
+        title = "Iteration over{}: {} vs {}".format(iterate, ylab, xlab)
+        if iterate == 'scan':
+            kdims = kdims + xs['scan']
+            res_ds = xa.merge([x, y, scans])
+            res_df = res_ds.to_dask_dataframe()
+            res_hds = hv.Dataset(res_df, kdims, vdims).groupby('Scan')
+            res_hds = hv.NdOverlay(res_hds)
+            ax = hd.datashade(res_hds, dynamic=False, color_key=color,
+                              aggregator=ds.count_cat('Scan')
+                              ).opts(title=title, width=w,
+                                     height=h, fontsize={'title': 20,
+                                                         'labels': 16})
+        elif iterate == 'spw':
+            grp = grps[2]
+            pass
 
+        elif iterate == 'corr':
+            outs = []
+            for c, item in enumerate(y):
+                res_ds = xa.merge([x, item])
+                res_df = res_ds.to_dask_dataframe()
+                res_hds = hv.Dataset(res_df, kdims, vdims)
 
-def iter_specwin(ms_name, xaxis, ptype, corr, showFlagged=False,
-                 color='blue'):
-    out_1 = []
-    out_2 = []
-    specwins = list(xm.xds_from_ms(ms_name, group_cols='DATA_DESC_ID'))
-    for spw in specwins:
-        title = "SPW_{}".format(spw.DATA_DESC_ID)
-        f1, f2 = blackbox(spw, ms_name, xaxis, ptype, corr, showFlagged=True,
-                          ititle=title, color=color)
-        out1.apend(f1)
-        out2.append(f2)
-    return out1, out2
+                outs.append(hd.datashade(res_hds,
+                                         dynamic=False,
+                                         cmap=color.values[c]))
 
+            ax = hv.Overlay(outs)
+            ax.opts(title=title, width=w, height=h, fontsize={'title': 20,
+                                                              'labels': 16})
 
-def iter_correlation(ms_name, xaxis, ptype, color='blue'):
-    # data selection will be done over each spectral window
-    specwins = list(xm.xds_from_ms(ms_name, group_cols='DATA_DESC_ID'))
-    corr_names = get_polarizations(ms_name)
-    # store outputs for all spws
-    out_1 = []
-    out_2 = []
-    for spw in specwins:
-        for corr in spw.corr.data:
-            title = "Corr_{}".format(corr_names[corr])
-            f1, f2 = blackbox(spw, ms_name, xaxis, ptype, corr=corr, showFlagged=True,
-                              ititle=title, color=color)
-            out1.apend(f1)
-            out2.append(f2)
-    return out1, out2
+    if xaxis == 'time':
 
-"""
+        mint = x.min().data.compute()
+        mint = mint.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
+        maxt = x.max().data.compute()
+        maxt = maxt.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
+
+        xlab = "Time [{} to {}]".format(mint, maxt)
+        timeax_opts = {'xrotation': 45,
+                       'xticks': 30,
+                       'xlabel': xlab}
+        ax.opts(**timeax_opts)
+
+    return ax
 
 
 def stats_display(table_obj, gtype, ptype, corr, field):
@@ -1279,26 +869,18 @@ def stats_display(table_obj, gtype, ptype, corr, field):
     return pre
 
 
-def stringify(inp):
-    """Function to convert multiple strings in a list into a single string.
-    Inputs
-    ------
-    inp: iterable sequence
-         sequence of strings
-
-    Outputs
-    -------
-    text: str
-          A single string combining all the strings in the input sequence.
-    """
-    text = ''
-    for item in inp:
-        text = text + item
-    return text
-
-
 def get_argparser():
     """Get argument parser"""
+
+    x_choices = ['antenna1', 'antenna2',
+                 'channel', 'frequency',
+                 'phase', 'scan', 'time']
+
+    y_choices = ['amplitude', 'imaginary', 'phase', 'real']
+
+    iter_choices = ['scan', 'corr', 'spw']
+
+    # TODO: make this arg parser inherit from ragavi the common options
     parser = ArgumentParser(usage='prog [options] <value>')
     parser.add_argument('-a', '--ant', dest='plotants', type=str,
                         help='Plot only this antenna, or comma-separated list\
@@ -1312,9 +894,9 @@ def get_argparser():
                         help='Matplotlib colour map to use for antennas\
                              (default=coolwarm)',
                         default='coolwarm')
-    parser.add_argument('-d', '--doplot', dest='doplot', type=str,
-                        help='Plot complex values as amp and phase (ap)'
-                        'or real and imag (ri) (default = ap)', default='ap')
+    parser.add_argument('--yaxis', dest='yaxis', type=str,
+                        choices=y_choices, help='Y axis variable to plot',
+                        default='amplitude')
     parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
                         help='Field ID(s) / NAME(s) to plot', default=None)
     parser.add_argument('--htmlname', dest='html_name', type=str,
@@ -1343,10 +925,11 @@ def get_argparser():
                         help='Maximum y-value to plot for lower panel (default=full range)',
                         default=-1)
     parser.add_argument('--xaxis', dest='xaxis', type=str,
-                        help='x-axis to plot', default='time')
+                        choices=x_choices, help='x-axis to plot',
+                        default='time')
 
     parser.add_argument('--iterate', dest='iterate', type=str,
-                        choices=['scan', 'corr', 'spw'],
+                        choices=iter_choices,
                         help='Select which variable to iterate over \
                               (defaults to none)',
                         default=None)
@@ -1367,7 +950,7 @@ def main(**kwargs):
         options = parser.parse_args()
 
         corr = int(options.corr)
-        doplot = options.doplot
+        yaxis = options.yaxis
         field_ids = options.fields
         html_name = options.html_name
         image_name = options.image_name
@@ -1389,7 +972,7 @@ def main(**kwargs):
         NB_RENDER = True
 
         field_ids = kwargs.get('fields', [])
-        doplot = kwargs.get('doplot', 'ap')
+        yaxis = kwargs.get('yaxis', 'ap')
         plotants = kwargs.get('plotants', [-1])
         corr = int(kwargs.get('corr', 0))
         t0 = float(kwargs.get('t0', -1))
@@ -1413,90 +996,60 @@ def main(**kwargs):
         sys.exit(-1)
 
     for mytab, field in zip(mytabs, field_ids):
+        # for each pair of table and field
 
         field_names = get_fields(mytab).data.compute()
+
         # get id: field_name pairs
         field_ids = dict(enumerate(field_names))
+
+        # convert all field names to their field ids
         if field.isdigit():
             field = int(field)
         else:
             field = name_2id(field, field_ids)
 
-        if iterate == 'scan':
-            # group per scan
-            partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols=['FIELD_ID',
-                                                         'DATA_DESC_ID'],
-                                             ack=False))
-        elif iterate == 'corr':
-            # group per spw first
-            partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols=['FIELD_ID',
-                                                         'DATA_DESC_ID'],
-                                             ack=False))
-            corr_names = get_polarizations(mytab)
+        # iterate over spw and field ids by default
+        # by default data is grouped in field ids and data description
+        partitions = list(xm.xds_from_ms(mytab, ack=False))
 
-        elif iterate == 'spw':
-            partitions = list(xm.xds_from_ms(mytab,
-                                             group_cols=['FIELD_ID',
-                                                         'DATA_DESC_ID'],
-                                             ack=False))
-        elif iterate is None:
-            # iterate over spw and field ids by default
-            # by default data is grouped in field ids and data description
-            partitions = list(xm.xds_from_ms(mytab, ack=False))
-
-        if iterate == 'scan':
-            cNorm = colors.Normalize(vmin=0, vmax=len(field_names) - 1)
-        else:
-            cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
+        #cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
+        #scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
 
         mymap = cmx.get_cmap(mycmap)
-        scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
-
         oup_a = []
-        oup_b = []
+
         for count, chunk in enumerate(partitions):
 
-            colour = scalarMap.to_rgba(float(count), bytes=True)[:-1]
+            #colour = scalarMap.to_rgba(float(count), bytes=True)[:-1]
             #colour = colors.to_hex(mymap(count)).encode('utf-8')
             #colour = mymap(count)[:-1]
-            if iterate == 'scan':
-                colour = scalarMap.to_rgba(
-                    float(chunk.FIELD_ID), bytes=True)[:-1]
-                title = "Scan_{}".format(chunk.SCAN_NUMBER)
-                f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
-                                  showFlagged=False, ititle=title,
-                                  color=colour)
-            elif iterate == 'spw':
-                title = "SPW_{}".format(chunk.DATA_DESC_ID)
-                f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
-                                  showFlagged=False, ititle=title,
-                                  color=colour)
+            colour = mymap
 
-            elif iterate == 'corr':
-                for corr in chunk.corr.data:
-                    title = "Corr_{}".format(corr_names[corr])
-                    f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr=corr,
-                                      showFlagged=False, ititle=title, color=colour)
+            # Only plot the specified field id
+            if chunk.FIELD_ID != field:
+                continue
+
+            # black box returns an plottable element / composite element
+            if iterate != None:
+                title = "TEST"
+                colour = cycle(['red', 'blue', 'green', 'purple'])
+                f = blackbox(chunk, mytab, xaxis, yaxis, corr,
+                             showFlagged=False, ititle=title,
+                             color=colour, iterate=iterate)
             else:
-                f1, f2 = blackbox(chunk, mytab, xaxis, doplot, corr,
-                                  showFlagged=False, ititle=None,
-                                  color=colour)
+                ititle = None
+                f = blackbox(chunk, mytab, xaxis, yaxis, corr,
+                             showFlagged=False, ititle=ititle,
+                             color=colour, iterate=iterate)
 
             # store resulting dynamicmaps
-            oup_a.append(f1)
-            oup_b.append(f2)
+            oup_a.append(f)
 
         l = hv.Overlay(oup_a).collate().opts(width=900, height=700)
 
-        r = hv.Overlay(oup_b).collate().opts(width=900, height=700)
-
-        lega = hv.NdOverlay({count: hv.Points([0, 0]).opts(color=scalarMap.to_rgba(
-            float(count), bytes=True)[:-1]) for count, des in enumerate(oup_a)})
-
-        layout = hv.Layout([l, r])
-        fname = "{}_{}.html".format(doplot, xaxis)
+        layout = hv.Layout([l])
+        fname = "{}_{}.html".format(yaxis, xaxis)
         hv.save(layout, fname)
 
 # for demo
