@@ -721,7 +721,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
           'scan': [('Scan', 'Scan')],
           'antenna1': [('Antenna1', 'Ant1')],
           'antenna2': [('Antenna2', 'Ant2')],
-          'uvdistance': [('Uvdist', 'UVDistance (m)')],
+          'uvdistance': [('Uvdistance', 'UVDistance (m)')],
           'uvwave': [('Uvwave', 'UVDistance (lambda)')],
           'frequency': [('Frequency', 'Frequency GHz')],
           'channel': [('Channel', 'Channel')],
@@ -800,14 +800,14 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
 
         elif iterate == 'corr':
             outs = []
-            for c, item in enumerate(y):
+            for item in y:
                 res_ds = xa.merge([x, item])
                 res_df = res_ds.to_dask_dataframe()
                 res_hds = hv.Dataset(res_df, kdims, vdims)
 
                 outs.append(hd.datashade(res_hds,
                                          dynamic=False,
-                                         cmap=color.values[c]))
+                                         cmap=color.next()))
 
             ax = hv.Overlay(outs)
             ax.opts(title=title, width=w, height=h, fontsize={'title': 20,
@@ -885,7 +885,8 @@ def get_argparser():
 
     x_choices = ['antenna1', 'antenna2',
                  'channel', 'frequency',
-                 'phase', 'scan', 'time']
+                 'phase', 'scan', 'time',
+                 'uvdistance', 'uvwave']
 
     y_choices = ['amplitude', 'imaginary', 'phase', 'real']
 
@@ -1054,7 +1055,11 @@ def main(**kwargs):
         l = hv.Overlay(oup_a).collate().opts(width=900, height=700)
 
         layout = hv.Layout([l])
+
         fname = "{}_{}.html".format(yaxis, xaxis)
+
+        if html_name != None:
+            fname = html_name + '_' + fname
         hv.save(layout, fname)
 
 # for demo
