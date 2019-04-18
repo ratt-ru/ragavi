@@ -444,9 +444,9 @@ def get_xaxis_data(xds_table_obj, ms_name, xaxis):
             xaxis_label = 'Channel'
         else:
             xaxis_label = 'Frequency GHz'
-    elif xaxis == 'phase':
+    elif xaxis == 'real':
         xdata = xds_table_obj.DATA
-        xaxis_label = 'Phase (Deg)'
+        xaxis_label = 'Real'
     elif xaxis == 'scan':
         xdata = xds_table_obj.SCAN_NUMBER
         xaxis_label = 'Scan'
@@ -460,7 +460,7 @@ def get_xaxis_data(xds_table_obj, ms_name, xaxis):
         xdata = xds_table_obj.UVW
         xaxis_label = 'UV Wave [lambda]'
     else:
-        print("Invalid xaxis name")
+        logger.error("Invalid xaxis name")
         return
 
     return xdata, xaxis_label
@@ -487,7 +487,7 @@ def prep_xaxis_data(xdata, xaxis, freq=None):
     elif xaxis == 'frequency':
         prepdx = xdata / 1e9
     elif xaxis == 'phase':
-        prepdx = get_phase(xdata, deg=True)
+        prepdx = xdata
     elif xaxis == 'time':
         prepdx = time_convert(xdata)
     elif xaxis == 'uvdistance':
@@ -638,19 +638,17 @@ def blackbox(xds_table_obj, ms_name, xaxis, yaxis, corr, showFlagged=False, itit
     if xaxis == 'channel' or xaxis == 'frequency':
         y_prepd = y_prepd.transpose()
         y_prepd = y_prepd.transpose()
-    #fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(40, 20))
 
-    # plt.tight_layout()
     if xaxis == 'uvwave':
         freqs = get_frequencies(ms_name).compute()
         x_prepd = prep_xaxis_data(x_data, xaxis, freq=freqs)
+    elif xaxis == 'real':
+        x_prepd = prep_yaxis_data(xds_table_obj, ms_name, x_data,
+                                  yaxis=xaxis, corr=corr,
+                                  flag=showFlagged)
     else:
         x_prepd = prep_xaxis_data(x_data, xaxis)
-        # for bokeh
-        # for mpl
-    #f1, f2 = mpl_plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd)
-    """mpl_plotter(ax1, ax2, x_prepd, y1_prepd, y2_prepd, xaxis, xlab=xlabel,
-                            yaxis=yaxis, y1lab=y1label, y2lab=y2label, ititle=ititle, color=color)"""
+
     fig = hv_plotter(x_prepd, y_prepd, xaxis, xlab=xlabel,
                      yaxis=yaxis, ylab=ylabel, ititle=ititle,
                      color=color, iterate=iterate,
@@ -725,7 +723,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
           'uvwave': [('Uvwave', 'UVDistance (lambda)')],
           'frequency': [('Frequency', 'Frequency GHz')],
           'channel': [('Channel', 'Channel')],
-          'phase': [('Phase', 'Phase (deg)')]
+          'real': [('Real', 'Real')]
           }
 
     # iteration groups
@@ -770,7 +768,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     # by default, colorize over baseline
     if iterate == None:
         title = "{} vs {}".format(ylab, xlab)
-        res_ds = xa.merge([x, y, ant1, ant2])
+        res_ds = xa.merge([x, y])
         res_df = res_ds.to_dask_dataframe()
         res_hds = hv.Dataset(res_df, kdims, vdims)
         #res_hds = hv.NdOverlay(res_hds)
@@ -885,7 +883,7 @@ def get_argparser():
 
     x_choices = ['antenna1', 'antenna2',
                  'channel', 'frequency',
-                 'phase', 'scan', 'time',
+                 'real', 'scan', 'time',
                  'uvdistance', 'uvwave']
 
     y_choices = ['amplitude', 'imaginary', 'phase', 'real']
