@@ -1,15 +1,12 @@
 bokeh
-matplotlib==2.2.3
-nodeenv==1.3.2
-notebook==5.5.0
-ipython>=5.8.0,<6.0
-ipykernel>=4.8.2,<5.0
-numpy==1.15.1
-#python-casacore
+future
+matplotlib==2.2.3; python_version <= '2.7'
+matplotlib; python_version >= '3.5'
+numpy
+python-casacore; python_version <= '2.7'
+python3-casacore; python_version >='3'
 dask
-codex-africanus[complete]
 xarray
 xarray-ms
 holoviews
 datashader
-

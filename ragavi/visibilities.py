@@ -443,7 +443,7 @@ def get_xaxis_data(xds_table_obj, ms_name, xaxis):
         if xaxis == 'channel':
             xaxis_label = 'Channel'
         else:
-            xaxis_label = 'Frequency'
+            xaxis_label = 'Frequency GHz'
     elif xaxis == 'phase':
         xdata = xds_table_obj.DATA
         xaxis_label = 'Phase (Deg)'
@@ -485,7 +485,7 @@ def prep_xaxis_data(xdata, xaxis, freq=None):
     if xaxis == 'channel':
         prepdx = xdata.chan
     elif xaxis == 'frequency':
-        prepdx = xdata
+        prepdx = xdata / 1e9
     elif xaxis == 'phase':
         prepdx = get_phase(xdata, deg=True)
     elif xaxis == 'time':
@@ -723,7 +723,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
           'antenna2': [('Antenna2', 'Ant2')],
           'uvdistance': [('Uvdist', 'UVDistance (m)')],
           'uvwave': [('Uvwave', 'UVDistance (lambda)')],
-          'frequency': [('Frequency', 'Frequency')],
+          'frequency': [('Frequency', 'Frequency GHz')],
           'channel': [('Channel', 'Channel')],
           'phase': [('Phase', 'Phase (deg)')]
           }
@@ -743,6 +743,17 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
 
     if xaxis == 'channel' or xaxis == 'frequency':
         y = y.assign_coords(table_row=x.table_row)
+        xma = x.max().data.compute()
+        xmi = x.min().data.compute()
+
+        def twinx(plot, element):
+            # Setting the second y axis range name and range
+            start, end = (element.range(1))
+            label = element.dimensions()[1].pprint_label
+            plot.state.extra_y_ranges = {"foo": Range1d(start=xmi, end=xma)}
+            # Adding the second axis to the plot.
+            linaxis = LinearAxis(axis_label='% Channel', y_range_name='foo')
+            plot.state.add_layout(linaxis, 'above')
 
     # setting dependent variables in the data
     vdims = ys[yaxis]
@@ -771,7 +782,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                                                      'labels': 16})
 
     else:
-        title = "Iteration over{}: {} vs {}".format(iterate, ylab, xlab)
+        title = "Iteration over {}: {} vs {}".format(iterate, ylab, xlab)
         if iterate == 'scan':
             kdims = kdims + xs['scan']
             res_ds = xa.merge([x, y, scans])
@@ -882,10 +893,12 @@ def get_argparser():
 
     # TODO: make this arg parser inherit from ragavi the common options
     parser = ArgumentParser(usage='prog [options] <value>')
+    """
     parser.add_argument('-a', '--ant', dest='plotants', type=str,
                         help='Plot only this antenna, or comma-separated list\
                               of antennas',
                         default=[-1])
+    """
     parser.add_argument('-c', '--corr', dest='corr', type=int,
                         help='Correlation index to plot (usually just 0 or 1,\
                               default = 0)',
@@ -901,11 +914,17 @@ def get_argparser():
                         help='Field ID(s) / NAME(s) to plot', default=None)
     parser.add_argument('--htmlname', dest='html_name', type=str,
                         help='Output HTMLfile name', default='')
+
+    """
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
                         help='Output image name', default='')
+
+    """
     parser.add_argument('-t', '--table', dest='mytabs',
                         nargs='*', type=str,
                         help='Table(s) to plot (default = None)', default=[])
+
+    """
     parser.add_argument('--t0', dest='t0', type=float,
                         help='Minimum time to plot (default = full range)',
                         default=-1)
@@ -924,6 +943,7 @@ def get_argparser():
     parser.add_argument('--yl1', dest='yl1', type=float,
                         help='Maximum y-value to plot for lower panel (default=full range)',
                         default=-1)
+    """
     parser.add_argument('--xaxis', dest='xaxis', type=str,
                         choices=x_choices, help='x-axis to plot',
                         default='time')
@@ -933,10 +953,12 @@ def get_argparser():
                         help='Select which variable to iterate over \
                               (defaults to none)',
                         default=None)
+    """
     parser.add_argument('--timebin', dest='timebin', type=str,
                         help='Number of timestamsp in each bin')
     parser.add_argument('--chanbin', dest='chanbin', type=str,
                         help='Number of channels in each bin')
+    """
 
     return parser
 
@@ -953,37 +975,20 @@ def main(**kwargs):
         yaxis = options.yaxis
         field_ids = options.fields
         html_name = options.html_name
-        image_name = options.image_name
+        #image_name = options.image_name
         mycmap = options.mycmap
         mytabs = options.mytabs
-        plotants = options.plotants
-        t0 = options.t0
-        t1 = options.t1
-        yu0 = options.yu0
-        yu1 = options.yu1
-        yl0 = options.yl0
-        yl1 = options.yl1
+        #plotants = options.plotants
+        #t0 = options.t0
+        #t1 = options.t1
+        #yu0 = options.yu0
+        #yu1 = options.yu1
+        #yl0 = options.yl0
+        #yl1 = options.yl1
         xaxis = options.xaxis
         iterate = options.iterate
-        timebin = options.timebin
-        chanbin = options.chanbin
-
-    else:
-        NB_RENDER = True
-
-        field_ids = kwargs.get('fields', [])
-        yaxis = kwargs.get('yaxis', 'ap')
-        plotants = kwargs.get('plotants', [-1])
-        corr = int(kwargs.get('corr', 0))
-        t0 = float(kwargs.get('t0', -1))
-        t1 = float(kwargs.get('t1', -1))
-        yu0 = float(kwargs.get('yu0', -1))
-        yu1 = float(kwargs.get('yu1', -1))
-        yl0 = float(kwargs.get('yl0', -1))
-        yl1 = float(kwargs.get('yl1', -1))
-        mycmap = str(kwargs.get('mycmap', 'coolwarm'))
-        image_name = str(kwargs.get('image_name', ''))
-        mytabs = kwargs.get('mytabs', [])
+        #timebin = options.timebin
+        #chanbin = options.chanbin
 
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
