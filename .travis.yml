@@ -1,20 +1,16 @@
 language: python
 dist: xenial
 sudo: required
-python:
-- '2.7'
+matrix:
+  include:
+    - env: PYTHON=py2
+    - env: PYTHON=py3
+services: 
+ - docker
 install:
-- python setup.py install
+ - true
 script:
-- true
-before_install:
-- sudo apt-get update
-- sudo apt-get install -y nodejs
-- pip install --upgrade pip
-- sudo add-apt-repository -y ppa:kernsuite/kern-3
-- sudo apt-get update
-- sudo apt-get install -y python-casacore
-
+ - docker build . -f .travis/${PYTHON}.docker
 deploy:
   provider: pypi
   user: mulan-94
@@ -23,4 +19,4 @@ deploy:
   on:
     tags: true
     distributions: sdist bdist_wheel
-repo: ratt-ru/ragavi
+    repo: ratt-ru/ragavi
