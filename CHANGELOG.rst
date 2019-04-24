@@ -1,3 +1,8 @@
+0.0.6
+-----
+- Now supporting python3
+
+
 0.0.5
 -----
 - Added support for multiple table, fields and gaintype inputs
