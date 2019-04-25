@@ -258,13 +258,14 @@ def get_frequencies(ms_name, spwid=0):
     """Function to get channel frequencies from the SPECTRAL_WINDOW subtable.
     Inputs
     ------
-    table_obj: pyrap table object
+    ms_name: str
+             Name of measurement set
     spwid: int
            Spectral window id number. Defaults to 0
 
     Outputs
     -------
-    freqs: xarray.core.dataarray.DataArray
+    freqs: xarray DataArray
            Channel centre frequencies for specified spectral window.
     """
     subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
@@ -280,7 +281,8 @@ def get_antennas(ms_name):
     """Function to get antennae names from the ANTENNA subtable.
     Inputs
     ------
-    table_obj: pyrap table object
+    ms_name: str
+             Name of measurement set
 
     Outputs
     -------
@@ -297,18 +299,19 @@ def get_antennas(ms_name):
 
 
 def get_flags(xds_table_obj, corr=None):
-    """Function to get Flag values from the FLAG column
+    """ Get Flag values from the FLAG column
     Allows the selection of flags for a single correlation. If none is specified the entire data is then selected.
     Inputs
     ------
-    table_obj: pyrap table object
+    xds_table_obj: xarray Dataset
+                   MS as xarray dataset from xarrayms
     corr: int
           Correlation number to select.
 
     Outputs
     -------
-    flags: xarray.core.dataarray.DataArray
-           Array containing selected flag values.
+    flags: xarray DataArray
+           Data array containing values from FLAG column selected by correlation if index is available.
 
     """
     flags = xds_table_obj.FLAG
@@ -336,14 +339,15 @@ def get_errors(xds_table_obj, corr=None):
 
 
 def get_fields(ms_name):
-    """Function to get field names from the FIELD subtable.
+    """Get field names from the FIELD subtable.
     Inputs
     ------
-    table_obj: pyrap table object
+    ms_name: str
+             Name of measurement set
 
     Outputs
     -------
-    field_names: xarray.core.dataarray.DataArray
+    field_names: xarray DataArray
                  String names for the available data in the table
     """
     subname = "::".join((ms_name, 'FIELD'))
@@ -354,14 +358,15 @@ def get_fields(ms_name):
 
 
 def calc_uvdist(uvw):
-    """ Function to Calculate uv distance in metres
+    """ Calculate uv distance in metres
     Inputs
     ------
-    uvw: xarray.core.dataarray.DataArray
+    uvw: xarray DataArray
+         UVW column from measurement set
 
     Outputs
     -------
-    uvdist: xarray.core.dataarray.DataArray
+    uvdist: xarray DataArray
             uv distance in meters
     """
     u = uvw.isel(**{'(u,v,w)': 0})
@@ -377,13 +382,14 @@ def calc_uvwave(uvw, freq):
 
     Inputs
     ------
-    uvw: xarray.core.dataarray.DataArray
-    freq: float
-          Frequency from which corresponding wavelength will be obtained.
+    uvw: xarray DataArray
+         UVW column from the MS dataset
+    freq: xarray DataArray or float
+          Frequency(ies) from which corresponding wavelength will be obtained.
 
     Outputs
     -------
-    uvwave: xarray.core.dataarray.DataArray
+    uvwave: xarray DataArray
             uv distance in wavelength for specific frequency
     """
 
@@ -399,6 +405,19 @@ def calc_uvwave(uvw, freq):
 
 
 def time_convert(xdata):
+    """ Convert time from MJD to UTC time
+    Inputs
+    ------
+    xdata: xarray DataArray
+           TIME column from the MS xarray dataset in MJD format.
+
+    Outputs
+    -------
+    newtime: xarray DataArray
+             TIME column in a more human readable UTC format. Stored as np.datetime type.
+
+    """
+
     # get first time instance
     init_time = xdata[0].data.compute()
 
@@ -420,67 +439,71 @@ def get_xaxis_data(xds_table_obj, ms_name, xaxis):
         This function also returns the relevant x-axis labels for both pairs of plots.
     Inputs
     ------
-    table_obj: pyrap table object
-
-    gtype:  str
-            Type of gain table being plotted.
+    xds_table_obj: xarray Dataset
+                   MS as xarray dataset from xarrayms
+    ms_name: str
+             Name of measurement set
+    xaxis: str
+           Name of xaxis
 
     Outputs
     -------
-    xdata: ndarray
-           X-axis data depending on the gain table to be plotted.
-    xaxis_label: str
-                 Label to appear on the x-axis of the plots. This is shared amongst both plots.
+    xdata: xarray DataArray
+           X-axis data depending  x-axis selected.
+    x_label: str
+                 Label to appear on the x-axis of the plots.
     """
     if xaxis == 'antenna1':
         xdata = xds_table_obj.ANTENNA1
-        xaxis_label = 'Antenna1'
+        x_label = 'Antenna1'
     elif xaxis == 'antenna2':
         xdata = xds_table_obj.ANTENNA2
-        xaxis_label = 'Antenna2'
+        x_label = 'Antenna2'
     elif xaxis == 'frequency' or xaxis == 'channel':
         xdata = get_frequencies(ms_name)
         if xaxis == 'channel':
-            xaxis_label = 'Channel'
+            x_label = 'Channel'
         else:
-            xaxis_label = 'Frequency GHz'
+            x_label = 'Frequency GHz'
     elif xaxis == 'real':
         xdata = xds_table_obj.DATA
-        xaxis_label = 'Real'
+        x_label = 'Real'
     elif xaxis == 'scan':
         xdata = xds_table_obj.SCAN_NUMBER
-        xaxis_label = 'Scan'
+        x_label = 'Scan'
     elif xaxis == 'time':
         xdata = xds_table_obj.TIME
-        xaxis_label = 'Time [s]'
+        x_label = 'Time [s]'
     elif xaxis == 'uvdistance':
         xdata = xds_table_obj.UVW
-        xaxis_label = 'UV Distance [m]'
+        x_label = 'UV Distance [m]'
     elif xaxis == 'uvwave':
         xdata = xds_table_obj.UVW
-        xaxis_label = 'UV Wave [lambda]'
+        x_label = 'UV Wave [lambda]'
     else:
         logger.error("Invalid xaxis name")
         return
 
-    return xdata, xaxis_label
+    return xdata, x_label
 
 
-def prep_xaxis_data(xdata, xaxis, freq=None):
-    """Function to Prepare the x-axis data.
+def prep_xaxis_data(xdata, xaxis='time', freq=None):
+    """Prepare the x-axis data for plotting.
     Inputs
     ------
-    xdata: 1-D array
-           Data for the xaxis to be prepared
-    freq: float
-          REQUIRED ONLY when xaxis specified is 'uvwave'. In this case.
-          this function must be the called within a loop containing all
-          the frequencies available in  a spectral window.
+    xdata: xarray DataArray
+           X-axis data depending  x-axis selected.
+    xaxis: str
+           xaxis to plot.
+
+    freq: xarray DataArray or float
+          Frequency(ies) from which corresponding wavelength will be obtained.
+          REQUIRED ONLY when xaxis specified is 'uvwave'.
 
     Outputs
     -------
-    prepdx: 1-D array
-            Data for the x-axid of the plots
+    prepdx: xarray DataArray
+            Prepared data for the x-axis.
     """
     if xaxis == 'channel':
         prepdx = xdata.chan
@@ -502,25 +525,28 @@ def prep_xaxis_data(xdata, xaxis, freq=None):
     return prepdx
 
 
-def get_yaxis_data(xds_table_obj, ms_name, yaxis):
-    """ Function to extract the required column for the y-axis data.
-    This column is determined by ptype which can be amplitude vs phase 'ap'
-    or real vs imaginary 'ri'.
+def get_yaxis_data(xds_table_obj, ms_name, yaxis, datacol='DATA'):
+    """Extract the required column for the y-axis data.
+
 
     Inputs
     -----
-    table_obj: python casacore table object
-               Table in which to get the data
-
-    gtype: str
-           Gain table type B, F, G or K.
-
+    xds_table_obj: xarray Dataset
+                   MS as xarray dataset from xarrayms
+    ms_name: str
+             Name of measurement set.
     yaxis: str
-           Plot type ap / ri
+           yaxis to plot.
+    datacol: str
+             Data column to be selected.
 
     Outputs
     -------
-    Returns np.ndarray dataa as well as the y-axis labels (str) for both plots.
+    ydata: xarray DataArray
+           y-axis data depending  y-axis selected.
+    y_label: str
+             Label to appear on the y-axis of the plots.
+
     """
     if yaxis == 'amplitude':
         y_label = 'Amplitude'
@@ -531,38 +557,43 @@ def get_yaxis_data(xds_table_obj, ms_name, yaxis):
     elif yaxis == 'real':
         y_label = 'Real'
 
-    ydata = xds_table_obj.DATA
+    try:
+        ydata = xds_table_obj[datacol]
+    except KeyError:
+        logger.exception('Column "{}" not Found'.format(datacol))
+        return sys.exit(-1)
+
     return ydata, y_label
 
 
 def prep_yaxis_data(xds_table_obj, ms_name, ydata, yaxis='amplitude', corr=0, flag=False, iterate=None):
-    """Function to process data for the y-axis. Part of the processing includes:
-    - Selecting correlation for the data and error
+    """Process data for the y-axis which includes:
+    - Correlation selection
     - Flagging
-    - Complex correlation parameter conversion to amplitude, phase, real and
-      imaginary for processing
+    - Conversion form complex to the required form
     Data selection and flagging are done by this function itself, however ap and ri conversion are done by specified functions.
 
     Inputs
     ------
-    table_obj: pyrap table object
-               table object for an already open table
-    ydata: ndarray
-           Relevant y-axis data to be processed
+    xds_table_obj: xarray Dataset
+                   MS as xarray dataset from xarrayms
+    ms_name: str
+             Name of measurement set.
+    ydata: xarray DataArray
+           y-axis data to be processed
     yaxis: str
-           Plot type 'ap' / 'ri'
+           selected y-axis
     corr: int
           Correlation number to select
     flag: bool
           Option on whether to flag the data or not
+    iterate: str
+             Data to iterate over.
 
     Outputs
     -------
-    y: masked ndarray
-        Amplitude / real part of the complex input data.
-    y_err: masked ndarray
-        Error data for y1.
-
+    y: xarray DataArray
+       Processed yaxis data.
     """
     if iterate == 'corr':
         ydata = list(ydata.groupby('corr'))
@@ -595,6 +626,17 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, yaxis='amplitude', corr=0, fl
 
 
 def get_phase(ydata, unwrap=False):
+    """Convert complex data to angle in degrees
+    Inputs
+    ------
+    ydata: xarray DataArray
+           y-axis data to be processed
+
+    Outputs
+    -------
+    phase: xarray DataArray
+           y-axis data converted to degrees
+    """
     phase = xa.ufuncs.angle(ydata, deg=True)
     if unwrap:
         # delay dispatching of unwrapped phase
@@ -603,21 +645,67 @@ def get_phase(ydata, unwrap=False):
 
 
 def get_amplitude(ydata):
+    """Convert complex data to amplitude (abs value)
+    Inputs
+    ------
+    ydata: xarray DataArray
+           y-axis data to be processed
+
+    Outputs
+    -------
+    amplitude: xarray DataArray
+           y-axis data converted to amplitude
+    """
     amplitude = da.absolute(ydata)
     return amplitude
 
 
 def get_real(ydata):
+    """Extract real part from complex data
+    Inputs
+    ------
+    ydata: xarray DataArray
+           y-axis data to be processed
+
+    Outputs
+    -------
+    real: xarray DataArray
+           Real part of the y-axis data
+    """
     real = ydata.real
     return real
 
 
 def get_imaginary(ydata):
+    """Extract imaginary part from complex data
+    Inputs
+    ------
+    ydata: xarray DataArray
+           y-axis data to be processed
+
+    Outputs
+    -------
+    imag: xarray DataArray
+           Imaginary part of the y-axis data
+    """
     imag = ydata.imag
     return imag
 
 
 def process_data(ydata, yaxis):
+    """Abstraction for processing y-data passes it to the processing function.
+    Inputs
+    ------
+    ydata: xarray DataArray
+           y-data to process
+    yaxis: str
+           Selected yaxis
+
+    Outputs
+    -------
+    y: xarray DataArray
+       Processed y-data
+    """
     if yaxis == 'amplitude':
         y = get_amplitude(ydata)
     elif yaxis == 'imaginary':
@@ -629,9 +717,40 @@ def process_data(ydata, yaxis):
     return y
 
 
-def blackbox(xds_table_obj, ms_name, xaxis, yaxis, corr, showFlagged=False, ititle=None, color='blue', iterate=None):
+def blackbox(xds_table_obj, ms_name, xaxis, yaxis, corr, datacol='DATA', showFlagged=False, ititle=None, color='blue', iterate=None):
+    """Takes in raw input and gives out a holomap.
+    Inputs
+    ------
+    xds_table_obj: xarray Dataset
+                   MS as xarray dataset from xarrayms
+    ms_name: str
+             Measurement set name
+    xaxis: str
+           Selected x-axis
+    yaxis: str
+           Selected y-axis
+    corr: int
+          Correlation index to select
+    datacol: str
+             Column from which data is pulled. Default is 'DATA'
+    showFlagged: bool
+                 Switch flags on or off.
+    ititle: str
+            Title to use incase of an iteration
+    color: str / colormap
+           Color to use for the plot. May be a color in the form of a string or a colormap.
+    iterate: str
+             Paramater over which to iterate
+
+    Outputs
+    -------
+    fig:  
+         A plotable metacontainer**
+    """
+
     x_data, xlabel = get_xaxis_data(xds_table_obj, ms_name, xaxis)
-    y_data, ylabel = get_yaxis_data(xds_table_obj, ms_name, yaxis)
+    y_data, ylabel = get_yaxis_data(xds_table_obj, ms_name, yaxis,
+                                    datacol=datacol)
     y_prepd = prep_yaxis_data(xds_table_obj, ms_name, y_data,
                               yaxis=yaxis, corr=corr,
                               flag=showFlagged, iterate=iterate)
@@ -892,38 +1011,46 @@ def get_argparser():
 
     # TODO: make this arg parser inherit from ragavi the common options
     parser = ArgumentParser(usage='prog [options] <value>')
+
+    parser.add_argument('-c', '--corr', dest='corr', type=int, metavar='',
+                        help='Correlation index to plot (usually just 0 or 1,\
+                              default = 0)',
+                        default=0)
+    parser.add_argument('--cmap', dest='mycmap', type=str, metavar='',
+                        help=' Colour or matplotlib colour map to use \
+                                (default=coolwarm)',
+                        default='coolwarm')
+    parser.add_argument('--datacolumn', dest='datacolumn', type=str,
+                        metavar='',
+                        help='Column from MS to use for data', default='DATA')
+    parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
+                        metavar='',
+                        help='Field ID(s) / NAME(s) to plot', default=None)
+    parser.add_argument('--htmlname', dest='html_name', type=str, metavar='',
+                        help='Output HTMLfile name', default='')
+    parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
+                        choices=iter_choices,
+                        help='Select which variable to iterate over \
+                              (defaults to none)',
+                        default=None)
+    parser.add_argument('-t', '--table', dest='mytabs',
+                        nargs='*', type=str, metavar='',
+                        help='Table(s) to plot (default = None)', default=[])
+    parser.add_argument('--xaxis', dest='xaxis', type=str, metavar='',
+                        choices=x_choices, help='x-axis to plot',
+                        default='time')
+    parser.add_argument('--yaxis', dest='yaxis', type=str, metavar='',
+                        choices=y_choices, help='Y axis variable to plot',
+                        default='amplitude')
+
     """
     parser.add_argument('-a', '--ant', dest='plotants', type=str,
                         help='Plot only this antenna, or comma-separated list\
                               of antennas',
                         default=[-1])
-    """
-    parser.add_argument('-c', '--corr', dest='corr', type=int,
-                        help='Correlation index to plot (usually just 0 or 1,\
-                              default = 0)',
-                        default=0)
-    parser.add_argument('--cmap', dest='mycmap', type=str,
-                        help='Matplotlib colour map to use for antennas\
-                             (default=coolwarm)',
-                        default='coolwarm')
-    parser.add_argument('--yaxis', dest='yaxis', type=str,
-                        choices=y_choices, help='Y axis variable to plot',
-                        default='amplitude')
-    parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
-                        help='Field ID(s) / NAME(s) to plot', default=None)
-    parser.add_argument('--htmlname', dest='html_name', type=str,
-                        help='Output HTMLfile name', default='')
-
-    """
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
                         help='Output image name', default='')
 
-    """
-    parser.add_argument('-t', '--table', dest='mytabs',
-                        nargs='*', type=str,
-                        help='Table(s) to plot (default = None)', default=[])
-
-    """
     parser.add_argument('--t0', dest='t0', type=float,
                         help='Minimum time to plot (default = full range)',
                         default=-1)
@@ -942,17 +1069,6 @@ def get_argparser():
     parser.add_argument('--yl1', dest='yl1', type=float,
                         help='Maximum y-value to plot for lower panel (default=full range)',
                         default=-1)
-    """
-    parser.add_argument('--xaxis', dest='xaxis', type=str,
-                        choices=x_choices, help='x-axis to plot',
-                        default='time')
-
-    parser.add_argument('--iterate', dest='iterate', type=str,
-                        choices=iter_choices,
-                        help='Select which variable to iterate over \
-                              (defaults to none)',
-                        default=None)
-    """
     parser.add_argument('--timebin', dest='timebin', type=str,
                         help='Number of timestamsp in each bin')
     parser.add_argument('--chanbin', dest='chanbin', type=str,
@@ -971,8 +1087,9 @@ def main(**kwargs):
         options = parser.parse_args()
 
         corr = int(options.corr)
-        yaxis = options.yaxis
+        datacolumn = options.datacolumn
         field_ids = options.fields
+        iterate = options.iterate
         html_name = options.html_name
         #image_name = options.image_name
         mycmap = options.mycmap
@@ -985,14 +1102,14 @@ def main(**kwargs):
         #yl0 = options.yl0
         #yl1 = options.yl1
         xaxis = options.xaxis
-        iterate = options.iterate
+        yaxis = options.yaxis
         #timebin = options.timebin
         #chanbin = options.chanbin
 
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
     else:
-        logger.error('ragavi exited: No gain table specified.')
+        logger.error('ragavi exited: No Measurement set specified.')
         sys.exit(-1)
 
     if len(field_ids) == 0:
@@ -1025,9 +1142,6 @@ def main(**kwargs):
 
         for count, chunk in enumerate(partitions):
 
-            #colour = scalarMap.to_rgba(float(count), bytes=True)[:-1]
-            #colour = colors.to_hex(mymap(count)).encode('utf-8')
-            #colour = mymap(count)[:-1]
             colour = mymap
 
             # Only plot the specified field id
@@ -1040,12 +1154,14 @@ def main(**kwargs):
                 colour = cycle(['red', 'blue', 'green', 'purple'])
                 f = blackbox(chunk, mytab, xaxis, yaxis, corr,
                              showFlagged=False, ititle=title,
-                             color=colour, iterate=iterate)
+                             color=colour, iterate=iterate,
+                             datacol=datacolumn)
             else:
                 ititle = None
                 f = blackbox(chunk, mytab, xaxis, yaxis, corr,
                              showFlagged=False, ititle=ititle,
-                             color=colour, iterate=iterate)
+                             color=colour, iterate=iterate,
+                             datacol=datacolumn)
 
             # store resulting dynamicmaps
             oup_a.append(f)
