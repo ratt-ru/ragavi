@@ -17,14 +17,15 @@ import numpy as np
 import holoviews as hv
 import holoviews.operation.datashader as hd
 import datashader as ds
+import pyrap.quanta as qa
 
 from holoviews import opts, dim
 from africanus.averaging import time_and_channel as ntc
 from dask import compute, delayed
-import pyrap.quanta as qa
 from argparse import ArgumentParser
 from datetime import datetime
 from itertools import cycle
+from xarrayms.known_table_schemas import MS_SCHEMA, ColumnSchema
 
 
 from bokeh.plotting import figure
@@ -60,12 +61,16 @@ def config_logger():
     warnings_logger = logging.getLogger('py.warnings')
     warnings_logger.setLevel(logging.DEBUG)
 
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.ERROR)
+    ch.setFormatter(formatter)
     # setup for logfile handing ragavi
     fh = logging.FileHandler(logfile_name)
     fh.setLevel(logging.INFO)
     fh.setFormatter(formatter)
 
     logger.addHandler(fh)
+    logger.addHandler(ch)
     warnings_logger.addHandler(logger)
     return logger
 
@@ -1130,10 +1135,17 @@ def main(**kwargs):
         else:
             field = name_2id(field, field_ids)
 
-        # iterate over spw and field ids by default
-        # by default data is grouped in field ids and data description
-        partitions = list(xm.xds_from_ms(mytab, ack=False))
-
+        if datacolumn == 'DATA':
+            # iterate over spw and field ids by default
+            # by default data is grouped in field ids and data description
+            partitions = list(xm.xds_from_ms(mytab, ack=False))
+        else:
+            ms_schema = MS_SCHEMA.copy()
+            ms_schema[datacolumn] = ColumnSchema(dims=('chan', 'corr'))
+            partitions = list(xm.xds_from_table(mytab, ack=False,
+                                                group_cols=['DATA_DESC_ID',
+                                                            'FIELD_ID'],
+                                                table_schema=ms_schema))
         #cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
         #scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
 
