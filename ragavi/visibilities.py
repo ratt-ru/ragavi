@@ -44,7 +44,8 @@ def config_logger():
     """
     logfile_name = 'ragavi.log'
     # capture only a single instance of a matching repeated warning
-    warnings.filterwarnings('default')
+    warnings.filterwarnings('once')
+    logging.captureWarnings(True)
 
     # setting the format for the logging messages
     start = " (O_o) ".center(80, "=")
@@ -54,12 +55,12 @@ def config_logger():
 
     # setup for ragavi logger
     logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.ERROR)
 
-    # capture all stdout warnings
-    logging.captureWarnings(True)
     warnings_logger = logging.getLogger('py.warnings')
-    warnings_logger.setLevel(logging.DEBUG)
+
+    xmslog = logging.getLogger('xarrayms')
+    xmslog.setLevel(logging.ERROR)
 
     ch = logging.StreamHandler()
     ch.setLevel(logging.ERROR)
@@ -71,7 +72,8 @@ def config_logger():
 
     logger.addHandler(fh)
     logger.addHandler(ch)
-    warnings_logger.addHandler(logger)
+    xmslog.addHandler(fh)
+    warnings_logger.addHandler(fh)
     return logger
 
 
@@ -601,24 +603,29 @@ def prep_yaxis_data(xds_table_obj, ms_name, ydata, yaxis='amplitude', corr=0, fl
        Processed yaxis data.
     """
     if iterate == 'corr':
+        # group data by correlations and store it in a list
         ydata = list(ydata.groupby('corr'))
         ydata = [x[1] for x in ydata]
+
+        # group flags for that data as well and store in a list
         flags = get_flags(xds_table_obj).groupby('corr')
         flags = [x[1] for x in flags]
     else:
         ydata = ydata.sel(corr=corr)
         flags = get_flags(xds_table_obj).sel(corr=corr)
 
-    # if flagging enabled return a list otherwise return a single dataarray
+    # if flagging enabled return a list of DataArrays otherwise return a
+    # single dataarray
     if flag:
         if isinstance(ydata, list):
             y = []
             for d, f in zip(ydata, flags):
-                masked = da.ma.masked_array(data=d, mask=f)
-                y.append(process_data(masked, yaxis=yaxis))
+                processed = process_data(d, yaxis=yaxis)
+                # replace with NaNs where flags is not 1
+                y.append(processed.where(f < 1))
         else:
-            masked = da.ma.masked_array(data=ydata, mask=flags)
-            y = process_data(masked, yaxis=yaxis)
+            processed = process_data(ydata, yaxis=yaxis)
+            y = processed.where(flags < 1)
     else:
         if isinstance(ydata, list):
             y = []
@@ -850,10 +857,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
           'real': [('Real', 'Real')]
           }
 
-    # iteration groups
-    baseline = ['Antenna1', 'Antenna2']
-    grps = ['SCAN_NUMBER']
-
     # changing the Name of the dataArray to the name provided as xaxis
     x.name = xaxis.capitalize()
 
@@ -881,14 +884,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     vdims = ys[yaxis]
     kdims = xs[xaxis]
 
-    # get grouping data
-    scans = get_xaxis_data(xds_table_obj, ms_name, 'scan')[0]
-    scans.name = 'Scan'
-    ant1 = get_xaxis_data(xds_table_obj, ms_name, 'antenna1')[0]
-    ant1.name = 'Antenna1'
-    ant2 = get_xaxis_data(xds_table_obj, ms_name, 'antenna2')[0]
-    ant2.name = 'Antenna2'
-
     # by default, colorize over baseline
     if iterate == None:
         title = "{} vs {}".format(ylab, xlab)
@@ -906,6 +901,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     else:
         title = "Iteration over {}: {} vs {}".format(iterate, ylab, xlab)
         if iterate == 'scan':
+            scans = get_xaxis_data(xds_table_obj, ms_name, 'scan')[0]
             kdims = kdims + xs['scan']
             res_ds = xa.merge([x, y, scans])
             res_df = res_ds.to_dask_dataframe()
@@ -917,7 +913,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                                      height=h, fontsize={'title': 20,
                                                          'labels': 16})
         elif iterate == 'spw':
-            grp = grps[2]
             pass
 
         elif iterate == 'corr':
@@ -1002,6 +997,38 @@ def stats_display(table_obj, gtype, ptype, corr, field):
     return pre
 
 
+def resolve_ranges(inp):
+    """Parse string range to numpy range.
+    Returns a single integer value for the case whereby the input is of the format e.g "7:" returns 7, otherwise, an array will be returned
+    e.g
+    Inputs
+    ------
+    inp: str
+         String to be resolved into numeric range
+
+    Outputs:
+    res: numpy.ndarray
+         Numpy array containing a range of values or a single value
+    """
+    delimiters = ['~', ':', ',']
+    if '~' in inp:
+        outp = [int(x) for x in inp.split('~')]
+        res = np.arange(outp[0], outp[-1] + 1)
+    elif ':' in inp:
+        split = inp.split(':')
+        if split[-1] != '':
+            outp = [int(x) for x in split]
+            res = np.arange(outp[0], outp[-1])
+        else:
+            res = int(split[0])
+    elif ',' in inp:
+        outp = [int(x) for x in inp.split(',')]
+        res = np.array(outp)
+    else:
+        res = np.array(int(inp))
+    return res
+
+
 def get_argparser():
     """Get argument parser"""
 
@@ -1028,15 +1055,31 @@ def get_argparser():
     parser.add_argument('--datacolumn', dest='datacolumn', type=str,
                         metavar='',
                         help='Column from MS to use for data', default='DATA')
-    parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
+    parser.add_argument('--ddid', dest='ddid', type=str,
+                        metavar='',
+                        help='DATA_DESC_ID(s) to select. (default is all) Can\
+                              be specified as e.g. "5", "5,6,7", "5~7"\
+                              (inclusive range), "5:8" (exclusive range),"5:"\
+                              (from 5 to last)',
+                        default=None)
+    parser.add_argument('-f', '--field', dest='fields', nargs='+', type=str,
                         metavar='',
                         help='Field ID(s) / NAME(s) to plot', default=None)
+    parser.add_argument('--flag', dest='flag', action='store_true',
+                        help='Plot only unflagged data',
+                        default=True)
+    parser.add_argument('--no-flag', dest='flag', action='store_false',
+                        help='Plot both flagged and unflagged data',
+                        default=True)
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar='',
                         help='Output HTMLfile name', default='')
     parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
                         choices=iter_choices,
                         help='Select which variable to iterate over \
                               (defaults to none)',
+                        default=None)
+    parser.add_argument('--scan_no', dest='scan_no', type=str, metavar='',
+                        help='Scan Number to select. (default is all)',
                         default=None)
     parser.add_argument('-t', '--table', dest='mytabs',
                         nargs='*', type=str, metavar='',
@@ -1093,12 +1136,15 @@ def main(**kwargs):
 
         corr = int(options.corr)
         datacolumn = options.datacolumn
+        ddid = options.ddid
         field_ids = options.fields
+        flag = options.flag
         iterate = options.iterate
         html_name = options.html_name
         #image_name = options.image_name
         mycmap = options.mycmap
         mytabs = options.mytabs
+        scan_no = options.scan_no
         #plotants = options.plotants
         #t0 = options.t0
         #t1 = options.t1
@@ -1135,19 +1181,25 @@ def main(**kwargs):
         else:
             field = name_2id(field, field_ids)
 
+        groupings = ['FIELD_ID', 'DATA_DESC_ID']
+
+        if scan_no != None:
+            groupings.append('SCAN_NUMBER')
+            scan_no = resolve_ranges(scan_no)
+        if ddid != None:
+            ddid = resolve_ranges(ddid)
+
         if datacolumn == 'DATA':
             # iterate over spw and field ids by default
             # by default data is grouped in field ids and data description
-            partitions = list(xm.xds_from_ms(mytab, ack=False))
+            partitions = list(xm.xds_from_ms(mytab, group_cols=groupings,
+                                             ack=False))
         else:
             ms_schema = MS_SCHEMA.copy()
             ms_schema[datacolumn] = ColumnSchema(dims=('chan', 'corr'))
             partitions = list(xm.xds_from_table(mytab, ack=False,
-                                                group_cols=['DATA_DESC_ID',
-                                                            'FIELD_ID'],
+                                                group_cols=groupings,
                                                 table_schema=ms_schema))
-        #cNorm = colors.Normalize(vmin=0, vmax=len(partitions) - 1)
-        #scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
 
         mymap = cmx.get_cmap(mycmap)
         oup_a = []
@@ -1160,25 +1212,47 @@ def main(**kwargs):
             if chunk.FIELD_ID != field:
                 continue
 
+            # if ddid or scan number has been specified
+            if ddid is not None:
+                if isinstance(ddid, int):
+                    if chunk.DATA_DESC_ID < ddid:
+                        continue
+                else:
+                    if chunk.DATA_DESC_ID not in ddid:
+                        continue
+
+            if scan_no is not None:
+                if isinstance(scan_no, int):
+                    if chunk.SCAN_NUMBER < scan_no:
+                        continue
+                else:
+                    if chunk.SCAN_NUMBER not in scan_no:
+                        continue
+
             # black box returns an plottable element / composite element
             if iterate != None:
                 title = "TEST"
                 colour = cycle(['red', 'blue', 'green', 'purple'])
                 f = blackbox(chunk, mytab, xaxis, yaxis, corr,
-                             showFlagged=False, ititle=title,
+                             showFlagged=flag, ititle=title,
                              color=colour, iterate=iterate,
                              datacol=datacolumn)
             else:
                 ititle = None
                 f = blackbox(chunk, mytab, xaxis, yaxis, corr,
-                             showFlagged=False, ititle=ititle,
+                             showFlagged=flag, ititle=ititle,
                              color=colour, iterate=iterate,
                              datacol=datacolumn)
 
             # store resulting dynamicmaps
             oup_a.append(f)
 
-        l = hv.Overlay(oup_a).collate().opts(width=900, height=700)
+        try:
+            l = hv.Overlay(oup_a).collate().opts(width=900, height=700)
+        except TypeError:
+            logger.error(
+                'Unable to plot; Specified FIELD_IDs or DATA_DESC_ID(s) or SCAN_NUMBER(s) not found.')
+            sys.exit(-1)
 
         layout = hv.Layout([l])
 
