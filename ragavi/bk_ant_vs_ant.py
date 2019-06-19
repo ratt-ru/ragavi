@@ -95,7 +95,7 @@ def flag_data(data, flags):
     return out_data
 
 
-def process(chunk, corr=None, data_column='DATA', ptype='ap', flag=True):
+def process(chunk, corr=None, data_column='DATA', ptype='amplitude', flag=True):
 
     selection = ['TIME', 'SCAN_NUMBER', 'FLAG']
 
@@ -110,14 +110,18 @@ def process(chunk, corr=None, data_column='DATA', ptype='ap', flag=True):
     if flag:
         data = flag_data(data, flags)
 
-    if ptype == 'ap':
-        selection.extend(['Amplitude', 'Phase'])
-        chunk['Amplitude'] = convert_data(data, yaxis='amplitude')
-        chunk['Phase'] = convert_data(data, yaxis='phase')
-    else:
-        selection.extend(['Real', 'Imaginary'])
-        chunk['Real'] = convert_data(data, yaxis='real')
-        chunk['Imaginary'] = convert_data(data, yaxis='imaginary')
+    if ptype == 'amplitude':
+        selection.append('Amplitude')
+        chunk['Amplitude'] = convert_data(data, yaxis=ptype)
+    elif ptype == 'phase':
+        selection.append('Phase')
+        chunk['Phase'] = convert_data(data, yaxis=ptype)
+    elif ptype == 'real':
+        selection.append('Real')
+        chunk['Real'] = convert_data(data, yaxis=ptype)
+    elif ptype == 'imaginary':
+        selection.append('Imaginary')
+        chunk['Imaginary'] = convert_data(data, yaxis=ptype)
 
     # change time from MJD to UTC
     chunk['TIME'] = ut.time_convert(chunk.TIME)
@@ -149,7 +153,7 @@ def callback(call_chunk, ant1, ant2, yaxis, event):
 
     new_ch = call_chunk.to_dask_dataframe()
 
-    im = hv.render(new_ch.hvplot.heatmap(x='TIME', y='chan', C='Amplitude',
+    im = hv.render(new_ch.hvplot.heatmap(x='TIME', y='chan', C=yaxis,
                                          colorbar=True))
 
     # configuring the new popup plot
@@ -183,7 +187,6 @@ def make_plot(df, tsource, fsource, yaxis):
 
     global mygrid, ncols, nrows, width, height, document, ant_names
 
-    # set_trace()
     # get the current row antenna number
     ant1 = df.ANTENNA1
     ant2 = df.ANTENNA2
@@ -239,8 +242,8 @@ def make_plot(df, tsource, fsource, yaxis):
                  'output_backend': 'webgl',
                  'sizing_mode': 'scale_both'}
 
-    hover = HoverTool(tooltips=[('Antenna1', '{}'.format(ant1)),
-                                ('Antenna2', '{}'.format(ant2))])
+    hover = HoverTool(tooltips=[('Antenna1', '{}'.format(ant1_name)),
+                                ('Antenna2', '{}'.format(ant2_name))])
 
     drange = Range1d(start=np.nanmin(fsource.data['flower']) - 5,
                      end=np.nanmax(fsource.data['fupper']) + 5)
@@ -264,42 +267,13 @@ def make_plot(df, tsource, fsource, yaxis):
     f.add_glyph(fsource, fcircle)
     f.add_layout(fwhisker)
     f.js_on_event(Tap, CustomJS(
-        code="alert('A2: {}, A1: {}')".format(ant2, ant1)))
+        code="alert('A2: {}, A1: {}')".format(ant2_name, ant1_name)))
     f.on_event(Tap, partial(callback, df, ant1, ant2, yaxis))
     f.add_tools(WheelZoomTool(), ResetTool(), hover)
 
     mygrid[ant1 + 1, ant2 + 1] = p
     mygrid[ant2 + 1, ant1 + 1] = f
 
-"""
-def compute_mean_sigma(df, ap):
-    
-    # Add additional columns to the dataframe containing mean and sigmas for
-    # the chosen quantities, as well as a column for the percentage flagged in
-    # each group.
-    
-    if ap == 'amplitude':
-        df['data_mean'] = np.mean(df['Amplitude'])
-        df['data_sigma'] = np.std(df['Amplitude'])
-    elif ap == 'phase':
-        df['data_mean'] = astats.circmean(df['Phase'])
-        df['data_sigma'] = np.sqrt(astats.circvar(df['Phase']))
-    elif ap == 'real':
-        df['data_mean'] = np.mean(df['Real'])
-        df['data_sigma'] = np.std(df['Real'])
-    elif ap == 'imaginary':
-        df['data_mean'] = np.mean(df['Imaginary'])
-        df['data_sigma'] = np.std(df['Imaginary'])
-    df['flagged_pc'] = percentage_flagged(df)
-    return df
-
-
-def percentage_flagged(df):
-    true_flag = df.FLAG.where(df['FLAG'] == 1).count()
-    nrows = df.FLAG.count()
-    percentage = (true_flag / nrows) * 100
-    return percentage
-"""
 
 ##############################################################
 ############## Main function begins here #####################
@@ -307,17 +281,16 @@ def percentage_flagged(df):
 # To Do: Get these through the commandline
 
 ms_name = "/home/andati/measurement_sets/1491291289.1ghz.1.1ghz.4hrs.ms"
+#ms_name = "/home/andati/measurement_sets/ngc1399_20MHz.ms"
+
 fid = 0
 ddid = 0
 data_col = 'DATA'
 corr = 0
 
-# chose whether plots will be for amplitude and phase or real and imaginary
-doplot = 'ap'
-
-# actually quantity to plot
-yaxis = 'amplitude'
-yaxis = yaxis.capitalize()
+# Quantity to plot
+yaxis = 'imaginary'
+upper_yaxis = yaxis.capitalize()
 
 
 # group the data per baseline, field id and spectral window
@@ -327,7 +300,10 @@ groups = list(xm.xds_from_ms(ms_name, group_cols=['DATA_DESC_ID',
                                                   'ANTENNA2']))
 
 
-# get antenna names, also getting number of antennas
+################################################################
+###############  some global variables #########################
+
+# antenna names and number of antennas
 ant_names = ut.get_antennas(ms_name).data.compute()
 nants = len(ant_names)
 ncols = nants
@@ -343,8 +319,12 @@ freqs = (ut.get_frequencies(ms_name, spwid=ddid) / 1e9).data.compute()
 # calculate the plot dimensions
 width, height = calc_plot_dims(nrows, ncols)
 
-# get the current document object for this bokeh scrript
+# get the current document object for this bokeh script
 document = curdoc()
+
+
+###############################################################
+####### data selection, processing and plotting  ##############
 
 # find the field id that matches fid and did for all baselines
 selections = []
@@ -357,18 +337,19 @@ for chunk in groups:
 # also change the time format to datetime64
 for sel_chunk in selections:
     sel_chunk = process(sel_chunk, corr=corr, data_column=data_col,
-                        ptype=doplot)
+                        ptype=yaxis)
+
+    # To Do: phase wrapped means?
 
     # find means over frequencies
-    mean = sel_chunk[yaxis].mean(dim='chan').data
-    std = sel_chunk[yaxis].std(dim='chan').data
+    mean = sel_chunk[upper_yaxis].mean(dim='chan').data
+    std = sel_chunk[upper_yaxis].std(dim='chan').data
 
     # find means over time
-    fmean = sel_chunk[yaxis].mean(dim='row').data
-    fstd = sel_chunk[yaxis].std(dim='row').data
+    fmean = sel_chunk[upper_yaxis].mean(dim='row').data
+    fstd = sel_chunk[upper_yaxis].std(dim='row').data
 
-    # get the available channel numbers earlier generated frequencies can
-    # also be used
+    # get the available channel numbers
     chans = sel_chunk.chan.data
     tupper = mean + std
     tlower = mean - std
@@ -384,17 +365,23 @@ for sel_chunk in selections:
     ant1 = sel_chunk.ANTENNA1
     ant2 = sel_chunk.ANTENNA2
 
+    # create a data source for the time component
     tsource = ColumnDataSource(data={'time': time,
                                      'mean': mean,
                                      'tupper': tupper,
                                      'tlower': tlower})
+
+    # create a data source for the frequency component
     fsource = ColumnDataSource(data={'chans': chans,
                                      'fmean': fmean,
                                      'fupper': fupper,
                                      'flower': flower})
 
-    make_plot(sel_chunk, tsource, fsource, yaxis)
+    make_plot(sel_chunk, tsource, fsource, upper_yaxis)
 
+
+###############################################################
+############ laying and rendering ############################
 
 print("Done")
 mygrid = mygrid.tolist()
