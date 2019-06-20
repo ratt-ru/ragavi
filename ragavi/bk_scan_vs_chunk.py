@@ -203,9 +203,9 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
 
     logging.info("Callback Active")
     if doplot == 'ap':
-        xy = ['Amplitude', 'Phase']
+        xy = ['Phase', 'Amplitude']
     else:
-        xy = ['Real', 'Imaginary']
+        xy = ['Imaginary', 'Real']
 
     selection = inp_df[(inp_df['SCAN_NUMBER'] == scn)
                        & (inp_df['chan_bin'] == chan)]
@@ -221,6 +221,7 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
         avail_roots.children.append(im)
     else:
         avail_roots.children[-1] = im
+    logging.info('Callback plot added to root document.')
 
 
 def make_plot(inp_df, doplot):
