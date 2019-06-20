@@ -21,13 +21,14 @@ import pandas as pd
 import scipy.stats as sstats
 import xarray as xa
 import xarrayms as xm
+import vis_utils as ut
 
 from collections import namedtuple
 from dask import compute, delayed
 from gi.repository import Gdk
 from functools import partial
 from holoviews import opts
-from holoviews.operation.datashader import dynspread, datashade
+from holoviews.operation.datashader import aggregate, dynspread, datashade
 from ipdb import set_trace
 from itertools import count, cycle
 from pyrap.tables import table
@@ -36,13 +37,16 @@ from bokeh.io import show, output_file, save
 from bokeh.models import (Band, BasicTicker,
                           Circle, ColorBar, ColumnDataSource, CustomJS,
                           DataRange1d, Div, Grid, HoverTool, Line, LinearAxis,
-                          LinearColorMapper, LogColorMapper, PanTool, Plot,
-                          ResetTool, WheelZoomTool)
+                          LinearColorMapper, LogColorMapper, LogScale,
+                          LogAxis, Patch, PanTool, Plot, Range1d,
+                          ResetTool, WheelZoomTool, Whisker)
 
 from bokeh.layouts import gridplot, row, column
 from bokeh.plotting import figure, curdoc
 from bokeh.events import Tap
 from bokeh.resources import INLINE
+from bokeh.models import Button, AjaxDataSource
+from bokeh import events
 
 
 def get_screen_size():
@@ -76,13 +80,13 @@ def calc_plot_dims(nrows, ncols):
 
 def convert_data(data, yaxis='amplitude'):
     if yaxis == 'amplitude':
-        out_data = da.absolute(data)
+        out_data = ut.calc_amplitude(data)
     elif yaxis == 'phase':
-        out_data = xa.ufuncs.angle(data)
+        out_data = ut.calc_phase(data, unwrap=False)
     elif yaxis == 'real':
-        out_data = data.real
+        out_data = ut.calc_real(data)
     elif yaxis == 'imaginary':
-        out_data = data.imag
+        out_data = ut.calc_imaginary(data)
     return out_data
 
 
@@ -91,14 +95,53 @@ def flag_data(data, flags):
     return out_data
 
 
-def process(mchunk, corr, yaxis):
-    data = mchunk.DATA.sel(corr=corr)
-    flag = mchunk.FLAG.sel(corr=corr)
+def process(chunk, corr=None, data_column='DATA', ptype='ap', flag=True, bin_size=100):
+    """
+        1. Select the correlation if an
+        2. Chunk data and the flags along channels into bin_size sizes
+        3. Flag the data
+        4. Convert process data into ap or ri
+        5. Convert time to human readable format
+        6. Return the processed data and selected FLAG data
+    """
 
-    ind = convert_data(data, yaxis)
-    out = flag_data(ind, flag)
+    selection = ['TIME', 'SCAN_NUMBER', 'FLAG']
 
-    return out
+    if corr == None:
+        data = chunk[data_column]
+        flags = chunk['FLAG']
+    else:
+        data = chunk[data_column].sel(corr=corr)
+        flags = chunk['FLAG'].sel(corr=corr)
+
+    # chunk the data into bin sizes before processing
+    data = data.chunk({'chan': bin_size})
+    flags = flags.chunk({'chan': bin_size})
+
+    # Data is flagged before processing
+    # To Do: explore processing before flagging?
+
+    # if flagging is enabled
+    if flag:
+        data = flag_data(data, flags)
+
+    if ptype == 'ap':
+        selection.extend(['Amplitude', 'Phase'])
+        chunk['Amplitude'] = convert_data(data, yaxis='amplitude')
+        chunk['Phase'] = convert_data(data, yaxis='phase')
+    elif ptype == 'ri':
+        selection.extend(['Real', 'Imaginary'])
+        chunk['Real'] = convert_data(data, yaxis='real')
+        chunk['Imaginary'] = convert_data(data, yaxis='imaginary')
+    else:
+        logging.exception("Invalid doplot value")
+        sys.exit(-1)
+
+    # change time from MJD to UTC
+    chunk['TIME'] = ut.time_convert(chunk.TIME)
+    chunk['FLAG'] = flags
+
+    return chunk[selection]
 
 
 def compute_idx(df, bw):
@@ -112,28 +155,21 @@ def compute_idx(df, bw):
     return df.assign(chan_bin=index)
 
 
-def creat_mv(df, ap):
-    if ap == 'amplitude':
-        df['datmean'] = np.mean(df['Amplitude'])
-        df['datvar'] = np.var(df['Amplitude'])
-    else:
-        df['datmean'] = astats.circmean(df['Phase'])
-        df['datvar'] = astats.circvar(df['Phase'])
+def creat_mv(df, doplot):
+    if doplot == 'ap':
+        df['adatmean'] = np.mean(df['Amplitude'])
+        df['adatvar'] = np.var(df['Amplitude'])
+        df['pdatmean'] = astats.circmean(df['Phase'])
+        df['pdatvar'] = astats.circvar(df['Phase'])
+
+    elif doplot == 'ri':
+        df['rdatmean'] = np.mean(df['Real'])
+        df['rdatvar'] = np.var(df['Real'])
+        df['idatmean'] = np.mean(df['Imaginary'])
+        df['idatvar'] = np.var('Imaginary')
 
     df['flagged_pc'] = percentage_flagged(df)
     return df
-
-
-def get_field(ms_name):
-    ftab = list(xmsm.xds_from_table("::".join((ms_name, 'ANTENNA'))))[0]
-    fields = ftab.Name.data.compute()
-    return fields[fnum]
-
-
-def get_channels(ms_name):
-    spw = list(xm.xds_from_table("::".join((ms_name, 'SPECTRAL_WINDOW'))))[0]
-    freqs = (spw.CHAN_FREQ / 1e9).data.compute()[0]
-    return freqs
 
 
 def split_freqs(fs, bin_width):
@@ -154,59 +190,90 @@ def split_freqs(fs, bin_width):
 
 
 def percentage_flagged(df):
+    """
+        Find the percentage of data flagged in each dask dataframe partition
+    """
     true_flag = df.FLAG.where(df['FLAG'] == 1).count()
     nrows = df.FLAG.count()
     percentage = (true_flag / nrows) * 100
     return percentage
 
 
-def make_plot(inp_df):
+def on_click_callback(inp_df, scn, chan, doplot, event):
+
+    logging.info("Callback Active")
+    if doplot == 'ap':
+        xy = ['Amplitude', 'Phase']
+    else:
+        xy = ['Real', 'Imaginary']
+
+    selection = inp_df[(inp_df['SCAN_NUMBER'] == scn)
+                       & (inp_df['chan_bin'] == chan)]
+    set_trace()
+    im = hv.render(selection.hvplot(*xy, kind='scatter', datashade=True))
+
+    im.title.text = "Scan {} Chunk {}".format(int(scn), int(chan))
+    im.title.align = "center"
+
+    avail_roots = document.roots[0]
+
+    if len(avail_roots.children) == 1:
+        avail_roots.children.append(im)
+    else:
+        avail_roots.children[-1] = im
+
+
+def make_plot(inp_df, doplot):
     # get the grouped dataframe with the mean and variance columns
     # drop the duplicate values based on the mean column
     # because a single entire partition contains the same values for both mean
     # # and variance
-    document = curdoc()
 
-    def on_click_callback(scn, chan, event):
+    global document, freqs, ncols, nrows, plot_width, plot_height
 
-        print("Registering callback")
+    logging.info("Starting plotting function")
 
-        #inp_df = inp_df.head(npartitions=-1)
+    inp_subdf = inp_df.drop_duplicates(subset=['SCAN_NUMBER', 'flagged_pc'])
+    logging.info('Dropped duplicate values')
 
-        selection = inp_df[(inp_df['SCAN_NUMBER'] == scn)
-                           & (inp_df['chan_bin'] == chan)]
-        im = hv.render(selection.hvplot('Phase', 'Amplitude',
-                                        kind='scatter', datashade=True))
-        im.title.text = "Scan {} Chunk {}".format(int(scn), int(chan))
-        # im.title.text_align = "center"
-
-        avail_roots = document.roots[0]
-
-        if len(avail_roots.children) == 1:
-            avail_roots.children.append(im)
-        else:
-            avail_roots.children[-1] = im
-
-    print("In plotting")
-
-    inp_subdf = inp_df.drop_duplicates(subset=['datmean'])
-    print('Dups droped, proceed')
+    # To Do: conform to numpy matrix rather than sorting
     # rearrange the values in ascending so that plotting is easier
     inp_subdf = inp_subdf.compute().sort_values(['SCAN_NUMBER', 'chan_bin'])
-    nrows = inp_subdf.SCAN_NUMBER.unique().size
-    ncols = inp_subdf.chan_bin.unique().size
 
-    plot_width, plot_height = calc_plot_dims(nrows, ncols)
+    #*_col_a is for cols related to amplitude or real
+    #*_col_b is for cols related to phase or imaginary
 
-    lowest_mean = inp_subdf.datmean.min()
-    highest_mean = inp_subdf.datmean.max()
+    if doplot == 'ap':
+        mean_col_a = 'adatmean'
+        mean_col_b = 'pdatmean'
+        var_col_a = 'adatvar'
+        var_col_b = 'pdatvar'
+    else:
+        mean_col_a = 'rdatmean'
+        mean_col_b = 'idatmean'
+        var_col_a = 'rdatvar'
+        var_col_b = 'idatvar'
+
+    lowest_mean = inp_subdf[mean_col_a].min()
+    highest_mean = inp_subdf[mean_col_a].max()
 
     # get this mean in order to center the plot
-    mid_mean = inp_subdf.datmean.median()
+    mid_mean = inp_subdf[mean_col_a].median()
 
-    highest_var = inp_subdf.datvar.max()
+    highest_var = inp_subdf[var_col_a].max()
 
-    print('Stats calculated proceed')
+    # calculate the lowest and highest channel number
+    min_chan = inp_subdf.chan_bin.min()
+    max_chan = inp_subdf.chan_bin.max()
+
+    # calculate the lowest and highest scan number
+    min_scan = inp_subdf.SCAN_NUMBER.min()
+    max_scan = inp_subdf.SCAN_NUMBER.max()
+
+    # initialise the layout matrix
+    mygrid = np.full((nrows + 2, ncols + 1), None)
+
+    logging.info('Calculations of maximums and minimums done')
 
     # set the axis bounds
     xdr = DataRange1d(bounds=None, start=lowest_mean -
@@ -218,6 +285,7 @@ def make_plot(inp_df):
         palette="Viridis256",
         low=((lowest_mean - mid_mean) / mid_mean) * 100,
         high=((highest_mean - mid_mean) / mid_mean) * 100)
+
     col_bar = ColorBar(color_mapper=col_mapper,
                        location=(0, 0))
 
@@ -231,21 +299,12 @@ def make_plot(inp_df):
     color_bar_plot.title.align = "center"
     color_bar_plot.title.text_font_size = '12pt'
 
-    min_chan = inp_subdf.chan_bin.min()
-    max_chan = inp_subdf.chan_bin.max()
+    logging.info('Starting iterations by row')
 
-    min_scan = inp_subdf.SCAN_NUMBER.min()
-    max_scan = inp_subdf.SCAN_NUMBER.max()
-
-    print("Min max gottend")
-    gcols = []
-    grows = []
-
-    print("starting row by row iter")
-
-    mygrid = np.full((nrows + 2, ncols + 1), None)
-
+    # cyclic object for iteratively repetition over chan_bins
     cyc = cycle(np.arange(ncols))
+
+    # get index number of row with each iteration
     ctr = count(0)
     row_idx = ctr.next()
 
@@ -253,26 +312,26 @@ def make_plot(inp_df):
 
         col_idx = cyc.next()
 
-        dis = Div(text='S{}'.format(int(cols.SCAN_NUMBER)),
+        curr_scan_no = int(cols.SCAN_NUMBER)
+        curr_cbin_no = int(cols.chan_bin)
+
+        dis = Div(text='S{}'.format(curr_scan_no),
                   background="#3FBF9D")
 
         if col_idx == 0:
             mygrid[row_idx + 1, 0] = dis
 
-        if int(cols.SCAN_NUMBER) == max_scan:
-            dis = Div(text='{}'.format('{:.4} - {:.4} GHz'.format(*f_edges[cols.chan_bin])),
+        if curr_scan_no == max_scan:
+            dis = Div(text='{}'.format('{:.4} - {:.4} GHz'.format(*f_edges[curr_cbin_no])),
                       background="#3FBF9D")
             mygrid[-1, col_idx + 1] = dis
 
-        # set_trace()
-        pc_dev_mean = ((cols.datmean - mid_mean) / mid_mean) * 100
-        source = ColumnDataSource(data={'mean': [cols.datmean],
+        pc_dev_mean = ((cols[mean_col_a] - mid_mean) / mid_mean) * 100
+        source = ColumnDataSource(data={'mean': [cols[mean_col_a]],
                                         'mid_mean': [mid_mean],
                                         'mean_anorm': [pc_dev_mean],
-                                        'var': [cols.datvar],
+                                        'var': [cols[var_col_a]],
                                         'pcf': [cols.flagged_pc]})
-
-        # set_trace()
 
         p = Plot(background_fill_alpha=0.95, x_range=xdr, y_range=ydr, plot_width=int(plot_width / 2), plot_height=int(plot_width / 2), y_scale=LogScale(),
                  x_scale=LogScale(), background_fill_color="#efe8f2")
@@ -287,58 +346,41 @@ def make_plot(inp_df):
                              fill_color='white')
         p.add_glyph(source, circle)
         p.add_glyph(source, flag_circle)
-        # xdr.renderers.append(renderer)
-        # ydr.renderers.append(renderer)
 
         # setting the plot ticker
         xticker = BasicTicker()
         yticker = BasicTicker()
 
-        if int(cols.SCAN_NUMBER) == min_scan and int(cols.chan_bin) == max_chan:
-            pass
-            #p.add_layout(col_bar, 'right')
-
-        if int(cols.SCAN_NUMBER) == max_scan:
+        if curr_scan_no == max_scan:
             xaxis = LogAxis(major_tick_out=1,
                             minor_tick_out=1,
                             axis_line_width=1)
-            cbin = int(cols.chan_bin)
-            #xaxis.axis_label = '{:.4} - {:.4} GHz'.format(*f_edges[cbin])
-            p.add_layout(xaxis, 'below')
+
             xticker = xaxis.ticker
 
-        if int(cols.chan_bin) == min_chan:
-            yaxis = LogAxis(bounds="auto", major_tick_out=1,
+        if curr_cbin_no == min_chan:
+            yaxis = LogAxis(major_tick_out=1,
                             minor_tick_out=1,
                             axis_line_width=1)
-            #yaxis.axis_label = 'Scan {}'.format(int(cols.SCAN_NUMBER))
-            p.add_layout(yaxis, 'left')
+
             yticker = yaxis.ticker
 
-        hover = bk.models.HoverTool(
-            tooltips=[('mean', '@mean'), ('var', '@var'),
-                      ('Flagged %', '@pcf'),
-                      ("%Deviation from midmean", '@mean_anorm')])
+        hover = bk.models.HoverTool(tooltips=[('mean', '@mean'),
+                                              ('var', '@var'),
+                                              ('Flagged %', '@pcf'),
+                                              ("%Deviation from midmean",
+                                               '@mean_anorm')
+                                              ])
 
-        # p.add_layout(Grid(dimension=0, ticker=xticker))
-        # p.add_layout(Grid(dimension=1, ticker=yticker))
         p.add_tools(PanTool(), hover, WheelZoomTool(), ResetTool())
-        # p.js_on_event(Tap, CustomJS(
-        # code="alert('scan_no: {} chunk: {}')".format(cols.SCAN_NUMBER,
-        # cols.chan_bin)))
-
-        p.on_event(Tap, partial(on_click_callback,
-                                cols.SCAN_NUMBER, cols.chan_bin))
-        # p.callback = CustomJS(code=jscode, args=dict(plot=p, dims=dims))
+        p.on_event(Tap, partial(on_click_callback, inp_df,
+                                curr_scan_no, curr_cbin_no, doplot))
 
         # add the divs from the 2nd element to the 2nd last element of the grid
-        mygrid[row_idx + 1, int(cols.chan_bin) + 1] = p
+        mygrid[row_idx + 1, curr_cbin_no + 1] = p
         if col_idx == ncols - 1:
             row_idx = ctr.next()
 
-        # gcols.append(p)
-    # set_trace()
-    #grows = np.split(np.array(gcols), len(gcols) / ncols)
     gp = gridplot(mygrid.tolist())
     ro = row(gp, color_bar_plot)
 
@@ -346,48 +388,61 @@ def make_plot(inp_df):
 
     print("Adding plot to root")
 
-    curdoc().add_root(col)
-
-# gb_scans = ['DATA_DESC_ID', 'FIELD_ID', 'SCAN_NUMBER']
-# gb_baselines = ['DATA_DESC_ID', 'FIELD_ID', 'ANTENNA1', 'ANTENNA2']
-# default = ['DATA_DESC_ID', 'FIELD_ID']
+    document.add_root(col)
 
 
-print("Lifting off")
+#####################################################################
+################# Main function starts here ##########################
 
 ms_name = "/home/andati/measurement_sets/1491291289.1ghz.1.1ghz.4hrs.ms"
+bin_width = 50
+fid = 0
+corr = 0
+ddid = 0
+
+data_col = 'DATA'
+doplot = 'ap'
 
 a = list(xm.xds_from_ms(ms_name, columns=['DATA', 'TIME', 'FLAG',
                                           'SCAN_NUMBER', 'ANTENNA1',
                                           'ANTENNA2'],
                         group_cols=['DATA_DESC_ID', 'FIELD_ID']))
 
-field_id = 0
-corr = 0
-ch = a[field_id]
+ch = a[fid]
 
-amp = process(ch, corr, 'amplitude')
+sel_chunk = process(ch, corr=corr, data_column=data_col, ptype=doplot,
+                    flag=True, bin_size=bin_width)
 
 
-phase = process(ch, corr, 'phase')
+###################################################################
+################# some global variables ##########################
+document = curdoc()
+freqs = (ut.get_frequencies(ms_name, spwid=ddid) / 1e9).data.compute()
+f_edges = split_freqs(freqs, bin_width)
+nrows = np.unique(sel_chunk.SCAN_NUMBER).size
+# checking the flag column because it is chunked like the data
+ncols = sel_chunk.FLAG.data.npartitions
+plot_width, plot_height = calc_plot_dims(nrows, ncols)
 
-bin_width = 50
-fs = get_channels(ms_name)
-f_edges = split_freqs(fs, bin_width)
 
-ch['Amplitude'] = amp.chunk({'chan': bin_width})
-ch['Phase'] = phase.chunk({'chan': bin_width})
-ch['FLAG'] = ch.FLAG.sel(corr=0).chunk({'chan': bin_width})
+# converting to data frame to allow for leveraging of dask data frame #partitions
+# Since data is already chunked in xarray, the number of partitions
+# corresponds to the number of chunks which makes it easier for now.
 
-selection = ['Amplitude', 'Phase', 'SCAN_NUMBER', 'FLAG']
-ddf = ch[selection].to_dask_dataframe()
-nddf = ddf.map_partitions(compute_idx, bin_width)
-print("partiitons mapped")
+sel_df = sel_chunk.to_dask_dataframe()
 
-# grouping by channelbin and san_number and select
-res = nddf.groupby(['SCAN_NUMBER', 'chan_bin'])[['SCAN_NUMBER', 'FLAG',
-                                                 'chan_bin', 'Amplitude',
-                                                 'Phase']].apply(creat_mv, 'amplitude')
+# add chunk index numbers to the partitions
+nddf = sel_df.map_partitions(compute_idx, bin_width)
 
-print("Starting plotting function")
-make_plot(res)
+sel_cols = ['SCAN_NUMBER', 'FLAG', 'chan_bin']
+
+if doplot == 'ap':
+    sel_cols.extend(['Amplitude', 'Phase'])
+elif doplot == 'ri':
+    sel_cols.extend(['Imaginary', 'Real'])
+
+# grouping by chan_bin and scan_number and select
+res = nddf.groupby(['SCAN_NUMBER', 'chan_bin'])[sel_cols].apply(creat_mv,
+                                                                doplot)
+
+make_plot(res, doplot)
