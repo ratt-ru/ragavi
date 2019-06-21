@@ -1,8 +1,5 @@
 from __future__ import division, print_function
 
-import gi
-gi.require_version('Gdk', '3.0')
-
 import hvplot
 import hvplot.xarray
 import hvplot.dask
@@ -19,13 +16,14 @@ import matplotlib.cm as cm
 import numpy as np
 import pandas as pd
 import scipy.stats as sstats
+import sys
 import xarray as xa
 import xarrayms as xm
 import vis_utils as ut
+import warnings
 
 from collections import namedtuple
 from dask import compute, delayed
-from gi.repository import Gdk
 from functools import partial
 from holoviews import opts
 from holoviews.operation.datashader import aggregate, dynspread, datashade
@@ -34,7 +32,7 @@ from itertools import count, cycle
 from pyrap.tables import table
 
 from bokeh.io import show, output_file, save
-from bokeh.models import (Band, BasicTicker,
+from bokeh.models import (Band, BasicTicker, Button,
                           Circle, ColorBar, ColumnDataSource, CustomJS,
                           DataRange1d, Div, Grid, HoverTool, Line, LinearAxis,
                           LinearColorMapper, LogColorMapper, LogScale,
@@ -45,8 +43,72 @@ from bokeh.layouts import gridplot, row, column
 from bokeh.plotting import figure, curdoc
 from bokeh.events import Tap
 from bokeh.resources import INLINE
-from bokeh.models import Button, AjaxDataSource
 from bokeh import events
+
+try:
+    import gi
+    gi.require_version('Gdk', '3.0')
+    from gi.repository import Gdk
+except:
+    pass
+
+
+def config_logger():
+    """This function is used to configure the logger for ragavi and catch
+        all warnings output by sys.stdout.
+    """
+    logfile_name = 'ragavi.log'
+    # capture only a single instance of a matching repeated warning
+    warnings.filterwarnings('once')
+    logging.captureWarnings(True)
+
+    # setting the format for the logging messages
+    start = " (O_o) ".center(80, "=")
+    form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    form = form.format(start)
+    formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
+
+    # setup for ragavi logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.ERROR)
+
+    warnings_logger = logging.getLogger('py.warnings')
+
+    xmslog = logging.getLogger('xarrayms')
+    xmslog.setLevel(logging.ERROR)
+
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.ERROR)
+    ch.setFormatter(formatter)
+    # setup for logfile handing ragavi
+    fh = logging.FileHandler(logfile_name)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(formatter)
+
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    xmslog.addHandler(fh)
+    warnings_logger.addHandler(fh)
+    return logger
+
+
+def _handle_uncaught_exceptions(extype, exval, extraceback):
+    """Function to Capture all uncaught exceptions into the log file
+
+       Inputs to this function are acquired from sys.excepthook. This
+       is because this function overrides sys.excepthook 
+
+       https://docs.python.org/3/library/sys.html#sys.excepthook
+
+    """
+    message = "Oops ... !"
+    logger.error(message, exc_info=(extype, exval, extraceback))
+
+warnings.filterwarnings('once')
+logging.captureWarnings(True)
+
+logger = config_logger()
+sys.excepthook = _handle_uncaught_exceptions
 
 
 def get_screen_size():
@@ -341,11 +403,11 @@ for sel_chunk in selections:
 
     # To Do: phase wrapped means?
 
-    # find means over frequencies
+    # find means in frequencies over a arnge of time
     mean = sel_chunk[upper_yaxis].mean(dim='chan').data
     std = sel_chunk[upper_yaxis].std(dim='chan').data
 
-    # find means over time
+    # find in time over a range of frequencies
     fmean = sel_chunk[upper_yaxis].mean(dim='row').data
     fstd = sel_chunk[upper_yaxis].std(dim='row').data
 
@@ -359,6 +421,8 @@ for sel_chunk in selections:
 
     time = sel_chunk.TIME.data - sel_chunk.TIME[0].data
 
+    # ignore division by nan warning because nanmean is executed
+    np.seterr(divide='ignore', invalid='ignore')
     time, mean, tupper, tlower, fupper, flower, fmean = compute(
         time, mean, tupper, tlower, fupper, flower, fmean)
 

@@ -246,6 +246,8 @@ def get_polarizations(ms_name):
     return cor2stokes
 
 
+###########################################################
+# conversions
 def time_convert(xdata):
     """ Convert time from MJD to UTC time
     Inputs

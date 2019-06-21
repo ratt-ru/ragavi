@@ -1,8 +1,5 @@
 from __future__ import division, print_function
 
-import gi
-gi.require_version('Gdk', '3.0')
-
 import hvplot
 import hvplot.xarray
 import hvplot.dask
@@ -25,7 +22,6 @@ import vis_utils as ut
 
 from collections import namedtuple
 from dask import compute, delayed
-from gi.repository import Gdk
 from functools import partial
 from holoviews import opts
 from holoviews.operation.datashader import aggregate, dynspread, datashade
@@ -34,7 +30,7 @@ from itertools import count, cycle
 from pyrap.tables import table
 
 from bokeh.io import show, output_file, save
-from bokeh.models import (Band, BasicTicker,
+from bokeh.models import (Band, BasicTicker, Button,
                           Circle, ColorBar, ColumnDataSource, CustomJS,
                           DataRange1d, Div, Grid, HoverTool, Line, LinearAxis,
                           LinearColorMapper, LogColorMapper, LogScale,
@@ -157,18 +153,18 @@ def compute_idx(df, bw):
 
 def creat_mv(df, doplot):
     if doplot == 'ap':
-        df['adatmean'] = np.mean(df['Amplitude'])
-        df['adatvar'] = np.var(df['Amplitude'])
-        df['pdatmean'] = astats.circmean(df['Phase'])
-        df['pdatvar'] = astats.circvar(df['Phase'])
+        df = df.assign(adatmean=df['Amplitude'].mean())
+        df = df.assign(adatvar=df['Amplitude'].var())
+        df = df.assign(pdatmean=astats.circmean(df['Phase']))
+        df = df.assign(pdatvar=astats.circvar(df['Phase']))
 
     elif doplot == 'ri':
-        df['rdatmean'] = np.mean(df['Real'])
-        df['rdatvar'] = np.var(df['Real'])
-        df['idatmean'] = np.mean(df['Imaginary'])
-        df['idatvar'] = np.var('Imaginary')
+        df = df.assign(rdatmean=df['Real'].mean())
+        df = df.assign(rdatvar=df['Real'].var())
+        df = df.assign(idatmean=astats.circmean(df['Imaginary']))
+        df = df.assign(idatvar=astats.circvar(df['Imaginary']))
 
-    df['flagged_pc'] = percentage_flagged(df)
+    df = df.assign(flagged_pc=percentage_flagged(df))
     return df
 
 
@@ -201,19 +197,30 @@ def percentage_flagged(df):
 
 def on_click_callback(inp_df, scn, chan, doplot, event):
 
+    global f_edges
+    chan = int(chan)
+    scn = int(scn)
+
     logging.info("Callback Active")
     if doplot == 'ap':
         xy = ['Phase', 'Amplitude']
     else:
-        xy = ['Imaginary', 'Real']
+        xy = ['Real', 'Imaginary']
 
     selection = inp_df[(inp_df['SCAN_NUMBER'] == scn)
                        & (inp_df['chan_bin'] == chan)]
-    set_trace()
+
     im = hv.render(selection.hvplot(*xy, kind='scatter', datashade=True))
 
-    im.title.text = "Scan {} Chunk {}".format(int(scn), int(chan))
+    im.width = 1000
+    im.height = 1000
+
+    im.axis.axis_label_text_font_size = "12pt"
+
+    im.title.text = "Scan {} Chunk {}: {:.4f} to {:.4f} GHz".format(
+        scn, chan, *f_edges[chan])
     im.title.align = "center"
+    im.title.text_font_size = '14pt'
 
     avail_roots = document.roots[0]
 
@@ -221,6 +228,7 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
         avail_roots.children.append(im)
     else:
         avail_roots.children[-1] = im
+
     logging.info('Callback plot added to root document.')
 
 
@@ -239,7 +247,10 @@ def make_plot(inp_df, doplot):
 
     # To Do: conform to numpy matrix rather than sorting
     # rearrange the values in ascending so that plotting is easier
-    inp_subdf = inp_subdf.compute().sort_values(['SCAN_NUMBER', 'chan_bin'])
+    inp_subdf = inp_subdf.compute()
+    inp_subdf.index = inp_subdf.droplevel([0, 1])
+    inp_subdf = inp_subdf.sort_values(['SCAN_NUMBER', 'chan_bin']).set_index(
+        pd.RangeIndex(0, ncols * nrows))
 
     #*_col_a is for cols related to amplitude or real
     #*_col_b is for cols related to phase or imaginary
@@ -307,14 +318,15 @@ def make_plot(inp_df, doplot):
 
     # get index number of row with each iteration
     ctr = count(0)
-    row_idx = ctr.next()
+    row_idx = next(ctr)
 
     for rs, cols in inp_subdf.iterrows():
 
-        col_idx = cyc.next()
+        col_idx = next(cyc)
 
         curr_scan_no = int(cols.SCAN_NUMBER)
         curr_cbin_no = int(cols.chan_bin)
+        flagged_pc = cols.flagged_pc
 
         dis = Div(text='S{}'.format(curr_scan_no),
                   background="#3FBF9D")
@@ -341,8 +353,8 @@ def make_plot(inp_df, doplot):
                         fill_color={'field': 'mean_anorm',
                                     'transform': col_mapper})
         flag_circle = Circle(x='mean', y='mean',
-                             radius=(source.data['pcf'][0] *
-                                     source.data['var'][0]) * 0.01,
+                             radius=((source.data['pcf'][0] *
+                                      source.data['var'][0]) * 0.01)**2,
                              fill_alpha=0.8, line_color=None,
                              fill_color='white')
         p.add_glyph(source, circle)
@@ -380,7 +392,7 @@ def make_plot(inp_df, doplot):
         # add the divs from the 2nd element to the 2nd last element of the grid
         mygrid[row_idx + 1, curr_cbin_no + 1] = p
         if col_idx == ncols - 1:
-            row_idx = ctr.next()
+            row_idx = next(ctr)
 
     gp = gridplot(mygrid.tolist())
     ro = row(gp, color_bar_plot)
@@ -397,7 +409,7 @@ def make_plot(inp_df, doplot):
 
 ms_name = "/home/andati/measurement_sets/1491291289.1ghz.1.1ghz.4hrs.ms"
 bin_width = 50
-fid = 0
+fid = 1
 corr = 0
 ddid = 0
 
@@ -437,13 +449,32 @@ nddf = sel_df.map_partitions(compute_idx, bin_width)
 
 sel_cols = ['SCAN_NUMBER', 'FLAG', 'chan_bin']
 
+# additional columns
+additional_cols = []
+
 if doplot == 'ap':
     sel_cols.extend(['Amplitude', 'Phase'])
+    additional_cols.extend(['adatmean', 'adatvar',
+                            'pdatmean', 'pdatvar', 'flagged_pc'])
+    f64 = sel_df.dtypes.to_dict()['Amplitude']
 elif doplot == 'ri':
-    sel_cols.extend(['Imaginary', 'Real'])
+    sel_cols.extend(['Real', 'Imaginary'])
+    additional_cols.extend(['rdatmean', 'rdatvar',
+                            'idatmean', 'idatvar', 'flagged_pc'])
+    f64 = sel_df.dtypes.to_dict()['Real']
+
+# get colnames from dataframes and add the new col names
+fdf_col_names = sel_cols + additional_cols
+
+fdf_dtypes = nddf[sel_cols].dtypes.to_list() + [f64] * len(additional_cols)
+
+# groupby meta
+
+meta = [(key, value) for key, value in zip(fdf_col_names, fdf_dtypes)]
 
 # grouping by chan_bin and scan_number and select
 res = nddf.groupby(['SCAN_NUMBER', 'chan_bin'])[sel_cols].apply(creat_mv,
-                                                                doplot)
+                                                                doplot,
+                                                                meta=meta)
 
 make_plot(res, doplot)
