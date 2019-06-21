@@ -42,7 +42,7 @@ GHZ = 1e9
 NB_RENDER = None
 
 # Number of antennas to be grouped together
-BATCH_SIZE = 3
+BATCH_SIZE = 16
 
 
 def config_logger():
@@ -853,6 +853,8 @@ def get_yaxis_data(table_obj, gtype, ptype):
 
     if gtype == 'K':
         data_column = 'FPARAM'
+        y1_label = 'Delay [ns]'
+        y2_label = 'Delay [ns]'
     else:
         data_column = 'CPARAM'
 
@@ -1077,7 +1079,7 @@ def get_xaxis_data(table_obj, gtype):
         xaxis_label = 'Time[s]'
     elif gtype == 'K':
         xdata = table_obj.getcol('ANTENNA1')
-        xaxis_label = 'Delay [ns]'
+        xaxis_label = 'Antenna1'
 
     return xdata, xaxis_label
 
@@ -1450,9 +1452,9 @@ def main(**kwargs):
                     ax2.add_layout(linax2, 'above')
 
             if gain_type == 'K':
-                # change axis names for delay tables
-                ax1.yaxis.axis_label = 'Delay [ns]'
-                ax2.yaxis.axis_label = 'Delay [ns]'
+                ax1_ylabel = y1label.replace('[ns]', '')
+                ax2_ylabel = y2label.replace('[ns]', '')
+
                 if doplot == 'ri':
                     logger.error('Exiting: No complex values to plot')
                     # break #[for when there'r multiple tables to be plotted]
