@@ -42,7 +42,7 @@ GHZ = 1e9
 NB_RENDER = None
 
 # Number of antennas to be grouped together
-BATCH_SIZE = 16
+BATCH_SIZE = 3
 
 
 def config_logger():
@@ -597,7 +597,7 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
     return lo_ax1, loerr_ax1, lo_ax2, loerr_ax2
 
 
-def gen_checkbox_labels(batch_size, num_leg_objs):
+def gen_checkbox_labels(batch_size, num_leg_objs, antnames):
     """ Auto-generating Checkbox labels
 
     Inputs
@@ -611,12 +611,17 @@ def gen_checkbox_labels(batch_size, num_leg_objs):
     labels: list
             Batch labels for the check box
     """
+    nants = len(antnames)
 
     labels = []
     s = 0
     e = batch_size - 1
     for i in range(num_leg_objs):
-        labels.append("A%s - A%s" % (s, e))
+        if e < nants:
+            labels.append("{} - {}".format(antnames[s], antnames[e]))
+        else:
+            labels.append("{} - {}".format(antnames[s], antnames[nants - 1]))
+        # after each append, move start number to current+batchsize
         s = s + batch_size
         e = e + batch_size
 
@@ -1579,7 +1584,7 @@ def main(**kwargs):
         toggle_err = Toggle(label='Show All Error bars',
                             button_type='warning', width=200)
 
-        ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs)
+        ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs, antnames)
 
         batch_select = CheckboxGroup(labels=ant_labs, active=[])
 
