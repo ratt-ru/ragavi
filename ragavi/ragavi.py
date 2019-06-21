@@ -1072,7 +1072,7 @@ def get_xaxis_data(table_obj, gtype):
         xaxis_label = 'Time[s]'
     elif gtype == 'K':
         xdata = table_obj.getcol('ANTENNA1')
-        xaxis_label = 'Antenna'
+        xaxis_label = 'Delay [ns]'
 
     return xdata, xaxis_label
 
@@ -1445,6 +1445,9 @@ def main(**kwargs):
                     ax2.add_layout(linax2, 'above')
 
             if gain_type == 'K':
+                # change axis names for delay tables
+                ax1.yaxis.axis_label = 'Delay [ns]'
+                ax2.yaxis.axis_label = 'Delay [ns]'
                 if doplot == 'ri':
                     logger.error('Exiting: No complex values to plot')
                     # break #[for when there'r multiple tables to be plotted]
