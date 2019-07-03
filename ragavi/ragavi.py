@@ -1,31 +1,31 @@
 from __future__ import division
 
-import sys
+import argparse
+import logging
 import glob
 import numpy as np
 import re
-import logging
+import sys
 import warnings
-import argparse
 
-from datetime import datetime
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
-from pyrap.tables import table
-from argparse import ArgumentParser
 
-from future.utils import listitems, listvalues
+from argparse import ArgumentParser
 from builtins import map
 from collections import OrderedDict
+from datetime import datetime
+from future.utils import listitems, listvalues
+from pyrap.tables import table
 
-from bokeh.plotting import figure
-from bokeh.models.widgets import Div, PreText
+from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
+                      save, show)
 from bokeh.layouts import row, column, gridplot, widgetbox
-from bokeh.io import (output_file, show, output_notebook, export_svgs,
-                      export_png, save)
-from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
-                          BasicTicker, Legend, Toggle, CustomJS, Title,
-                          CheckboxGroup, Select, Text, Slider)
+from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
+                          CustomJS, HoverTool, Range1d, Legend, LinearAxis,
+                          Select, Slider, Text, Title, Toggle)
+from bokeh.models.widgets import Div, PreText
+from bokeh.plotting import figure
 
 
 # defining some constants
