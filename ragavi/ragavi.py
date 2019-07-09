@@ -876,10 +876,12 @@ def field_selector_callback():
                     if (this.active.includes(f)){
                         p1[a+ant_count].visible = true;
                         p2[a+ant_count].visible = true;
+                        stats[f].visible = true;
                     }
                     else{
                         p1[a+ant_count].visible = false;
                         p2[a+ant_count].visible = false;
+                        stats[f].visible = false;
                     }
                 }
                 ant_count+=nants;
@@ -1381,6 +1383,8 @@ def main(**kwargs):
 
         fields = np.unique(tt.FIELD_ID.data.compute())
 
+        ncorrs = tt.FLAG.corr.data
+
         # convert field ids to strings
         if field_ids is None:
             field_ids = [str(f) for f in fields.tolist()]
@@ -1429,6 +1433,8 @@ def main(**kwargs):
         legend_items_err_ax1 = []
         legend_items_err_ax2 = []
 
+        stats = []
+
         for field in field_ids:
 
             if field.isdigit():
@@ -1440,7 +1446,9 @@ def main(**kwargs):
                 logger.info(
                     'Skipping table: {} : Field id {} not found.'.format(mytab, field))
                 continue
+
             stats_text = stats_display(mytab, gain_type, doplot, corr, field)
+            stats.append(stats_text)
             newtab = get_table(mytab, fid=field)[0]
 
             # for each antenna
@@ -1660,12 +1668,13 @@ def main(**kwargs):
         field_selector.callback = CustomJS(args={'fselect': field_selector,
                                                  'p1': ax1_plots,
                                                  'p2': ax2_plots,
-                                                 'ants': plotants},
+                                                 'ants': plotants,
+                                                 'stats': stats},
                                            code=field_selector_callback())
 
         plot_widgets = widgetbox([ant_select, batch_select,
                                   toggle_err, legend_toggle,
-                                  stats_text, size_slider, alpha_slider,
+                                  *stats, size_slider, alpha_slider,
                                   field_selector])
 
         if gain_type != 'K':
