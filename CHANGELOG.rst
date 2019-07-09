@@ -1,6 +1,11 @@
 0.0.6
 -----
 - Now supporting python3
+- All fields plotted by default on the same plot
+- --field command line switch is now optional
+- Different fields now plotted with different markers
+- Migrated to xarray-ms from python-casacore
+- Added glyph alpha selector, glyph size selector, and field selector
 
 
 0.0.5
