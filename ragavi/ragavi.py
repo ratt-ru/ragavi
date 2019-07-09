@@ -859,6 +859,38 @@ def alpha_slider_callback():
     return code
 
 
+def field_selector_callback():
+    code = """
+            //nants: number of antennas in each field
+            // nfields: number of fields
+
+            let nants = ants.length;
+            let nfields = p1.length / nants;
+            //to keep track of the last antenna number visibilities because
+            //p1 and p2 is are single lists containing all the elements in 
+            //all fields
+            let ant_count = 0;
+
+            for(f=0; f<nfields; f++){
+                for(a=0; a<nants; a++){
+                    if (this.active.includes(f)){
+                        p1[a+ant_count].visible = true;
+                        p2[a+ant_count].visible = true;
+                    }
+                    else{
+                        p1[a+ant_count].visible = false;
+                        p2[a+ant_count].visible = false;
+                    }
+                }
+                ant_count+=nants;
+            }
+
+
+
+           """
+    return code
+
+
 def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, batch_size=16):
     """Automates creation of antenna batches of 16 each unless otherwise
 
@@ -1054,13 +1086,13 @@ def add_axis(fig, axis_range, ax_label):
     return linaxis
 
 
-def name_2id(table_obj, field_name):
+def name_2id(tab_name, field_name):
     """Translate field name to field id
 
     Inputs
     -----
-    table_obj:  casacore.tables.table.table
-                pyrap table obj
+    tab_name: str
+              Table name
     field_name: string
          Field ID name to convert
 
@@ -1069,7 +1101,7 @@ def name_2id(table_obj, field_name):
     field_id: int
               Integer field id
     """
-    field_names = get_fields(table_obj)
+    field_names = vu.get_fields(tab_name).data.compute()
     field_name = field_name.upper()
 
     if field_name in field_names:
@@ -1556,14 +1588,6 @@ def main(**kwargs):
         ################ Defining widgets ###################################
         ######################################################################
 
-        # creating size slider for the plots
-        size_slider = Slider(end=15, start=1, step=0.5,
-                             value=4, title='Glyph size')
-
-        # Alpha slider for the glyphs
-        alpha_slider = Slider(end=1, start=0.1, step=0.1, value=1,
-                              title='Glpyh alpha')
-
         # creating and configuring Antenna selection buttons
         ant_select = Toggle(label='Select All Antennas',
                             button_type='success', width=200)
@@ -1580,6 +1604,19 @@ def main(**kwargs):
         legend_toggle = Select(title="Showing Legends: ", value="non",
                                options=[("alo", "Antennas"),
                                         ("elo", "Errors"), ("non", "None")])
+
+        # creating size slider for the plots
+        size_slider = Slider(end=15, start=1, step=0.5,
+                             value=4, title='Glyph size')
+
+        # Alpha slider for the glyphs
+        alpha_slider = Slider(end=1, start=0.1, step=0.1, value=1,
+                              title='Glpyh alpha')
+
+        fnames = vu.get_fields(mytab).data.compute()
+        field_labels = ["Field {}".format(fnames[int(x)]) for x in fields]
+
+        field_selector = CheckboxGroup(labels=field_labels, active=[])
 
         ######################################################################
         ############## Defining widget Callbacks ############################
@@ -1620,10 +1657,16 @@ def main(**kwargs):
                                                'p1': ax1_plots,
                                                'p2': ax2_plots},
                                          code=alpha_slider_callback())
+        field_selector.callback = CustomJS(args={'fselect': field_selector,
+                                                 'p1': ax1_plots,
+                                                 'p2': ax2_plots,
+                                                 'ants': plotants},
+                                           code=field_selector_callback())
 
         plot_widgets = widgetbox([ant_select, batch_select,
                                   toggle_err, legend_toggle,
-                                  stats_text, size_slider, alpha_slider])
+                                  stats_text, size_slider, alpha_slider,
+                                  field_selector])
 
         if gain_type != 'K':
             layout = gridplot([[plot_widgets, ax1, ax2]],
