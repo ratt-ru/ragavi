@@ -335,3 +335,7 @@ def _handle_uncaught_exceptions(extype, exval, extraceback):
     """
     message = "Oops ... !"
     logger.error(message, exc_info=(extype, exval, extraceback))
+
+
+logger = config_logger()
+sys.excepthook = _handle_uncaught_exceptions

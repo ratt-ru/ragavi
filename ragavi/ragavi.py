@@ -21,11 +21,10 @@ from collections import OrderedDict, namedtuple
 from dask import delayed, compute
 from datetime import datetime
 from future.utils import listitems, listvalues
-#from pyrap.tables import table
 
 from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
                       save, show)
-from bokeh.layouts import row, column, gridplot, widgetbox
+from bokeh.layouts import row, column, gridplot, widgetbox, grid
 from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           CustomJS, HoverTool, Range1d, Legend, LinearAxis,
                           Select, Slider, Text, Title, Toggle)
@@ -40,8 +39,8 @@ from ipdb import set_trace
 
 # defining some constants
 # default plot dimensions
-PLOT_WIDTH = 700
-PLOT_HEIGHT = 600
+PLOT_WIDTH = 900
+PLOT_HEIGHT = 700
 
 # gain types supported
 GAIN_TYPES = ['B', 'F', 'G', 'K']
@@ -230,7 +229,7 @@ class DataCoreProcessor:
             prepdx = xdata.chan
         elif gtype == 'G' or gtype == 'F':
             prepdx = xdata - xdata[0]
-            #prepdx = vu.time_convert(xdata)
+            # prepdx = vu.time_convert(xdata)
         elif gtype == 'K':
             prepdx = xdata
         return prepdx
@@ -510,7 +509,7 @@ def determine_table(table_name):
                 Name of table /  gain type to be plotted
 
     """
-    pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
+    pattern = re.compile(r'\.(G|K|B|F)\d*$', re.I)
     found = pattern.search(table_name)
     try:
         result = found.group()[:2]
@@ -721,10 +720,10 @@ def batch_select_callback():
 
             //sampling a single item for the length of fields
             let nfields = bax1[0][0][1].length;
-            
 
-            
-            
+
+
+
             //for each batch in total number of batches
             for(i=0; i<num_of_batches; i++){
                 //check whether batch number is included in the active list
@@ -738,7 +737,7 @@ def batch_select_callback():
                             bax2[i][k][1][f].visible = true;
                         }
                         k++;
-                        
+
                     }
                 }
 
@@ -867,7 +866,7 @@ def field_selector_callback():
             let nants = ants.length;
             let nfields = p1.length / nants;
             //to keep track of the last antenna number visibilities because
-            //p1 and p2 is are single lists containing all the elements in 
+            //p1 and p2 is are single lists containing all the elements in
             //all fields
             let ant_count = 0;
 
@@ -889,6 +888,27 @@ def field_selector_callback():
 
 
 
+           """
+    return code
+
+
+def axis_fs_callback():
+    code = """
+            naxes = ax1.length
+
+            for(i=0; i<naxes; i++){
+                ax1[i].axis_label_text_font_size = `${this.value}pt`;
+                ax2[i].axis_label_text_font_size = `${this.value}pt`;
+            }
+           """
+    return code
+
+
+def title_fs_callback():
+    code = """
+            last_idx = ax1.length-1;
+            ax1[last_idx].text_font_size = `${this.value}px`;
+            ax2[last_idx].text_font_size = `${this.value}px`;
            """
     return code
 
@@ -993,25 +1013,21 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
 
     lo_ax1, lo_ax2, loerr_ax1, loerr_ax2 = {}, {}, {}, {}
 
+    l_opts = dict(click_policy='hide',
+                  orientation='horizontal',
+                  label_text_font_size='9pt',
+                  visible=False,
+                  glyph_width=10)
+
     for i in range(num_leg_objs):
         lo_ax1['leg_%s' % str(i)] = Legend(items=bax1[i],
-                                           location='top_right',
-                                           click_policy='hide',
-                                           visible=False)
+                                           **l_opts)
         lo_ax2['leg_%s' % str(i)] = Legend(items=bax2[i],
-                                           location='top_right',
-                                           click_policy='hide',
-                                           visible=False)
-        loerr_ax1['leg_%s' % str(i)] = Legend(
-            items=baerr_ax1[i],
-            location='top_right',
-            click_policy='hide',
-            visible=False)
-        loerr_ax2['leg_%s' % str(i)] = Legend(
-            items=baerr_ax2[i],
-            location='top_right',
-            click_policy='hide',
-            visible=False)
+                                           **l_opts)
+        loerr_ax1['leg_%s' % str(i)] = Legend(items=baerr_ax1[i],
+                                              **l_opts)
+        loerr_ax2['leg_%s' % str(i)] = Legend(items=baerr_ax2[i],
+                                              **l_opts)
 
     return lo_ax1, loerr_ax1, lo_ax2, loerr_ax2
 
@@ -1084,8 +1100,11 @@ def add_axis(fig, axis_range, ax_label):
     fig.extra_x_ranges = {"fxtra": Range1d(
         start=axis_range[0], end=axis_range[-1])}
     linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
-                         major_label_orientation='horizontal', ticker=BasicTicker(desired_num_ticks=12))
-    return linaxis
+                         major_label_orientation='horizontal',
+                         ticker=BasicTicker(desired_num_ticks=12),
+                         axis_label_text_font_style='normal')
+    fig.add_layout(linaxis, 'above')
+    return fig
 
 
 def name_2id(tab_name, field_name):
@@ -1389,7 +1408,7 @@ def main(**kwargs):
         if field_ids is None:
             field_ids = [str(f) for f in fields.tolist()]
 
-        frequencies = (vu.get_frequencies(mytab, spwid=0) / GHZ).data.compute()
+        freqs = (vu.get_frequencies(mytab, spwid=0) / GHZ).data.compute()
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
@@ -1419,9 +1438,8 @@ def main(**kwargs):
         # range
         TOOLS = dict(tools='box_select, box_zoom, reset, pan, save,\
                             wheel_zoom, lasso_select')
-        ax1 = figure(sizing_mode='scale_both', y_axis_type='linear', **TOOLS)
-        ax2 = figure(sizing_mode='scale_both',
-                     x_range=ax1.x_range, **TOOLS)
+        ax1 = figure(**TOOLS)
+        ax2 = figure(x_range=ax1.x_range, **TOOLS)
 
         # initialise plot containers
         ax1_plots = []
@@ -1462,15 +1480,8 @@ def main(**kwargs):
                 # creating colors for maps
                 y1col = y2col = scalarMap.to_rgba(float(ant), bytes=True)[:-1]
 
-                #subtab = get_table(mytab, antenna=ant, fid=field)[0]
                 subtab = newtab.where(newtab.ANTENNA1 == int(ant), drop=True)
 
-                """
-                xdata, xlabel = get_xaxis_data(subtab, gain_type)
-                prepd_x = prep_xaxis_data(xdata, gain_type)
-                ydata, y1label, y2label = get_yaxis_data(subtab, gain_type,
-                                                         doplot)
-                """
                 # To Do: Have a flag option in cmdline
                 data_obj = DataCoreProcessor(subtab, mytab, gain_type,
                                              fid=field, antenna=ant,
@@ -1492,7 +1503,7 @@ def main(**kwargs):
                 spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
                                                                   gain_type,
                                                                   antnames,
-                                                                  frequencies)
+                                                                  freqs)
 
                 tab_tooltips = [("(x, y)", "($x, $y)"),
                                 ("spw", "@spw"),
@@ -1509,17 +1520,18 @@ def main(**kwargs):
                 ax1.yaxis.axis_label = ax1_ylabel = y1label
                 ax2.yaxis.axis_label = ax2_ylabel = y2label
 
+                ax1.axis.axis_label_text_font_style = 'normal'
+                ax2.axis.axis_label_text_font_style = 'normal'
+
                 if gain_type == 'B':
                     y1 = y1[:, 0]
                     y2 = y2[:, 0]
 
                     if ant == plotants[-1]:
-                        linax1 = add_axis(ax1, (frequencies[0], frequencies[-1]),
-                                          ax_label='Frequency [GHz]')
-                        linax2 = add_axis(ax2, (frequencies[0], frequencies[-1]),
-                                          ax_label='Frequency [GHz]')
-                        ax1.add_layout(linax1, 'above')
-                        ax2.add_layout(linax2, 'above')
+                        ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
+                                       ax_label='Frequency [GHz]')
+                        ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
+                                       ax_label='Frequency [GHz]')
 
                 if gain_type == 'K':
                     ax1_ylabel = y1label.replace('[ns]', '')
@@ -1557,9 +1569,9 @@ def main(**kwargs):
 
         # configuring titles for the plots
         ax1_title = Title(text=ax1_ylabel + ' vs ' + ax1_xlabel,
-                          align='center', text_font_size='25px')
+                          align='center', text_font_size='17px')
         ax2_title = Title(text=ax2_ylabel + ' vs ' + ax2_xlabel,
-                          align='center', text_font_size='25px')
+                          align='center', text_font_size='17px')
 
         ax1.add_tools(hover)
         ax2.add_tools(hover2)
@@ -1582,11 +1594,11 @@ def main(**kwargs):
 
         # adding legend objects to the layouts
         for i in range(num_legend_objs):
-            ax1.add_layout(legend_objs_ax1['leg_%s' % str(i)], 'right')
-            ax2.add_layout(legend_objs_ax2['leg_%s' % str(i)], 'right')
+            ax1.add_layout(legend_objs_ax1['leg_%s' % str(i)], 'below')
+            ax2.add_layout(legend_objs_ax2['leg_%s' % str(i)], 'below')
 
-            ax1.add_layout(legend_objs_ax1_err['leg_%s' % str(i)], 'left')
-            ax2.add_layout(legend_objs_ax2_err['leg_%s' % str(i)], 'left')
+            ax1.add_layout(legend_objs_ax1_err['leg_%s' % str(i)], 'below')
+            ax2.add_layout(legend_objs_ax2_err['leg_%s' % str(i)], 'below')
 
         # adding plot titles
         ax2.add_layout(ax2_title, 'above')
@@ -1596,35 +1608,50 @@ def main(**kwargs):
         ################ Defining widgets ###################################
         ######################################################################
 
+        # widget dimensions
+        w_dims = dict(width=150, height=30)
+
         # creating and configuring Antenna selection buttons
         ant_select = Toggle(label='Select All Antennas',
-                            button_type='success', width=200)
+                            button_type='success', **w_dims)
 
         # configuring toggle button for showing all the errors
         toggle_err = Toggle(label='Show All Error bars',
-                            button_type='warning', width=200)
+                            button_type='warning', **w_dims)
 
         ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs, antnames)
 
-        batch_select = CheckboxGroup(labels=ant_labs, active=[])
+        batch_select = CheckboxGroup(labels=ant_labs, active=[],
+                                     width=150)
 
         # Dropdown to hide and show legends
         legend_toggle = Select(title="Showing Legends: ", value="non",
                                options=[("alo", "Antennas"),
-                                        ("elo", "Errors"), ("non", "None")])
+                                        ("elo", "Errors"), ("non", "None")],
+                               width=150, height=45)
 
         # creating size slider for the plots
         size_slider = Slider(end=15, start=1, step=0.5,
-                             value=4, title='Glyph size')
+                             value=4, title='Glyph size',
+                             **w_dims)
 
         # Alpha slider for the glyphs
         alpha_slider = Slider(end=1, start=0.1, step=0.1, value=1,
-                              title='Glpyh alpha')
+                              title='Glpyh alpha', **w_dims)
 
         fnames = vu.get_fields(mytab).data.compute()
-        field_labels = ["Field {}".format(fnames[int(x)]) for x in fields]
+        fsyms = ['●', '◆', '◼', '▲', '▼', '⬢']
+        field_labels = ["Field {} {}".format(
+            fnames[int(x)], fsyms[int(x)]) for x in fields]
 
-        field_selector = CheckboxGroup(labels=field_labels, active=[])
+        field_selector = CheckboxGroup(labels=field_labels,
+                                       active=fields.tolist(),
+                                       **w_dims)
+
+        axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
+                                 title='Axis label size', **w_dims)
+        title_fontslider = Slider(end=35, start=10, step=1, value=20,
+                                  title='Title size', **w_dims)
 
         ######################################################################
         ############## Defining widget Callbacks ############################
@@ -1671,18 +1698,32 @@ def main(**kwargs):
                                                  'ants': plotants,
                                                  'stats': stats},
                                            code=field_selector_callback())
+        axis_fontslider.callback = CustomJS(args=dict(ax1=ax1.axis,
+                                                      ax2=ax2.axis),
+                                            code=axis_fs_callback())
+        title_fontslider.callback = CustomJS(args=dict(ax1=ax1.above,
+                                                       ax2=ax2.above),
+                                             code=title_fs_callback())
 
-        plot_widgets = widgetbox([ant_select, batch_select,
-                                  toggle_err, legend_toggle,
-                                  *stats, size_slider, alpha_slider,
-                                  field_selector])
+        a = row([ant_select, toggle_err, legend_toggle, size_slider,
+                 alpha_slider])
+        b = row([batch_select, field_selector, axis_fontslider,
+                 title_fontslider])
+        #*stats
 
+        plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
+
+        # setting the gridspecs
+        # gridplot while maintaining the set aspect ratio
+        grid_specs = dict(plot_width=PLOT_WIDTH,
+                          plot_height=PLOT_HEIGHT,
+                          sizing_mode='stretch_width')
         if gain_type != 'K':
-            layout = gridplot([[plot_widgets, ax1, ax2]],
-                              plot_width=700, plot_height=600)
+            layout = gridplot([[plot_widgets], [ax1, ax2]],
+                              **grid_specs)
         else:
-            layout = gridplot([[plot_widgets, ax1]],
-                              plot_width=700, plot_height=600)
+            layout = gridplot([[plot_widgets], [ax1]],
+                              **grid_specs)
 
         final_layout.append(layout)
 
