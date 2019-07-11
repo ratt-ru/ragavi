@@ -27,7 +27,8 @@ from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
 from bokeh.layouts import row, column, gridplot, widgetbox, grid
 from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           CustomJS, HoverTool, Range1d, Legend, LinearAxis,
-                          Select, Slider, Text, Title, Toggle)
+                          PrintfTickFormatter, Select, Slider, Text, Title,
+                          Toggle)
 from bokeh.models.markers import (Circle, CircleCross, Diamond, Hex,
                                   InvertedTriangle, Square, SquareCross,
                                   Triangle)
@@ -199,7 +200,7 @@ class DataCoreProcessor:
             x_label = 'Channel'
         elif gtype == 'F' or gtype == 'G':
             xdata = xds_table_obj.TIME
-            x_label = 'Time [s]'
+            x_label = 'Time bin'
         elif gtype == 'K':
             xdata = xds_table_obj.ANTENNA1
             x_label = 'Antenna1'
@@ -261,7 +262,7 @@ class DataCoreProcessor:
         elif yaxis == 'imaginary':
             y_label = 'Imaginary'
         elif yaxis == 'phase':
-            y_label = 'Phase[deg]'
+            y_label = 'Phase [deg]'
         elif yaxis == 'real':
             y_label = 'Real'
         elif yaxis == 'delay':
@@ -337,7 +338,7 @@ class DataCoreProcessor:
         ##### confirm K table is only plotted in ap mode #################
         ##################################################################
 
-        if gtype == 'K' and doplot == 'ap':
+        if gtype == 'K':
             # because only one plot should be generated
             y1data, y1_label = self.get_yaxis_data(xds_table_obj, ms_name,
                                                    'delay')
@@ -357,10 +358,6 @@ class DataCoreProcessor:
                      y1_err=y1_err, y2=y1, y2_label=y1_label, y2_err=y1_err)
 
             return d
-
-        elif gtype == 'K' and doplot == 'ri':
-            logger.error("No real and imaginary to plot")
-            sys.exit(-1)
 
         ##################################################################
         ####### The rest of the tables can be plotted in ap or ri mode ###
@@ -390,7 +387,8 @@ class DataCoreProcessor:
                                       yaxis='imaginary', corr=corr, flag=flag)[:, 0]
             y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
                                           yaxis='error', corr=corr, flag=flag)
-            y2_err = 0
+            y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
+                                          yaxis='error', corr=corr, flag=flag)
 
         prepd_x, y1, y1_err, y2, y2_err = compute(prepd_x.data, y1.data,
                                                   y1_err.data, y2.data,
@@ -875,12 +873,10 @@ def field_selector_callback():
                     if (this.active.includes(f)){
                         p1[a+ant_count].visible = true;
                         p2[a+ant_count].visible = true;
-                        stats[f].visible = true;
                     }
                     else{
                         p1[a+ant_count].visible = false;
                         p2[a+ant_count].visible = false;
-                        stats[f].visible = false;
                     }
                 }
                 ant_count+=nants;
@@ -1199,30 +1195,31 @@ def stats_display(tab_name, gtype, ptype, corr, field):
 
     dobj = DataCoreProcessor(subtable, tab_name, gtype, corr=corr)
 
+    if gtype == 'K':
+        y1 = dobj.y_only('delay').y
+        med_y1 = np.nanmedian(y1)
+        text = "Field {}: Median Delay: {:.4f}".format(field, med_y1)
+        text2 = ' '
+        return text, text2
+
     if ptype == 'ap':
-        if gtype == 'K':
-            y1 = dobj.y_only('delay').y
-            med_y1 = np.nanmedian(y1)
-            text = "Median Delay: {:.4f}".format(med_y1)
-        else:
-            y1 = dobj.y_only('amplitude').y
-            y2 = dobj.y_only('phase').y
-            med_y1 = np.nanmedian(y1)
-            med_y2 = np.nanmedian(y2)
-            text = "Median Amplitude: {:.4f}\nMedian Phase: {:.4f} deg".format(
-                med_y1, med_y2)
+        y1 = dobj.y_only('amplitude').y
+        y2 = dobj.y_only('phase').y
+        med_y1 = np.nanmedian(y1)
+        med_y2 = np.nanmedian(y2)
+        text = "Field {} Median: {:.4f}".format(field, med_y1)
+        text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
+                                                   u"\u00b0")
     else:
         y1 = dobj.y_only('real').y
         y2 = dobj.y_only('imaginary').y
 
         med_y1 = np.nanmedian(y1)
         med_y2 = np.nanmedian(y2)
-        text = "Median Real: {:.4f}\nMedian Imaginary: {:.4f}".format(
-            med_y1, med_y2)
+        text = "Field {} Median: {:.4f}".format(field, med_y1)
+        text2 = "Field {} Median: {:.4f}".format(field, med_y2)
 
-    pre = PreText(text=text)
-
-    return pre
+    return text, text2
 
 
 def autofill_gains(t, g):
@@ -1451,8 +1448,8 @@ def main(**kwargs):
         legend_items_err_ax1 = []
         legend_items_err_ax2 = []
 
-        stats = []
-
+        stats_ax1 = []
+        stats_ax2 = []
         for field in field_ids:
 
             if field.isdigit():
@@ -1466,7 +1463,9 @@ def main(**kwargs):
                 continue
 
             stats_text = stats_display(mytab, gain_type, doplot, corr, field)
-            stats.append(stats_text)
+            stats_ax1.append(stats_text[0])
+            stats_ax2.append(stats_text[1])
+
             newtab = get_table(mytab, fid=field)[0]
 
             # for each antenna
@@ -1523,9 +1522,14 @@ def main(**kwargs):
                 ax1.axis.axis_label_text_font_style = 'normal'
                 ax2.axis.axis_label_text_font_style = 'normal'
 
+                if doplot == 'ap':
+                    ax2.yaxis[0].formatter = PrintfTickFormatter(
+                        format=u"%f\u00b0")
+
                 if gain_type == 'B':
-                    y1 = y1[:, 0]
-                    y2 = y2[:, 0]
+                    if y1.ndim > 1:
+                        y1 = y1[:, 0]
+                        y2 = y2[:, 0]
 
                     if ant == plotants[-1]:
                         ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
@@ -1568,10 +1572,14 @@ def main(**kwargs):
         tt.close()
 
         # configuring titles for the plots
-        ax1_title = Title(text=ax1_ylabel + ' vs ' + ax1_xlabel,
-                          align='center', text_font_size='17px')
-        ax2_title = Title(text=ax2_ylabel + ' vs ' + ax2_xlabel,
-                          align='center', text_font_size='17px')
+        ax1_title = Title(text="{} vs {} ({})".format(ax1_ylabel,
+                                                      ax1_xlabel,
+                                                      " ".join(stats_ax1)),
+                          align='center', text_font_size='15px')
+        ax2_title = Title(text="{} vs {} ({})".format(ax2_ylabel,
+                                                      ax2_xlabel,
+                                                      " ".join(stats_ax2)),
+                          align='center', text_font_size='15px')
 
         ax1.add_tools(hover)
         ax2.add_tools(hover2)
@@ -1583,9 +1591,10 @@ def main(**kwargs):
         batches_ax1, batches_ax1_err, batches_ax2, batches_ax2_err = \
             create_legend_batches(num_legend_objs, legend_items_ax1,
                                   legend_items_ax2, legend_items_err_ax1,
-                                  legend_items_err_ax2, batch_size=BATCH_SIZE)
+                                  legend_items_err_ax2,
+                                  batch_size=BATCH_SIZE)
 
-        legend_objs_ax1, legend_objs_ax1_err, legend_objs_ax2, \
+        legend_objs_ax1, legend_objs_ax1_err, legend_objs_ax2,\
             legend_objs_ax2_err = create_legend_objs(num_legend_objs,
                                                      batches_ax1,
                                                      batches_ax1_err,
@@ -1640,9 +1649,10 @@ def main(**kwargs):
                               title='Glpyh alpha', **w_dims)
 
         fnames = vu.get_fields(mytab).data.compute()
-        fsyms = ['●', '◆', '◼', '▲', '▼', '⬢']
-        field_labels = ["Field {} {}".format(
-            fnames[int(x)], fsyms[int(x)]) for x in fields]
+        fsyms = [u'\u2B24', u'\u25C6', u'\u25FC', u'\u25B2',
+                 u'\u25BC', u'\u2B22']
+        field_labels = ["Field {} {}".format(fnames[int(x)],
+                                             fsyms[int(x)]) for x in fields]
 
         field_selector = CheckboxGroup(labels=field_labels,
                                        active=fields.tolist(),
@@ -1650,7 +1660,7 @@ def main(**kwargs):
 
         axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
                                  title='Axis label size', **w_dims)
-        title_fontslider = Slider(end=35, start=10, step=1, value=20,
+        title_fontslider = Slider(end=35, start=10, step=1, value=15,
                                   title='Title size', **w_dims)
 
         ######################################################################
@@ -1695,8 +1705,7 @@ def main(**kwargs):
         field_selector.callback = CustomJS(args={'fselect': field_selector,
                                                  'p1': ax1_plots,
                                                  'p2': ax2_plots,
-                                                 'ants': plotants,
-                                                 'stats': stats},
+                                                 'ants': plotants},
                                            code=field_selector_callback())
         axis_fontslider.callback = CustomJS(args=dict(ax1=ax1.axis,
                                                       ax2=ax2.axis),
@@ -1726,7 +1735,7 @@ def main(**kwargs):
                               **grid_specs)
 
         final_layout.append(layout)
-
+        logger.info("Table {} done.".format(mytab))
     if image_name:
         save_svg_image(image_name, ax1, ax2,
                        legend_items_ax1, legend_items_ax2)
