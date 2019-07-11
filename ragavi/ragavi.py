@@ -36,7 +36,6 @@ from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
 
 from . import vis_utils as vu
-from ipdb import set_trace
 
 # defining some constants
 # default plot dimensions
@@ -1646,7 +1645,7 @@ def main(**kwargs):
 
         # Alpha slider for the glyphs
         alpha_slider = Slider(end=1, start=0.1, step=0.1, value=1,
-                              title='Glpyh alpha', **w_dims)
+                              title='Glyph alpha', **w_dims)
 
         fnames = vu.get_fields(mytab).data.compute()
         fsyms = [u'\u2B24', u'\u25C6', u'\u25FC', u'\u25B2',
