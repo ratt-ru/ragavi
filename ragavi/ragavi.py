@@ -76,7 +76,7 @@ class DataCoreProcessor:
         self.corr = corr
         self.flag = flag
 
-    def get_phase(self, ydata, unwrap=False):
+    def get_phase(self, ydata, wrap=True):
         """Convert complex data to angle in degrees
         Inputs
         ------
@@ -87,10 +87,11 @@ class DataCoreProcessor:
         phase: xarray DataArray
                y-axis data converted to degrees
         """
-        phase = xa.ufuncs.angle(ydata, deg=True)
-        if unwrap:
-            # delay dispatching of unwrapped phase
-            phase = delayed(np.unwrap)(phase)
+        phase = xa.apply_ufunc(da.angle, ydata,
+                               dask='allowed', kwargs=dict(deg=True))
+        if wrap:
+            # delay dispatching of wrapped phase
+            phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
         return phase
 
     def get_amplitude(self, ydata):
@@ -153,7 +154,7 @@ class DataCoreProcessor:
         elif yaxis == 'imaginary':
             y = self.get_imaginary(ydata)
         elif yaxis == 'phase':
-            y = self.get_phase(ydata)
+            y = self.get_phase(ydata, wrap=True)
         elif yaxis == 'real':
             y = self.get_real(ydata)
         elif yaxis == 'delay' or yaxis == 'error':
