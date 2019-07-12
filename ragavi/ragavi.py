@@ -313,7 +313,7 @@ class DataCoreProcessor:
             processed = self.compute_ydata(ydata, yaxis=yaxis)
             y = processed.where(flags < 1)
         else:
-            y = compute_ydata(ydata, yaxis=yaxis)
+            y = self.compute_ydata(ydata, yaxis=yaxis)
 
         # if B table transpose table to be in shape (chans, solns) rather than
         #(solns, chans)
@@ -890,7 +890,8 @@ def field_selector_callback():
 
 def axis_fs_callback():
     code = """
-            naxes = ax1.length
+            let naxes = ax1.length;
+
 
             for(i=0; i<naxes; i++){
                 ax1[i].axis_label_text_font_size = `${this.value}pt`;
@@ -1193,7 +1194,7 @@ def stats_display(tab_name, gtype, ptype, corr, field):
     """
     subtable = get_table(tab_name, where='FIELD_ID=={}'.format(field))[0]
 
-    dobj = DataCoreProcessor(subtable, tab_name, gtype, corr=corr)
+    dobj = DataCoreProcessor(subtable, tab_name, gtype, corr=corr, flag=True)
 
     if gtype == 'K':
         y1 = dobj.y_only('delay').y
