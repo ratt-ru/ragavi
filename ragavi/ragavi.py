@@ -1208,9 +1208,17 @@ def stats_display(tab_name, gtype, ptype, corr, field):
         y2 = dobj.y_only('phase').y
         med_y1 = np.nanmedian(y1)
         med_y2 = np.nanmedian(y2)
+
         text = "Field {} Median: {:.4f}".format(field, med_y1)
-        text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
-                                                   u"\u00b0")
+
+        try:
+            text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
+                                                       u"\u00b0")
+        except UnicodeEncodeError:
+            # for python2
+            text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
+                                                       u"\u00b0".encode('utf-8'))
+
     else:
         y1 = dobj.y_only('real').y
         y2 = dobj.y_only('imaginary').y
@@ -1652,8 +1660,13 @@ def main(**kwargs):
         fnames = vu.get_fields(mytab).data.compute()
         fsyms = [u'\u2B24', u'\u25C6', u'\u25FC', u'\u25B2',
                  u'\u25BC', u'\u2B22']
-        field_labels = ["Field {} {}".format(fnames[int(x)],
-                                             fsyms[int(x)]) for x in fields]
+
+        try:
+            field_labels = ["Field {} {}".format(fnames[int(x)],
+                                                 fsyms[int(x)]) for x in fields]
+        except UnicodeEncodeError:
+            field_labels = ["Field {} {}".format(fnames[int(x)],
+                                                 fsyms[int(x)].encode('utf-8')) for x in fields]
 
         field_selector = CheckboxGroup(labels=field_labels,
                                        active=fields.tolist(),
