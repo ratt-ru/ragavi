@@ -43,7 +43,7 @@ PLOT_WIDTH = 900
 PLOT_HEIGHT = 700
 
 # gain types supported
-GAIN_TYPES = ['B', 'F', 'G', 'K']
+GAIN_TYPES = ['B', 'D', 'F', 'G', 'K']
 
 # valueof 1 gigahertz
 GHZ = 1e9
@@ -195,7 +195,7 @@ class DataCoreProcessor:
                      Label to appear on the x-axis of the plots.
         """
 
-        if gtype == 'B':
+        if gtype == 'B' or gtype == 'D':
             xdata = vu.get_frequencies(ms_name)
             x_label = 'Channel'
         elif gtype == 'F' or gtype == 'G':
@@ -226,7 +226,7 @@ class DataCoreProcessor:
         prepdx: xarray DataArray
                 Prepared data for the x-axis.
         """
-        if gtype == 'B':
+        if gtype == 'B' or gtype == 'D':
             prepdx = xdata.chan
         elif gtype == 'G' or gtype == 'F':
             prepdx = xdata - xdata[0]
@@ -278,7 +278,7 @@ class DataCoreProcessor:
 
         return ydata, y_label
 
-    def prep_yaxis_data(self, xds_table_obj, ms_name, ydata, yaxis=None, corr=0, flag=False):
+    def prep_yaxis_data(self, xds_table_obj, ms_name, ydata, yaxis=None, corr=0, flag=True):
         """Process data for the y-axis which includes:
         - Correlation selection
         - Flagging
@@ -306,10 +306,14 @@ class DataCoreProcessor:
         if corr != None:
             ydata = ydata.sel(corr=corr)
             flags = vu.get_flags(xds_table_obj).sel(corr=corr)
+        else:
+            ydata = ydata
+            flags = vu.get_flags(xds_table_obj)
 
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
         if flag:
+            # if flagging is activated select data only where flag mask is 0
             processed = self.compute_ydata(ydata, yaxis=yaxis)
             y = processed.where(flags < 1)
         else:
@@ -317,8 +321,11 @@ class DataCoreProcessor:
 
         # if B table transpose table to be in shape (chans, solns) rather than
         #(solns, chans)
-        if self.gtype == 'B':
+        if self.gtype == 'B' or self.gtype == 'D':
             y = y.T
+            if y.ndim == 2:
+                # Take the item on the first row of the data before transpose
+                y = y[:, 0]
 
         return y
 
@@ -328,7 +335,7 @@ class DataCoreProcessor:
         Data = namedtuple('Data',
                           'x x_label y1 y1_label y1_err y2 y2_label y2_err')
 
-        # this o be ran once
+        # this to be ran once
         xdata, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, gtype)
         prepd_x = self.prep_xaxis_data(xdata, gtype=gtype)
 
@@ -343,7 +350,7 @@ class DataCoreProcessor:
             y1data, y1_label = self.get_yaxis_data(xds_table_obj, ms_name,
                                                    'delay')
             y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
-                                      yaxis='delay', corr=corr, flag=flag)[:, 0]
+                                      yaxis='delay', corr=corr, flag=flag)
             y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
                                           yaxis='error', corr=corr, flag=flag)
             y2 = 0
@@ -382,9 +389,9 @@ class DataCoreProcessor:
             y2data, y2_label = self.get_yaxis_data(xds_table_obj, ms_name,
                                                    'imaginary')
             y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
-                                      yaxis='real', corr=corr, flag=flag)[:, 0]
+                                      yaxis='real', corr=corr, flag=flag)
             y2 = self.prep_yaxis_data(xds_table_obj, ms_name, y2data,
-                                      yaxis='imaginary', corr=corr, flag=flag)[:, 0]
+                                      yaxis='imaginary', corr=corr, flag=flag)
             y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
                                           yaxis='error', corr=corr, flag=flag)
             y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
@@ -405,6 +412,8 @@ class DataCoreProcessor:
                              self.flag)
 
     def x_only(self):
+        """Only return xaxis data and label
+        """
         Data = namedtuple('Data', 'x x_label')
         xdata, xlabel = self.get_xaxis_data(
             self.xds_table_obj, self.ms_name,                                self.gtype)
@@ -415,13 +424,15 @@ class DataCoreProcessor:
         return d
 
     def y_only(self, yaxis=None):
+        """Only return yaxis data and label
+        """
 
         Data = namedtuple('Data', 'y y_label')
         ydata, y_label = self.get_yaxis_data(self.xds_table_obj, self.ms_name,
                                              yaxis)
         y = self.prep_yaxis_data(self.xds_table_obj, self.ms_name, ydata,
                                  yaxis=yaxis, corr=self.corr,
-                                 flag=self.flag)[:, 0]
+                                 flag=self.flag)
         y = y.data.compute()
         d = Data(y=y, y_label=y_label)
         return d
@@ -910,6 +921,41 @@ def title_fs_callback():
     return code
 
 
+def flag_callback():
+    code = """
+            //sources: list of all different sources for the different antennas and available sources
+            //n_sources: number of sources
+
+            let n_sources =  sources.length;
+
+            let init_src = Array();
+            let src_1 = Array();
+
+            for(item in sources){init_src[item] = sources[item][0];}
+            for(item in sources){src_1[item] = sources[item][1];}
+
+            if (cb_obj.active){
+                cb_obj.label = 'Un-Flag';
+                for (i=0; i<n_sources; i++){
+                    init_src[i].data.y1 = src_1[i].data.iy1;
+                    init_src[i].data.y2 = src_1[i].data.iy2;
+                    init_src[i].change.emit();
+                }
+            }
+            else{
+                cb_obj.label = 'Flag';
+                for (i=0; i<n_sources; i++){
+                    init_src[i].data.y1 = src_1[i].data.y1;
+                    init_src[i].data.y2 = src_1[i].data.y2;
+                    init_src[i].change.emit();
+                }
+
+
+            }
+           """
+    return code
+
+
 def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, batch_size=16):
     """Automates creation of antenna batches of 16 each unless otherwise
 
@@ -1120,10 +1166,12 @@ def name_2id(tab_name, field_name):
               Integer field id
     """
     field_names = vu.get_fields(tab_name).data.compute()
+
+    # make the sup field name uppercase
     field_name = field_name.upper()
 
     if field_name in field_names:
-        field_id = field_names.index(field_name)
+        field_id = np.where(field_names == field_name)[0][0]
         return int(field_id)
     else:
         return -1
@@ -1162,7 +1210,7 @@ def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
     # get the number of channels
     nchan = freqs.size
 
-    if gtype == 'B':
+    if gtype == 'B' or gtype == 'D':
         spw_id = spw_id[0].repeat(nchan, axis=0)
         scan_no = scan_no[0].repeat(nchan, axis=0)
         ant_id = ant_id[0].repeat(nchan, axis=0)
@@ -1170,7 +1218,7 @@ def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
     return spw_id, scan_no, ttip_antnames
 
 
-def stats_display(tab_name, gtype, ptype, corr, field):
+def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
     """Function to display some statistics on the plots. These statistics are derived from a specific correlation and a specified field of the data.
     Currently, only the medians of these plots are displayed.
 
@@ -1281,8 +1329,8 @@ def get_argparser():
                         metavar=' ', help='Field ID(s) / NAME(s) to plot',
                         default=None)
     parser.add_argument('-g', '--gaintype', nargs='+', type=str, metavar=' ',
-                        dest='gain_types', choices=['B', 'G', 'K', 'F'],
-                        help='Type of table(s) to be plotted: B, G, K, F',
+                        dest='gain_types', choices=['B', 'D', 'G', 'K', 'F'],
+                        help='Type of table(s) to be plotted: B, D, G, K, F',
                         default=[])
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar=' ',
                         help='Output HTMLfile name', default='')
@@ -1370,6 +1418,12 @@ def main(**kwargs):
         mytabs = kwargs.get('mytabs', [])
         gain_types = kwargs.get('gain_types', [])
 
+    # To flag or not
+    flag_data = False
+
+    # default spwid
+    spwid = 0
+
     if len(mytabs) == 0:
         logger.error('Exiting: No gain table specified.')
         sys.exit(-1)
@@ -1394,7 +1448,7 @@ def main(**kwargs):
 
     for mytab, gain_type in zip(mytabs, gain_types):
 
-        # reinitialise plotant list for each table
+        # re-initialise plotant list for each table
         if NB_RENDER:
             plotants = kwargs.get('plotants', [-1])
         else:
@@ -1412,9 +1466,11 @@ def main(**kwargs):
 
         # convert field ids to strings
         if field_ids is None:
-            field_ids = [str(f) for f in fields.tolist()]
+            fids = [str(f) for f in fields.tolist()]
+        else:
+            fids = field_ids
 
-        freqs = (vu.get_frequencies(mytab, spwid=0) / GHZ).data.compute()
+        freqs = (vu.get_frequencies(mytab, spwid=spwid) / GHZ).data.compute()
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
@@ -1459,19 +1515,23 @@ def main(**kwargs):
 
         stats_ax1 = []
         stats_ax2 = []
-        for field in field_ids:
+
+        sources = []
+        # enumerating available field ids incase of large fids
+        for enum_fid, field in enumerate(fids):
 
             if field.isdigit():
                 field = int(field)
             else:
-                field = name_2id(field, field_src_ids)
+                field = name_2id(mytab, field)
 
             if int(field) not in fields.tolist():
                 logger.info(
                     'Skipping table: {} : Field id {} not found.'.format(mytab, field))
                 continue
 
-            stats_text = stats_display(mytab, gain_type, doplot, corr, field)
+            stats_text = stats_display(
+                mytab, gain_type, doplot, corr, field, flag=flag_data)
             stats_ax1.append(stats_text[0])
             stats_ax2.append(stats_text[1])
 
@@ -1494,7 +1554,7 @@ def main(**kwargs):
                 data_obj = DataCoreProcessor(subtab, mytab, gain_type,
                                              fid=field, antenna=ant,
                                              doplot=doplot, corr=corr,
-                                             flag=True)
+                                             flag=flag_data)
                 ready_data = data_obj.act()
 
                 prepd_x = ready_data.x
@@ -1506,6 +1566,12 @@ def main(**kwargs):
                 y2 = ready_data.y2
                 y2_err = ready_data.y2_err
                 y2label = ready_data.y2_label
+
+                # inverse flag data object
+                infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
+                                                  fid=field, antenna=ant,
+                                                  doplot=doplot, corr=corr,
+                                                  flag=not flag_data).act()
 
                 # for tooltips
                 spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
@@ -1535,11 +1601,7 @@ def main(**kwargs):
                     ax2.yaxis[0].formatter = PrintfTickFormatter(
                         format=u"%f\u00b0")
 
-                if gain_type == 'B':
-                    if y1.ndim > 1:
-                        y1 = y1[:, 0]
-                        y2 = y2[:, 0]
-
+                if gain_type == 'B' or gain_type == 'D':
                     if ant == plotants[-1]:
                         ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
                                        ax_label='Frequency [GHz]')
@@ -1557,9 +1619,16 @@ def main(**kwargs):
                                                 'scanid': scan_no,
                                                 'antname': ttip_antnames})
 
+                inv_source = ColumnDataSource(data={'y1': y1,
+                                                    'y2': y2,
+                                                    'iy1': infl_data_obj.y1,
+                                                    'iy2': infl_data_obj.y2})
+
+                sources.append([source, inv_source])
+
                 p1, p1_err, p2, p2_err = make_plots(
-                    source=source, color=y1col, ax1=ax1, ax2=ax2, fid=field,
-                    y1_err=y1_err, y2_err=y2_err)
+                    source=source, color=y1col, ax1=ax1, ax2=ax2,
+                    fid=enum_fid, y1_err=y1_err, y2_err=y2_err)
 
                 # hide all the other plots until legend is clicked
                 if ant > 0:
@@ -1663,11 +1732,10 @@ def main(**kwargs):
 
         try:
             field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[int(x)]) for x in fields]
+                                                 fsyms[enum_fid]) for x in fields]
         except UnicodeEncodeError:
             field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[int(x)].encode('utf-8')) for x in fields]
-
+                                                 fsyms[enum_fid].encode('utf-8')) for x in fields]
         field_selector = CheckboxGroup(labels=field_labels,
                                        active=fields.tolist(),
                                        **w_dims)
@@ -1676,6 +1744,9 @@ def main(**kwargs):
                                  title='Axis label size', **w_dims)
         title_fontslider = Slider(end=35, start=10, step=1, value=15,
                                   title='Title size', **w_dims)
+
+        toggle_flag = Toggle(label='Flag', button_type='warning',
+                             active=flag_data, **w_dims)
 
         ######################################################################
         ############## Defining widget Callbacks ############################
@@ -1728,11 +1799,18 @@ def main(**kwargs):
                                                        ax2=ax2.above),
                                              code=title_fs_callback())
 
-        a = row([ant_select, toggle_err, legend_toggle, size_slider,
+        toggle_flag.callback = CustomJS(args=dict(sources=sources,
+                                                  nants=plotants),
+                                        code=flag_callback())
+
+        #################################################################
+        ########## Define widget layouts #################################
+        ##################################################################
+
+        a = row([ant_select, toggle_err, toggle_flag, size_slider,
                  alpha_slider])
         b = row([batch_select, field_selector, axis_fontslider,
-                 title_fontslider])
-        #*stats
+                 title_fontslider, legend_toggle, ])
 
         plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
 
@@ -1768,7 +1846,7 @@ def main(**kwargs):
                 mytab = datetime.now().strftime('%Y%m%d_%H%M%S')
             html_name = "{}_corr_{}_{}_field_{}".format(mytab, corr,
                                                         doplot,
-                                                        ''.join(field_ids))
+                                                        ''.join(fids))
             save_html(html_name, final_layout)
 
         logger.info("Rendered: {}.html".format(html_name))
@@ -1789,7 +1867,7 @@ def plot_table(mytabs, gain_types, fields, **kwargs):
     --------
         mytabs       : The table (list of tables) to be plotted
         gain_types   : Cal-table (list of caltypes) type to be plotted.
-                      Can be either 'B'-bandpass, 'G'-gains, 'K'-delay or 'F'-flux (default=None)
+                      Can be either 'B'-bandpass, 'D'- D jones leakages, G'-gains, 'K'-delay or 'F'-flux (default=None)
         fields       : Field ID / Name (list of field ids or name) to plot
                       (default = 0)',default=0)
 

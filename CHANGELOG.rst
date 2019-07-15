@@ -1,3 +1,14 @@
+0.0.9
+-----
+- Added flag button on plot
+- Plotting D-Jones tables now supported
+- Fixed bug in field_name to field_id converter
+
+0.0.8
+-----
+- Fixed bug due to string encoding for python2.7
+
+
 0.0.7
 -----
 - Updated version number

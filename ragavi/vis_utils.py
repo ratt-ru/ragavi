@@ -300,7 +300,7 @@ def config_logger():
     formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
 
     # setup for ragavi logger
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger('ragavi')
     logger.setLevel(logging.DEBUG)
 
     # capture all stdout warnings
