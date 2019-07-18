@@ -37,6 +37,7 @@ from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
 
 from . import vis_utils as vu
+#from ipdb import set_trace
 
 # defining some constants
 # default plot dimensions
@@ -615,28 +616,32 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1_err=None,
         Tuple of glyphs
 
     """
-    markers = [Circle, Diamond, Square, Triangle, InvertedTriangle, Hex]
+    markers = ['circle', 'diamond', 'square', 'triangle',
+               'inverted_triangle', 'hex']
     glyph_opts = {'size': 4,
                   'fill_alpha': 1,
                   'fill_color': color,
-                  'line_width': 0,
-                  'line_color': 'black'}
+                  'line_color': 'black',
+                  'nonselection_fill_color': '#7D7D7D',
+                  'nonselection_fill_alpha': 0.3}
 
-    nonsel_glyph = markers[fid]()
-    nonsel_glyph.update(fill_color='#7D7D7D',
-                        fill_alpha=0.3,)
+    # if there is any flagged data enforce an asterisk where flag is active
+    if np.any(np.isnan(source.data['y1'])):
+        fmarkers = gen_flag_data_markers(source.data['y1'], markers[fid])
+        # update the data source with markers
+        source.add(fmarkers, name='fmarkers')
 
-    # create an instance of the glyph
-    glyph_ax1 = markers[fid]()
-    glyph_ax1.update(x='x', y='y1', **glyph_opts)
+        p1 = ax1.scatter(x='x', y='y1', marker='fmarkers', source=source,
+                         line_width=2, **glyph_opts)
 
-    p1 = ax1.add_glyph(source, glyph=glyph_ax1,
-                       nonselection_glyph=nonsel_glyph)
+        p2 = ax2.scatter(x='x', y='y2', marker='fmarkers', source=source,
+                         line_width=2, **glyph_opts)
+    else:
+        p1 = ax1.scatter(x='x', y='y1', marker=markers[fid], source=source,
+                         line_width=0, **glyph_opts)
 
-    glyph_ax2 = markers[fid]()
-    glyph_ax2.update(x='x', y='y2', **glyph_opts)
-    p2 = ax2.add_glyph(source, glyph=glyph_ax2,
-                       nonselection_glyph=nonsel_glyph)
+        p2 = ax2.scatter(x='x', y='y2', marker=markers[fid], source=source,
+                         line_width=0, **glyph_opts)
 
     # add a check for whether all the in y data were NaNs
     # this causes the errorbars to fail if they all are
@@ -1392,6 +1397,39 @@ def condense_legend_items(inlist):
     # reformulate odict to list
     outlist = [(key, value) for key, value in od.items()]
     return outlist
+
+
+def gen_flag_data_markers(y, fmarker):
+    """Generate different markers for where data has been flagged
+
+        Inputs
+        ------
+        y: numpy.ndarray
+           The flagged data
+        fmarker: str
+                 the marker to be used for flagged data
+
+        Outputs
+        -------
+        masked_list: list
+                     Edited list containing markers for flagged data
+    """
+
+    # get the size of the data
+    dasize = y.shape[0]
+
+    # fill an array with the unflagged marker value
+    markers_arr = np.full(y.shape, fill_value=fmarker)
+
+    # mask only where there are nan values
+    masked_markers_arr = np.ma.masked_where(np.isnan(y), markers_arr)
+    # fill with the different marker
+    masked_markers_arr.fill_value = markers_arr[-1]
+
+    # return filled matrix
+    masked_list = masked_markers_arr.filled()
+
+    return masked_list
 
 
 def main(**kwargs):
