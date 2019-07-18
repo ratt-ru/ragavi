@@ -22,6 +22,7 @@ from dask import delayed, compute
 from datetime import datetime
 from future.utils import listitems, listvalues
 
+from bokeh.events import PlotEvent
 from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
                       save, show)
 from bokeh.layouts import row, column, gridplot, widgetbox, grid
@@ -315,7 +316,7 @@ class DataCoreProcessor:
         if flag:
             # if flagging is activated select data only where flag mask is 0
             processed = self.compute_ydata(ydata, yaxis=yaxis)
-            y = processed.where(flags < 1)
+            y = processed.where(flags == False)
         else:
             y = self.compute_ydata(ydata, yaxis=yaxis)
 
@@ -361,8 +362,10 @@ class DataCoreProcessor:
 
             # shorting y2 to y1 to avoid problems during plotted
             # y2 does not exist for this table
-            d = Data(x=prepd_x, x_label=xlabel, y1=y1, y1_label=y1_label,
-                     y1_err=y1_err, y2=y1, y2_label=y1_label, y2_err=y1_err)
+            d = Data(x=prepd_x, x_label=xlabel, y1=y1,
+                     y1_label=y1_label, y1_err=y1_err,
+                     y2=y1, y2_label=y1_label,
+                     y2_err=y1_err)
 
             return d
 
@@ -401,8 +404,10 @@ class DataCoreProcessor:
                                                   y1_err.data, y2.data,
                                                   y2_err.data)
 
-        d = Data(x=prepd_x, x_label=xlabel, y1=y1, y1_label=y1_label,
-                 y1_err=y1_err, y2=y2, y2_label=y2_label, y2_err=y2_err)
+        d = Data(x=prepd_x, x_label=xlabel, y1=y1,
+                 y1_label=y1_label, y1_err=y1_err,
+                 y2=y2,
+                 y2_label=y2_label, y2_err=y2_err)
 
         return d
 
@@ -627,15 +632,25 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1_err=None,
 
     p1 = ax1.add_glyph(source, glyph=glyph_ax1,
                        nonselection_glyph=nonsel_glyph)
-    p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
-                      color=color, yerr=y1_err)
 
     glyph_ax2 = markers[fid]()
     glyph_ax2.update(x='x', y='y2', **glyph_opts)
     p2 = ax2.add_glyph(source, glyph=glyph_ax2,
                        nonselection_glyph=nonsel_glyph)
-    p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
-                      color=color, yerr=y2_err)
+
+    # add a check for whether all the in y data were NaNs
+    # this causes the errorbars to fail if they all are
+    # they must be checked
+    if np.all(np.isnan(source.data['y1'])):
+        p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
+                          color=color, yerr=None)
+        p2_err = errorbar(fig=ax2, x=source.data['y2'], y=source.data['y2'],
+                          color=color, yerr=None)
+    else:
+        p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
+                          color=color, yerr=y1_err)
+        p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
+                          color=color, yerr=y2_err)
 
     return p1, p1_err, p2, p2_err
 
@@ -925,8 +940,10 @@ def flag_callback():
     code = """
             //sources: list of all different sources for the different antennas and available sources
             //n_sources: number of sources
+            //flagging: status of flag_data
 
             let n_sources =  sources.length;
+            let state = cb_obj.active;
 
             let init_src = Array();
             let src_1 = Array();
@@ -934,8 +951,8 @@ def flag_callback():
             for(item in sources){init_src[item] = sources[item][0];}
             for(item in sources){src_1[item] = sources[item][1];}
 
-            if (cb_obj.active){
-                cb_obj.label = 'Un-Flag';
+            if (state==true){
+                cb_obj.label = flagging ? 'Flag' : 'Un-Flag';
                 for (i=0; i<n_sources; i++){
                     init_src[i].data.y1 = src_1[i].data.iy1;
                     init_src[i].data.y2 = src_1[i].data.iy2;
@@ -943,7 +960,7 @@ def flag_callback():
                 }
             }
             else{
-                cb_obj.label = 'Flag';
+                cb_obj.label = flagging ? 'Un-Flag' : 'Flag';
                 for (i=0; i<n_sources; i++){
                     init_src[i].data.y1 = src_1[i].data.y1;
                     init_src[i].data.y2 = src_1[i].data.y2;
@@ -1119,8 +1136,9 @@ def save_html(hname, plot_layout):
     -------
     Nothing
     """
-    output_file(hname + ".html")
-    output = save(plot_layout, hname + ".html", title=hname)
+    hname = hname + ".html"
+    output_file(hname)
+    output = save(plot_layout, hname, title=hname)
     # uncomment next line to automatically plot on web browser
     # show(layout)
 
@@ -1419,7 +1437,7 @@ def main(**kwargs):
         gain_types = kwargs.get('gain_types', [])
 
     # To flag or not
-    flag_data = False
+    flag_data = True
 
     # default spwid
     spwid = 0
@@ -1517,6 +1535,7 @@ def main(**kwargs):
         stats_ax2 = []
 
         sources = []
+
         # enumerating available field ids incase of large fids
         for enum_fid, field in enumerate(fids):
 
@@ -1530,8 +1549,8 @@ def main(**kwargs):
                     'Skipping table: {} : Field id {} not found.'.format(mytab, field))
                 continue
 
-            stats_text = stats_display(
-                mytab, gain_type, doplot, corr, field, flag=flag_data)
+            stats_text = stats_display(mytab, gain_type, doplot, corr,
+                                       field, flag=flag_data)
             stats_ax1.append(stats_text[0])
             stats_ax2.append(stats_text[1])
 
@@ -1550,7 +1569,8 @@ def main(**kwargs):
 
                 subtab = newtab.where(newtab.ANTENNA1 == int(ant), drop=True)
 
-                # To Do: Have a flag option in cmdline
+                # depending on the status of flag_data, this may
+                # be either flagged or unflagged data
                 data_obj = DataCoreProcessor(subtab, mytab, gain_type,
                                              fid=field, antenna=ant,
                                              doplot=doplot, corr=corr,
@@ -1567,7 +1587,7 @@ def main(**kwargs):
                 y2_err = ready_data.y2_err
                 y2label = ready_data.y2_label
 
-                # inverse flag data object
+                # inverse data object
                 infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
                                                   fid=field, antenna=ant,
                                                   doplot=doplot, corr=corr,
@@ -1745,8 +1765,12 @@ def main(**kwargs):
         title_fontslider = Slider(end=35, start=10, step=1, value=15,
                                   title='Title size', **w_dims)
 
-        toggle_flag = Toggle(label='Flag', button_type='warning',
-                             active=flag_data, **w_dims)
+        # if flag_data is true, i.e data is flagged, label==Un-flag,
+        # button==inactive [not flag_data], otherwise button==in
+        toggle_flag = Toggle(label='Un-flag' if flag_data == True else 'Flag',
+                             button_type='warning',
+                             active=False,
+                             **w_dims)
 
         ######################################################################
         ############## Defining widget Callbacks ############################
@@ -1757,9 +1781,9 @@ def main(**kwargs):
                                                  batchsel=batch_select),
                                        code=ant_select_callback())
 
-        toggle_err.callback = CustomJS(args=dict(err1=legend_items_err_ax1,
-                                                 err2=legend_items_err_ax2),
-                                       code=toggle_err_callback())
+        toggle_err.js_on_click(CustomJS(args=dict(err1=legend_items_err_ax1,
+                                                  err2=legend_items_err_ax2),
+                                        code=toggle_err_callback()))
 
         # BATCH SELECTION
         batch_select.callback = CustomJS(
@@ -1779,29 +1803,34 @@ def main(**kwargs):
                 loax2_err=listvalues(legend_objs_ax2_err)),
             code=legend_toggle_callback())
 
-        size_slider.callback = CustomJS(args={'slide': size_slider,
-                                              'p1': ax1_plots,
-                                              'p2': ax2_plots},
-                                        code=size_slider_callback())
-        alpha_slider.callback = CustomJS(args={'alpha': alpha_slider,
-                                               'p1': ax1_plots,
-                                               'p2': ax2_plots},
-                                         code=alpha_slider_callback())
+        size_slider.js_on_change('value',
+                                 CustomJS(args={'slide': size_slider,
+                                                'p1': ax1_plots,
+                                                'p2': ax2_plots},
+                                          code=size_slider_callback()))
+        alpha_slider.js_on_change('value',
+                                  CustomJS(args={'alpha': alpha_slider,
+                                                 'p1': ax1_plots,
+                                                 'p2': ax2_plots},
+                                           code=alpha_slider_callback()))
         field_selector.callback = CustomJS(args={'fselect': field_selector,
                                                  'p1': ax1_plots,
                                                  'p2': ax2_plots,
                                                  'ants': plotants},
                                            code=field_selector_callback())
-        axis_fontslider.callback = CustomJS(args=dict(ax1=ax1.axis,
-                                                      ax2=ax2.axis),
-                                            code=axis_fs_callback())
-        title_fontslider.callback = CustomJS(args=dict(ax1=ax1.above,
-                                                       ax2=ax2.above),
-                                             code=title_fs_callback())
+        axis_fontslider.js_on_change('value',
+                                     CustomJS(args=dict(ax1=ax1.axis,
+                                                        ax2=ax2.axis),
+                                              code=axis_fs_callback()))
+        title_fontslider.js_on_change('value',
+                                      CustomJS(args=dict(ax1=ax1.above,
+                                                         ax2=ax2.above),
+                                               code=title_fs_callback()))
 
-        toggle_flag.callback = CustomJS(args=dict(sources=sources,
-                                                  nants=plotants),
-                                        code=flag_callback())
+        toggle_flag.js_on_click(CustomJS(args=dict(sources=sources,
+                                                   nants=plotants,
+                                                   flagging=flag_data),
+                                         code=flag_callback()))
 
         #################################################################
         ########## Define widget layouts #################################
