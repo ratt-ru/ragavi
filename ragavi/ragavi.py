@@ -30,9 +30,7 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           CustomJS, HoverTool, Range1d, Legend, LinearAxis,
                           PrintfTickFormatter, Select, Slider, Text, Title,
                           Toggle)
-from bokeh.models.markers import (Circle, CircleCross, Diamond, Hex,
-                                  InvertedTriangle, Square, SquareCross,
-                                  Triangle)
+
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
 
@@ -579,8 +577,12 @@ def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
         y_err_y = []
 
         for px, py, err in zip(x, y, yerr):
-            y_err_x.append((px, px))
-            y_err_y.append((py - err, py + err))
+            if np.isnan(py):
+                y_err_x.append((px, px))
+                y_err_y.append(0)
+            else:
+                y_err_x.append((px, px))
+                y_err_y.append((py - err, py + err))
 
         h = fig.multi_line(y_err_x, y_err_y, color=color, line_width=3,
                            level='underlay', visible=False, **error_kwargs)
@@ -617,7 +619,8 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1_err=None,
 
     """
     markers = ['circle', 'diamond', 'square', 'triangle',
-               'inverted_triangle', 'hex']
+               'hex']
+    fmarker = 'inverted_triangle'
     glyph_opts = {'size': 4,
                   'fill_alpha': 1,
                   'fill_color': color,
@@ -625,17 +628,19 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1_err=None,
                   'nonselection_fill_color': '#7D7D7D',
                   'nonselection_fill_alpha': 0.3}
 
-    # if there is any flagged data enforce an asterisk where flag is active
+    # if there is any flagged data enforce fmarker where flag is active
+    fmarkers = None
     if np.any(np.isnan(source.data['y1'])):
-        fmarkers = gen_flag_data_markers(source.data['y1'], markers[fid])
+        fmarkers = gen_flag_data_markers(source.data['y1'], fid=fid,
+                                         markers=markers, fmarker=fmarker)
         # update the data source with markers
         source.add(fmarkers, name='fmarkers')
 
         p1 = ax1.scatter(x='x', y='y1', marker='fmarkers', source=source,
-                         line_width=2, **glyph_opts)
+                         line_width=0, angle=0.7, **glyph_opts)
 
         p2 = ax2.scatter(x='x', y='y2', marker='fmarkers', source=source,
-                         line_width=2, **glyph_opts)
+                         line_width=0, angle=0.7, **glyph_opts)
     else:
         p1 = ax1.scatter(x='x', y='y1', marker=markers[fid], source=source,
                          line_width=0, **glyph_opts)
@@ -1399,13 +1404,17 @@ def condense_legend_items(inlist):
     return outlist
 
 
-def gen_flag_data_markers(y, fmarker):
+def gen_flag_data_markers(y, fid=None, markers=None, fmarker='circle_x'):
     """Generate different markers for where data has been flagged
 
         Inputs
         ------
         y: numpy.ndarray
            The flagged data
+        fid: int
+             field id number to identify the marker to be used
+        markers: list
+                 A list of all available markers
         fmarker: str
                  the marker to be used for flagged data
 
@@ -1415,16 +1424,13 @@ def gen_flag_data_markers(y, fmarker):
                      Edited list containing markers for flagged data
     """
 
-    # get the size of the data
-    dasize = y.shape[0]
-
     # fill an array with the unflagged marker value
-    markers_arr = np.full(y.shape, fill_value=fmarker)
+    markers_arr = np.full(y.shape, fill_value=markers[fid], dtype='<U17')
 
     # mask only where there are nan values
     masked_markers_arr = np.ma.masked_where(np.isnan(y), markers_arr)
     # fill with the different marker
-    masked_markers_arr.fill_value = markers_arr[-1]
+    masked_markers_arr.fill_value = fmarker
 
     # return filled matrix
     masked_list = masked_markers_arr.filled()
@@ -1775,8 +1781,8 @@ def main(**kwargs):
                                         ("elo", "Errors"), ("non", "None")],
                                width=150, height=45)
 
-        # creating size slider for the plots
-        size_slider = Slider(end=15, start=1, step=0.5,
+        # creating glyph size slider for the plots
+        size_slider = Slider(end=15, start=0.4, step=0.1,
                              value=4, title='Glyph size',
                              **w_dims)
 
