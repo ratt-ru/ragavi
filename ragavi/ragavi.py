@@ -29,7 +29,7 @@ from bokeh.layouts import row, column, gridplot, widgetbox, grid
 from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           CustomJS, HoverTool, Range1d, Legend, LinearAxis,
                           PrintfTickFormatter, Select, Slider, Text, Title,
-                          Toggle)
+                          Toggle, Whisker)
 
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
@@ -55,8 +55,8 @@ NB_RENDER = None
 BATCH_SIZE = 16
 
 
-logger = vu.config_logger()
-sys.excepthook = vu._handle_uncaught_exceptions
+logger = vu.logger
+excepthook = vu._handle_uncaught_exceptions
 
 #######################################################################
 #################### Define some data Processing class ################
@@ -531,8 +531,7 @@ def determine_table(table_name):
         return -1
 
 
-def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
-             error_kwargs={}):
+def errorbar(fig, x, y, yerr=None, color='red'):
     """Function to plot the error bars for both x and y.
        Takes in 3 compulsory parameters fig, x and y
 
@@ -543,55 +542,40 @@ def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
         x_axis value
     y: numpy.ndarray
         y_axis value
-    xerr: numpy.ndarray
-        Errors for x axis, must be an array
     yerr: numpy.ndarray
         Errors for y axis, must be an array
     color: str
         Color for the error bars
 
-
     Outputs
     -------
-    h: fig.multi_line
-        Returns a multiline object for external legend rendering
+    fig: bokeh.plotting.figure.Figure
+        Return the figure object containing errorbars
 
     """
     # Setting default return value
     h = None
-
-    if xerr is not None:
-
-        x_err_x = []
-        x_err_y = []
-
-        for px, py, err in zip(x, y, xerr):
-            x_err_x.append((px - err, px + err))
-            x_err_y.append((py, py))
-
-        h = fig.multi_line(x_err_x, x_err_y, color=color, line_width=3,
-                           level='underlay', visible=False, **error_kwargs)
+    ebars = None
 
     if yerr is not None:
-        y_err_x = []
-        y_err_y = []
 
-        for px, py, err in zip(x, y, yerr):
-            if np.isnan(py):
-                y_err_x.append((px, px))
-                y_err_y.append(0)
-            else:
-                y_err_x.append((px, px))
-                y_err_y.append((py - err, py + err))
+        src = ColumnDataSource(data=dict(upper=y + yerr,
+                                         lower=y - yerr, base=x))
 
+        """
         h = fig.multi_line(y_err_x, y_err_y, color=color, line_width=3,
                            level='underlay', visible=False, **error_kwargs)
+        """
+        ebars = Whisker(source=src, base='base', upper='upper',
+                        lower='lower', line_color=color, visible=False)
+        ebars.upper_head.line_color = color
+        ebars.lower_head.line_color = color
+        fig.add_layout(ebars)
+        h = fig
+    return ebars
 
-    return h
 
-
-def make_plots(source, ax1, ax2, fid=0, color='red', y1_err=None,
-               y2_err=None):
+def make_plots(source, ax1, ax2, fid=0, color='red', y1err=None, y2err=None):
     """Generate a plot
 
     Inputs
@@ -607,9 +591,9 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1_err=None,
          field id number to set the line width
     color: str
         Data points' color
-    y1_err: numpy.ndarray
+    y1err: numpy.ndarray
         y1 error data
-    y2_err: numpy.ndarray
+    y2err: numpy.ndarray
         y2 error data
 
     Outputs
@@ -658,9 +642,17 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1_err=None,
                           color=color, yerr=None)
     else:
         p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
-                          color=color, yerr=y1_err)
+                          color=color, yerr=y1err)
         p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
-                          color=color, yerr=y2_err)
+                          color=color, yerr=y2err)
+
+    # link the visible properties of the two plots
+    p1.js_link('visible', p2, 'visible')
+    p2.js_link('visible', p1, 'visible')
+
+    if p1_err:
+        p1.glyph.js_link('size', p1_err, 'line_width')
+        p2.glyph.js_link('size', p2_err, 'line_width')
 
     return p1, p1_err, p2, p2_err
 
@@ -673,6 +665,7 @@ def ant_select_callback():
     code = """
             var i;
              //if toggle button active
+             //num_groups: number of chunks available
             if (this.active==false)
                 {
                     this.label='Select all Antennas';
@@ -693,7 +686,7 @@ def ant_select_callback():
 
                     }
 
-                    batchsel.active = [0,1,2,3]
+                    batchsel.active = [...Array(num_groups).keys()]
                 }
             """
 
@@ -705,18 +698,17 @@ def toggle_err_callback():
         Returns : string
     """
     code = """
-            var i;
+            let i;
              //if toggle button active
             if (this.active==false)
                 {
                     this.label='Show All Error bars';
 
-
                     for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = false;
-                        //checking for error on phase and imaginary planes as these tend to go off
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = false;
+                        //check if the error bars are present first
+                        if (err1[i]){
+                            err1[i].visible = false;
+                            err2[i].visible = false;
                         }
 
 
@@ -726,9 +718,12 @@ def toggle_err_callback():
             else{
                     this.label='Hide All Error bars';
                     for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = true;
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = true;
+                        //only switch on if corresponding plot is on
+                        if(ax1s[i].visible){
+                            if (err1[i]){
+                                err1[i].visible = true;
+                                err2[i].visible = true;
+                            }
                         }
                     }
                 }
@@ -767,8 +762,10 @@ def batch_select_callback():
                         //show all items in the active batch
 
                         for (f=0; f<nfields; f++){
-                            bax1[i][k][1][f].visible = true;
-                            bax2[i][k][1][f].visible = true;
+                            if (bax1[i][k]){
+                                bax1[i][k][1][f].visible = true;
+                                bax2[i][k][1][f].visible = true;
+                                }
                         }
                         k++;
 
@@ -779,8 +776,10 @@ def batch_select_callback():
                     k=0;
                     while (k < batch_size){
                         for (f=0; f<nfields; f++){
-                            bax1[i][k][1][f].visible = false;
-                            bax2[i][k][1][f].visible = false;
+                            if (bax1[i][k]){
+                                bax1[i][k][1][f].visible = false;
+                                bax2[i][k][1][f].visible = false;
+                                }
                         }
                         k++;
                     }
@@ -822,30 +821,10 @@ def legend_toggle_callback():
                     }
                 }
 
-
-
-                if (this.value == "elo"){
-                    for(i=0; i<len; i++){
-                        loax1_err[i].visible = true;
-                        loax2_err[i].visible = true;
-
-                    }
-                }
-
-                else{
-                    for(i=0; i<len; i++){
-                        loax1_err[i].visible = false;
-                        loax2_err[i].visible = false;
-
-                    }
-                }
-
                 if (this.value == "non"){
                     for(i=0; i<len; i++){
                         loax1[i].visible = false;
                         loax2[i].visible = false;
-                        loax1_err[i].visible = false;
-                        loax2_err[i].visible = false;
 
                     }
                 }
@@ -983,7 +962,7 @@ def flag_callback():
     return code
 
 
-def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, batch_size=16):
+def create_legend_batches(num_leg_objs, li_ax1, li_ax2, batch_size=16):
     """Automates creation of antenna batches of 16 each unless otherwise
 
         batch_0 : li_ax1[:16]
@@ -1003,30 +982,21 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, ba
     li_ax2: list
                 List containing all legend items for antennas for 2nd figure
                 Items are in the form (antenna_legend, [glyph])
-    lierr_ax1: list
-                List containing legend items for errorbars for 1st figure
-                Items are in the form (error_legend, [glyph])
-    lierr_ax2: list
-                List containing legend items for errorbars for 2nd figure
-                Items are in the form (error_legend, [glyph])
-
     Outputs
     -------
 
-    (bax1, bax1_err, bax2, bax2_err): Tuple
+    (bax1, bax2: Tuple
                 Tuple containing List of lists which have batch_size number of legend items for each batch.
-                Results in batches for figure1 antenna legends, figure1 error legends, figure2 antenna legends, figure2 error legends.
+                Results in batches for figure1 antenna legends, figure2 antenna legends
 
                 e.g bax1 = [[batch0], [batch1], ...,  [batch_numOfBatches]]
 
     """
 
-    bax1, bax1_err, bax2, bax2_err = [], [], [], []
+    bax1, bax2 = [], []
 
     # condense the returned list if two fields were plotted
-    li_ax1, li_ax2, lierr_ax1, lierr_ax2 = list(map(condense_legend_items,
-                                                    [li_ax1, li_ax2,
-                                                     lierr_ax1, lierr_ax2]))
+    li_ax1, li_ax2 = list(map(condense_legend_items, [li_ax1, li_ax2]))
 
     j = 0
     for i in range(num_leg_objs):
@@ -1036,20 +1006,17 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, ba
         if i == num_leg_objs:
             bax1.extend([li_ax1[j:]])
             bax2.extend([li_ax2[j:]])
-            bax1_err.extend([lierr_ax1[j:]])
-            bax2_err.extend([lierr_ax2[j:]])
+
         else:
             bax1.extend([li_ax1[j:j + batch_size]])
             bax2.extend([li_ax2[j:j + batch_size]])
-            bax1_err.extend([lierr_ax1[j:j + batch_size]])
-            bax2_err.extend([lierr_ax2[j:j + batch_size]])
 
         j += batch_size
 
-    return bax1, bax1_err, bax2, bax2_err
+    return bax1, bax2
 
 
-def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
+def create_legend_objs(num_leg_objs, bax1, bax2):
     """Creates legend objects using items from batches list
        Legend objects allow legends be positioning outside the main plot
 
@@ -1061,15 +1028,10 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
          Batches for antenna legends of 1st figure
    bax2: list
          Batches for antenna legends of 2nd figure
-   baerr_ax1: list
-         Batches for error bar legends of 1st figure
-   baerr_ax2: list
-         Batches for error bar legends of 2nd figure
-
 
    Outputs
    -------
-   (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
+   (lo_ax1, lo_ax2) tuple
             Tuple containing dictionaries with legend objects for
             ax1 antenna legend objects, ax1 error bar legend objects,
             ax2 antenna legend objects, ax2 error bar legend objects
@@ -1081,7 +1043,7 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
                 items=batch_0, location='top_right', click_policy='hide')
     """
 
-    lo_ax1, lo_ax2, loerr_ax1, loerr_ax2 = {}, {}, {}, {}
+    lo_ax1, lo_ax2 = {}, {}
 
     l_opts = dict(click_policy='hide',
                   orientation='horizontal',
@@ -1090,16 +1052,13 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
                   glyph_width=10)
 
     for i in range(num_leg_objs):
-        lo_ax1['leg_%s' % str(i)] = Legend(items=bax1[i],
-                                           **l_opts)
-        lo_ax2['leg_%s' % str(i)] = Legend(items=bax2[i],
-                                           **l_opts)
-        loerr_ax1['leg_%s' % str(i)] = Legend(items=baerr_ax1[i],
-                                              **l_opts)
-        loerr_ax2['leg_%s' % str(i)] = Legend(items=baerr_ax2[i],
-                                              **l_opts)
+        leg1 = Legend(items=bax1[i], **l_opts)
+        leg2 = Legend(items=bax2[i], **l_opts)
 
-    return lo_ax1, loerr_ax1, lo_ax2, loerr_ax2
+        lo_ax1['leg_%s' % str(i)] = leg1
+        lo_ax2['leg_%s' % str(i)] = leg2
+
+    return lo_ax1, lo_ax2
 
 
 def gen_checkbox_labels(batch_size, num_leg_objs, antnames):
@@ -1527,10 +1486,21 @@ def main(**kwargs):
         ncorrs = tt.FLAG.corr.data
 
         # convert field ids to strings
+        valid_fids = []
         if field_ids is None:
-            fids = [str(f) for f in fields.tolist()]
+            valid_fids = [str(f) for f in fields.tolist()]
         else:
-            fids = field_ids
+            for f in field_ids:
+                if f.isdigit():
+                    new_f = int(f)
+                else:
+                    new_f = name_2id(mytab, f)
+
+                if new_f in fields:
+                    valid_fids.append(new_f)
+                else:
+                    logger.info('Field {} not found in {}.'.format(f, mytab))
+                    continue
 
         freqs = (vu.get_frequencies(mytab, spwid=spwid) / GHZ).data.compute()
 
@@ -1572,8 +1542,8 @@ def main(**kwargs):
         # forming Legend object items for data and errors
         legend_items_ax1 = []
         legend_items_ax2 = []
-        legend_items_err_ax1 = []
-        legend_items_err_ax2 = []
+        ebars_ax1 = []
+        ebars_ax2 = []
 
         stats_ax1 = []
         stats_ax2 = []
@@ -1581,17 +1551,7 @@ def main(**kwargs):
         sources = []
 
         # enumerating available field ids incase of large fids
-        for enum_fid, field in enumerate(fids):
-
-            if field.isdigit():
-                field = int(field)
-            else:
-                field = name_2id(mytab, field)
-
-            if int(field) not in fields.tolist():
-                logger.info(
-                    'Skipping table: {} : Field id {} not found.'.format(mytab, field))
-                continue
+        for enum_fid, field in enumerate(valid_fids):
 
             stats_text = stats_display(mytab, gain_type, doplot, corr,
                                        field, flag=flag_data)
@@ -1692,7 +1652,7 @@ def main(**kwargs):
 
                 p1, p1_err, p2, p2_err = make_plots(
                     source=source, color=y1col, ax1=ax1, ax2=ax2,
-                    fid=enum_fid, y1_err=y1_err, y2_err=y2_err)
+                    fid=enum_fid, y1err=y1_err, y2err=y2_err)
 
                 # hide all the other plots until legend is clicked
                 if ant > 0:
@@ -1706,8 +1666,8 @@ def main(**kwargs):
                 legend_items_ax1.append((legend, [p1]))
                 legend_items_ax2.append((legend, [p2]))
                 # for the errors
-                legend_items_err_ax1.append((legend_err, [p1_err]))
-                legend_items_err_ax2.append((legend_err, [p2_err]))
+                ebars_ax1.append(p1_err)
+                ebars_ax2.append(p2_err)
 
                 subtab.close()
 
@@ -1730,26 +1690,19 @@ def main(**kwargs):
         # for each plot
         num_legend_objs = int(np.ceil(len(plotants) / BATCH_SIZE))
 
-        batches_ax1, batches_ax1_err, batches_ax2, batches_ax2_err = \
-            create_legend_batches(num_legend_objs, legend_items_ax1,
-                                  legend_items_ax2, legend_items_err_ax1,
-                                  legend_items_err_ax2,
-                                  batch_size=BATCH_SIZE)
+        batches_ax1, batches_ax2 = create_legend_batches(num_legend_objs,
+                                                         legend_items_ax1,
+                                                         legend_items_ax2,
+                                                         batch_size=BATCH_SIZE)
 
-        legend_objs_ax1, legend_objs_ax1_err, legend_objs_ax2,\
-            legend_objs_ax2_err = create_legend_objs(num_legend_objs,
-                                                     batches_ax1,
-                                                     batches_ax1_err,
-                                                     batches_ax2,
-                                                     batches_ax2_err)
+        legend_objs_ax1, legend_objs_ax2 = create_legend_objs(num_legend_objs,
+                                                              batches_ax1,
+                                                              batches_ax2)
 
         # adding legend objects to the layouts
         for i in range(num_legend_objs):
             ax1.add_layout(legend_objs_ax1['leg_%s' % str(i)], 'below')
             ax2.add_layout(legend_objs_ax2['leg_%s' % str(i)], 'below')
-
-            ax1.add_layout(legend_objs_ax1_err['leg_%s' % str(i)], 'below')
-            ax2.add_layout(legend_objs_ax2_err['leg_%s' % str(i)], 'below')
 
         # adding plot titles
         ax2.add_layout(ax2_title, 'above')
@@ -1778,7 +1731,7 @@ def main(**kwargs):
         # Dropdown to hide and show legends
         legend_toggle = Select(title="Showing Legends: ", value="non",
                                options=[("alo", "Antennas"),
-                                        ("elo", "Errors"), ("non", "None")],
+                                        ("non", "None")],
                                width=150, height=45)
 
         # creating glyph size slider for the plots
@@ -1796,10 +1749,11 @@ def main(**kwargs):
 
         try:
             field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[enum_fid]) for x in fields]
+                                                 fsyms[enum_fid]) for enum_fid, x in enumerate(fields)]
         except UnicodeEncodeError:
             field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[enum_fid].encode('utf-8')) for x in fields]
+                                                 fsyms[enum_fid].encode('utf-8')) for enum_fid, x in enumerate(fields)]
+
         field_selector = CheckboxGroup(labels=field_labels,
                                        active=fields.tolist(),
                                        **w_dims)
@@ -1822,29 +1776,26 @@ def main(**kwargs):
 
         ant_select.callback = CustomJS(args=dict(glyph1=legend_items_ax1,
                                                  glyph2=legend_items_ax2,
-                                                 batchsel=batch_select),
+                                                 batchsel=batch_select,
+                                                 num_groups=num_legend_objs),
                                        code=ant_select_callback())
 
-        toggle_err.js_on_click(CustomJS(args=dict(err1=legend_items_err_ax1,
-                                                  err2=legend_items_err_ax2),
+        toggle_err.js_on_click(CustomJS(args=dict(ax1s=ax1_plots,
+                                                  err1=ebars_ax1,
+                                                  err2=ebars_ax2),
                                         code=toggle_err_callback()))
 
         # BATCH SELECTION
         batch_select.callback = CustomJS(
             args=dict(bax1=batches_ax1,
-                      bax1_err=batches_ax1_err,
                       bax2=batches_ax2,
-                      bax2_err=batches_ax2_err,
                       batch_size=BATCH_SIZE,
                       antsel=ant_select),
             code=batch_select_callback())
 
         legend_toggle.callback = CustomJS(
-            args=dict(
-                loax1=listvalues(legend_objs_ax1),
-                loax1_err=listvalues(legend_objs_ax1_err),
-                loax2=listvalues(legend_objs_ax2),
-                loax2_err=listvalues(legend_objs_ax2_err)),
+            args=dict(loax1=listvalues(legend_objs_ax1),
+                      loax2=listvalues(legend_objs_ax2)),
             code=legend_toggle_callback())
 
         size_slider.js_on_change('value',
@@ -1900,7 +1851,9 @@ def main(**kwargs):
                               **grid_specs)
 
         final_layout.append(layout)
-        logger.info("Table {} done.".format(mytab))
+
+    logger.info("Table {} done.".format(mytab))
+
     if image_name:
         save_svg_image(image_name, ax1, ax2,
                        legend_items_ax1, legend_items_ax2)
@@ -1919,7 +1872,7 @@ def main(**kwargs):
                 mytab = datetime.now().strftime('%Y%m%d_%H%M%S')
             html_name = "{}_corr_{}_{}_field_{}".format(mytab, corr,
                                                         doplot,
-                                                        ''.join(fids))
+                                                        ''.join(valid_fids))
             save_html(html_name, final_layout)
 
         logger.info("Rendered: {}.html".format(html_name))
