@@ -549,12 +549,11 @@ def errorbar(fig, x, y, yerr=None, color='red'):
 
     Outputs
     -------
-    fig: bokeh.plotting.figure.Figure
-        Return the figure object containing errorbars
+    ebars: Whisker annotation model object
+          Return the object containing errorbars
 
     """
     # Setting default return value
-    h = None
     ebars = None
 
     if yerr is not None:
@@ -562,16 +561,11 @@ def errorbar(fig, x, y, yerr=None, color='red'):
         src = ColumnDataSource(data=dict(upper=y + yerr,
                                          lower=y - yerr, base=x))
 
-        """
-        h = fig.multi_line(y_err_x, y_err_y, color=color, line_width=3,
-                           level='underlay', visible=False, **error_kwargs)
-        """
         ebars = Whisker(source=src, base='base', upper='upper',
                         lower='lower', line_color=color, visible=False)
         ebars.upper_head.line_color = color
         ebars.lower_head.line_color = color
         fig.add_layout(ebars)
-        h = fig
     return ebars
 
 
