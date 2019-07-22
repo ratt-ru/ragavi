@@ -79,7 +79,7 @@ For ragavi help run
 
 To use ragavi
 
--- code-block:: bash
+.. code-block:: bash
 
     $ ragavi -t /path/to/your/table -g table_type (K / B/ F/ G/ D)
 
