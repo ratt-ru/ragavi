@@ -925,7 +925,7 @@ def flag_callback():
             //flagging: status of flag_data
 
             let n_sources =  sources.length;
-            let state = cb_obj.active;
+            let state = cb_obj.active.length;
 
             let init_src = Array();
             let src_1 = Array();
@@ -933,7 +933,7 @@ def flag_callback():
             for(item in sources){init_src[item] = sources[item][0];}
             for(item in sources){src_1[item] = sources[item][1];}
 
-            if (state==true){
+            if (state==1){
                 cb_obj.label = flagging ? 'Flag' : 'Un-Flag';
                 for (i=0; i<n_sources; i++){
                     init_src[i].data.y1 = src_1[i].data.iy1;
@@ -1758,10 +1758,8 @@ def main(**kwargs):
 
         # if flag_data is true, i.e data is flagged, label==Un-flag,
         # button==inactive [not flag_data], otherwise button==in
-        toggle_flag = Toggle(label='Un-flag' if flag_data == True else 'Flag',
-                             button_type='warning',
-                             active=False,
-                             **w_dims)
+        toggle_flag = CheckboxGroup(labels=['Show Flagged-out Data'],
+                                    active=[], **w_dims)
 
         ######################################################################
         ############## Defining widget Callbacks ############################
@@ -1815,19 +1813,19 @@ def main(**kwargs):
                                                          ax2=ax2.above),
                                                code=title_fs_callback()))
 
-        toggle_flag.js_on_click(CustomJS(args=dict(sources=sources,
-                                                   nants=plotants,
-                                                   flagging=flag_data),
-                                         code=flag_callback()))
+        toggle_flag.callback = CustomJS(args=dict(sources=sources,
+                                                  nants=plotants,
+                                                  flagging=flag_data),
+                                        code=flag_callback())
 
         #################################################################
         ########## Define widget layouts #################################
         ##################################################################
 
-        a = row([ant_select, toggle_err, toggle_flag, size_slider,
+        a = row([ant_select, toggle_err, legend_toggle, size_slider,
                  alpha_slider])
-        b = row([batch_select, field_selector, axis_fontslider,
-                 title_fontslider, legend_toggle, ])
+        b = row([toggle_flag, batch_select, field_selector, axis_fontslider,
+                 title_fontslider])
 
         plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
 
