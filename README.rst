@@ -67,6 +67,29 @@ This package is available on *PYPI* via
       
      $ pip install ragavi
 
+=====
+Usage
+=====
+
+For ragavi help run
+
+.. code-block:: bash
+
+    $ ragavi -h
+
+To use ragavi
+
+.. code-block:: bash
+
+    $ ragavi -t /path/to/your/table -g table_type (K / B/ F/ G/ D)
+
+Multiple tables can be plotted on the same document simply by adding them in a space separated list to the -t / --table switch. 
+They must however be accompanied by their respective gain table type in the -g switch. e.g
+
+.. code-block:: bash
+
+    $ ragavi -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
+
 =======
 License
 =======

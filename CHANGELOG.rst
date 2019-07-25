@@ -1,3 +1,11 @@
+0.1.0
+-----
+- Error bars now have caps
+- Introduced linked legends
+- Default displayed data is now flagged
+- Flagged data shown using inverted-triangle
+
+
 0.0.9
 -----
 - Added flag button on plot
