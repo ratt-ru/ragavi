@@ -5,6 +5,7 @@ matplotlib; python_version >= '3.5'
 numpy
 python-casacore; python_version <= '2.7'
 python3-casacore; python_version >='3'
+screeninfo
 dask
 xarray
 xarray-ms

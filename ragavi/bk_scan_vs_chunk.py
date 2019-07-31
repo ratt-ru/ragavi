@@ -4,6 +4,7 @@ import hvplot
 import hvplot.xarray
 import hvplot.dask
 import logging
+import sys
 
 import astropy.stats as astats
 import bokeh as bk
@@ -18,7 +19,7 @@ import pandas as pd
 import scipy.stats as sstats
 import xarray as xa
 import xarrayms as xm
-import vis_utils as ut
+
 
 from collections import namedtuple
 from dask import compute, delayed
@@ -28,6 +29,8 @@ from holoviews.operation.datashader import aggregate, dynspread, datashade
 from ipdb import set_trace
 from itertools import count, cycle
 from pyrap.tables import table
+from screeninfo import get_monitors
+from xarrayms.known_table_schemas import MS_SCHEMA, ColumnSchema
 
 from bokeh.io import show, output_file, save
 from bokeh.models import (Band, BasicTicker, Button,
@@ -35,43 +38,88 @@ from bokeh.models import (Band, BasicTicker, Button,
                           DataRange1d, Div, Grid, HoverTool, Line, LinearAxis,
                           LinearColorMapper, LogColorMapper, LogScale,
                           LogAxis, Patch, PanTool, Plot, Range1d,
-                          ResetTool, WheelZoomTool, Whisker)
+                          ResetTool, WheelZoomTool, Whisker, LinearScale)
 
-from bokeh.layouts import gridplot, row, column
+from bokeh.layouts import gridplot, row, column, grid, layout
 from bokeh.plotting import figure, curdoc
 from bokeh.events import Tap
 from bokeh.resources import INLINE
 from bokeh.models import Button, AjaxDataSource
 from bokeh import events
 
+import vis_utils as ut
+from ipdb import set_trace
 
-def get_screen_size():
-    """You have to import
-        : from gi.repository import Gdk
-          from collections import namedtuple
+
+def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, where=None):
     """
-    Screen = namedtuple('screen', 'width height')
+        Inputs
+        ------
+        ms_name: str
+                 name of your MS or path including its name
+        data_col: str
+                  data column to be used
+        ddid: int
+              DATA_DESC_ID or spectral window to choose
+        fid: int
+             field id to select
+        where: str
+                TAQL where clause to be used with the MS. Takes precidence over all the other optional arguments
+
+        Outputs
+        -------
+        tab_objs: list
+                  A list containing the specified table objects in xarray
+
+    """
+
+    ms_schema = MS_SCHEMA.copy()
+
+    # defining part of the gain table schema
+    if data_col != 'DATA':
+        ms_schema[data_col] = ColumnSchema(dims=('chan', 'corr'))
+
+    # always ensure that where stores something
+    if where == None:
+        where = []
+        if ddid != None:
+            where.append("DATA_DESC_ID=={}".format(ddid))
+        if fid != None:
+            where.append("FIELD_ID=={}".format(fid))
+
+        where = "&&".join(where)
+
     try:
-        s = Gdk.Screen.get_default()
-        height = 1 * s.get_height()
-        width = 1 * s.get_width()
+        tab_objs = xm.xds_from_table(ms_name, taql_where=where,
+                                     table_schema=ms_schema)
+        return tab_objs
     except:
-        # Assume a default resolution of 1920 x 1080
-        height = 1080
-        width = 1920
-    return Screen(width, height)
+        logging.exception("Invalid DATA_DESC_ID, FIELD_ID or TAQL clause")
+        sys.exit(-1)
 
 
 def calc_plot_dims(nrows, ncols):
-    ssize = get_screen_size()
-    # screen size returned is 80% of the entire available screen
-    width = ssize.width
-    height = ssize.height
+
+    try:
+        ssize = get_monitors()[0]
+        # screen size returned is 80% of the entire available screen
+        width = ssize.width
+        height = ssize.height
+    except IndexError:
+        width = 1980
+        height = 1080
 
     # Reduce the size further to account for the space in btwn grids
-    plot_width = int((width / ncols)) - 10
-    plot_height = int((height / nrows)) - 10
-    return plot_width, plot_height
+    # nrows, number of frequency chunks present
+    # ncols, number of scans present
+    plot_width = (width // ncols) * 0.8
+
+    plot_height = (width // ncols) * 0.8
+
+    if nrows > ncols:
+        plot_height = height // nrows
+
+    return int(plot_width), int(plot_height)
 
 
 def convert_data(data, yaxis='amplitude'):
@@ -87,7 +135,7 @@ def convert_data(data, yaxis='amplitude'):
 
 
 def flag_data(data, flags):
-    out_data = data.where(flags != 1)
+    out_data = data.where(flags == False)
     return out_data
 
 
@@ -102,7 +150,6 @@ def process(chunk, corr=None, data_column='DATA', ptype='ap', flag=True, bin_siz
     """
 
     selection = ['TIME', 'SCAN_NUMBER', 'FLAG']
-
     if corr == None:
         data = chunk[data_column]
         flags = chunk['FLAG']
@@ -111,6 +158,7 @@ def process(chunk, corr=None, data_column='DATA', ptype='ap', flag=True, bin_siz
         flags = chunk['FLAG'].sel(corr=corr)
 
     # chunk the data into bin sizes before processing
+    # we are chunking in the chan dimension
     data = data.chunk({'chan': bin_size})
     flags = flags.chunk({'chan': bin_size})
 
@@ -165,6 +213,7 @@ def creat_mv(df, doplot):
         df = df.assign(idatvar=astats.circvar(df['Imaginary']))
 
     df = df.assign(flagged_pc=percentage_flagged(df))
+
     return df
 
 
@@ -212,8 +261,8 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
 
     im = hv.render(selection.hvplot(*xy, kind='scatter', datashade=True))
 
-    im.width = 1000
-    im.height = 1000
+    im.width = 800
+    im.height = 800
 
     im.axis.axis_label_text_font_size = "12pt"
 
@@ -224,7 +273,7 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
 
     avail_roots = document.roots[0]
 
-    if len(avail_roots.children) == 1:
+    if not isinstance(avail_roots.children[-1], type(im)):
         avail_roots.children.append(im)
     else:
         avail_roots.children[-1] = im
@@ -242,15 +291,19 @@ def make_plot(inp_df, doplot):
 
     logging.info("Starting plotting function")
 
-    inp_subdf = inp_df.drop_duplicates(subset=['SCAN_NUMBER', 'flagged_pc'])
+    # dropping duplicate values base on scan_number and flagged_pc
+    # cause each chunk has the same scan number, flagged_pc, mean and variance
+
+    inp_subdf = inp_df.drop_duplicates(subset=['SCAN_NUMBER', 'adatmean',
+                                               'flagged_pc'])
     logging.info('Dropped duplicate values')
 
     # To Do: conform to numpy matrix rather than sorting
     # rearrange the values in ascending so that plotting is easier
-    inp_subdf = inp_subdf.compute()
-    inp_subdf.index = inp_subdf.droplevel([0, 1])
-    inp_subdf = inp_subdf.sort_values(['SCAN_NUMBER', 'chan_bin']).set_index(
-        pd.RangeIndex(0, ncols * nrows))
+
+    inp_subdf = (inp_subdf.reset_index(drop=True)
+                 .compute().sort_values(['SCAN_NUMBER', 'chan_bin'])
+                 .reset_index(drop=True))
 
     #*_col_a is for cols related to amplitude or real
     #*_col_b is for cols related to phase or imaginary
@@ -273,6 +326,7 @@ def make_plot(inp_df, doplot):
     mid_mean = inp_subdf[mean_col_a].median()
 
     highest_var = inp_subdf[var_col_a].max()
+    lowest_var = inp_subdf[var_col_a].min()
 
     # calculate the lowest and highest channel number
     min_chan = inp_subdf.chan_bin.min()
@@ -282,16 +336,18 @@ def make_plot(inp_df, doplot):
     min_scan = inp_subdf.SCAN_NUMBER.min()
     max_scan = inp_subdf.SCAN_NUMBER.max()
 
+    none_text = Div(text='All data Flagged')
     # initialise the layout matrix
-    mygrid = np.full((nrows + 2, ncols + 1), None)
+    mygrid = np.full((nrows + 1, ncols + 1), None)
 
     logging.info('Calculations of maximums and minimums done')
 
     # set the axis bounds
-    xdr = DataRange1d(bounds=None, start=lowest_mean -
-                      highest_var, end=highest_mean + highest_var)
-    ydr = DataRange1d(bounds=None, start=lowest_mean -
-                      highest_var, end=highest_mean + highest_var)
+    xmin = lowest_mean - 2 * np.abs(np.log(np.sqrt(lowest_var)))
+    xmax = highest_mean + 2 * np.abs(np.log(np.sqrt(lowest_var)))
+
+    xdr = Range1d(start=xmin, end=xmax)
+    ydr = Range1d(start=xmin, end=xmax)
 
     col_mapper = LinearColorMapper(
         palette="Viridis256",
@@ -303,7 +359,7 @@ def make_plot(inp_df, doplot):
 
     color_bar_plot = figure(title="%Deviation from mean",
                             title_location="right",
-                            height=int(plot_width * (nrows / 2)), width=200,
+                            height=int(plot_height * nrows), width=150,
                             toolbar_location=None, min_border=0,
                             outline_line_color=None)
 
@@ -313,50 +369,62 @@ def make_plot(inp_df, doplot):
 
     logging.info('Starting iterations by row')
 
-    # cyclic object for iteratively repetition over chan_bins
-    cyc = cycle(np.arange(ncols))
-
-    # get index number of row with each iteration
-    ctr = count(0)
-    row_idx = next(ctr)
+    # cyclic object for iteratively repetition over scans
+    cols_cycler = cycle(range(ncols))
+    rows_cycler = cycle(range(nrows))
 
     for rs, cols in inp_subdf.iterrows():
 
-        col_idx = next(cyc)
+        row_idx = next(rows_cycler)
+        if row_idx == min_chan:
+            col_idx = next(cols_cycler)
 
         curr_scan_no = int(cols.SCAN_NUMBER)
         curr_cbin_no = int(cols.chan_bin)
+
         flagged_pc = cols.flagged_pc
 
+        # setting the position of the scan label
+        # fchunk label should be at row [:+1, 0]
+        # scan number should be at column -1,or 0 thus [-1, :]
         dis = Div(text='S{}'.format(curr_scan_no),
-                  background="#3FBF9D")
+                  width=plot_width - 10)
+        mygrid[0, col_idx + 1] = dis
 
-        if col_idx == 0:
-            mygrid[row_idx + 1, 0] = dis
+        # if curr_scan_no == min_scan:
 
-        if curr_scan_no == max_scan:
-            dis = Div(text='{}'.format('{:.4} - {:.4} GHz'.format(*f_edges[curr_cbin_no])),
-                      background="#3FBF9D")
-            mygrid[-1, col_idx + 1] = dis
+        cfreq = np.mean(f_edges[curr_cbin_no])
+        dis = Div(text='{:.3f}'.format(cfreq),
+                  width=plot_width - 10,
+                  style={'font-size': '100%'})
+        mygrid[row_idx + 1, 0] = dis
 
+        # percentage deviation mean
         pc_dev_mean = ((cols[mean_col_a] - mid_mean) / mid_mean) * 100
         source = ColumnDataSource(data={'mean': [cols[mean_col_a]],
                                         'mid_mean': [mid_mean],
                                         'mean_anorm': [pc_dev_mean],
                                         'var': [cols[var_col_a]],
-                                        'pcf': [cols.flagged_pc]})
+                                        'std': [np.abs(np.log(np.sqrt(cols[var_col_a])))],
+                                        'pcf': [flagged_pc]})
 
-        p = Plot(background_fill_alpha=0.95, x_range=xdr, y_range=ydr, plot_width=int(plot_width / 2), plot_height=int(plot_width / 2), y_scale=LogScale(),
-                 x_scale=LogScale(), background_fill_color="#efe8f2")
-        circle = Circle(x='mean', y='mean', radius='var',
-                        fill_alpha=0.8, line_color=None,
+        p = Plot(background_fill_alpha=0.95,
+                 x_range=xdr, y_range=xdr,
+                 plot_width=plot_width, plot_height=plot_height,
+                 y_scale=LinearScale(), x_scale=LinearScale(),
+                 background_fill_color="#efe8f2")
+        circle = Circle(x='mean', y='mean',
+                        radius='std',
+                        fill_alpha=0.8,
+                        line_color=None,
                         fill_color={'field': 'mean_anorm',
                                     'transform': col_mapper})
         flag_circle = Circle(x='mean', y='mean',
                              radius=((source.data['pcf'][0] *
-                                      source.data['var'][0]) * 0.01)**2,
+                                      source.data['std'][0]) * 0.01),
                              fill_alpha=0.8, line_color=None,
                              fill_color='white')
+
         p.add_glyph(source, circle)
         p.add_glyph(source, flag_circle)
 
@@ -365,97 +433,114 @@ def make_plot(inp_df, doplot):
         yticker = BasicTicker()
 
         if curr_scan_no == max_scan:
-            xaxis = LogAxis(major_tick_out=1,
-                            minor_tick_out=1,
-                            axis_line_width=1)
+            xaxis = LinearAxis(major_tick_out=1,
+                               minor_tick_out=1,
+                               axis_line_width=1)
 
             xticker = xaxis.ticker
 
         if curr_cbin_no == min_chan:
-            yaxis = LogAxis(major_tick_out=1,
-                            minor_tick_out=1,
-                            axis_line_width=1)
+            yaxis = LinearAxis(major_tick_out=1,
+                               minor_tick_out=1,
+                               axis_line_width=1)
 
             yticker = yaxis.ticker
 
-        hover = bk.models.HoverTool(tooltips=[('mean', '@mean'),
-                                              ('var', '@var'),
-                                              ('Flagged %', '@pcf'),
-                                              ("%Deviation from midmean",
-                                               '@mean_anorm')
+        hover = bk.models.HoverTool(tooltips=[('μ', '@mean'),
+                                              ('variance', '@var'),
+                                              ('flagged %', '@pcf'),
+                                              ("μ-mid_μ%",
+                                               '@mean_anorm'),
+                                              ('mid_μ', '@mid_mean')
                                               ])
 
         p.add_tools(PanTool(), hover, WheelZoomTool(), ResetTool())
         p.on_event(Tap, partial(on_click_callback, inp_df,
                                 curr_scan_no, curr_cbin_no, doplot))
 
-        # add the divs from the 2nd element to the 2nd last element of the grid
-        mygrid[row_idx + 1, curr_cbin_no + 1] = p
-        if col_idx == ncols - 1:
-            row_idx = next(ctr)
+        # add the divs from the 2nd element to the 2nd last element of the
+        mygrid[row_idx + 1, col_idx + 1] = p
 
-    gp = gridplot(mygrid.tolist())
-    ro = row(gp, color_bar_plot)
+    grid_plots = grid(children=mygrid.tolist())
+    final_plot = gridplot([[grid_plots, color_bar_plot]])
+    final_plot.name = 'final_plot'
+    logging.info("Adding plot to root")
 
-    col = column(ro)
-
-    print("Adding plot to root")
-
-    document.add_root(col)
+    document.add_root(final_plot)
 
 
 #####################################################################
 ################# Main function starts here ##########################
 
-ms_name = "/home/andati/measurement_sets/1491291289.1ghz.1.1ghz.4hrs.ms"
-bin_width = 50
+#ms_name = "/home/andati/measurement_sets/1491291289.1ghz.1.1ghz.4hrs.ms"
+ms_name = "/home/andati/tutorials/vla_continuum_tut/3c391_ctm_mosaic_10s_spw0.ms"
+bin_width = 64
 fid = 1
 corr = 0
 ddid = 0
 
-data_col = 'DATA'
+data_col = 'CORRECTED_DATA'
 doplot = 'ap'
 
-a = list(xm.xds_from_ms(ms_name, columns=['DATA', 'TIME', 'FLAG',
-                                          'SCAN_NUMBER', 'ANTENNA1',
-                                          'ANTENNA2'],
-                        group_cols=['DATA_DESC_ID', 'FIELD_ID']))
 
-ch = a[fid]
+# desired columns from the data
+columns = [data_col, 'TIME', 'FLAG', 'SCAN_NUMBER', 'ANTENNA1', 'ANTENNA2']
+ms_obj = get_ms(ms_name, fid=fid, ddid=ddid, data_col=data_col, where=None)[0]
 
-sel_chunk = process(ch, corr=corr, data_column=data_col, ptype=doplot,
-                    flag=True, bin_size=bin_width)
+# condensed ms with the selected columns
+sub_ms = ms_obj[columns]
+
+# convert the data into amp/ real/ phase/ imag and return on the relevant
+# data that is already chunked
+
+ready_ms_obj = process(sub_ms, corr=corr, data_column=data_col, ptype=doplot,
+                       flag=True, bin_size=bin_width)
 
 
 ###################################################################
 ################# some global variables ##########################
+# document object
 document = curdoc()
+
+# frequencies in the specified spw
 freqs = (ut.get_frequencies(ms_name, spwid=ddid) / 1e9).data.compute()
+
+# frequency edges depending on the bin size
 f_edges = split_freqs(freqs, bin_width)
-nrows = np.unique(sel_chunk.SCAN_NUMBER).size
-# checking the flag column because it is chunked like the data
-ncols = sel_chunk.FLAG.data.npartitions
+
+# ncols correspond to the number of scans
+ncols = np.unique(ready_ms_obj.SCAN_NUMBER).size
+
+"""
+nrows corresponds to the number of chunks in the chan dimension.
+chunksizes for each dimension returned as a tuple of the form: 
+        ((chunk, size, dim, 1), (chunk, size, dim,2))
+checking the flag column because it is chunked like the data
+"""
+nrows = len(ready_ms_obj.FLAG.data.chunks[-1])
+
+# get the size of the current screen
 plot_width, plot_height = calc_plot_dims(nrows, ncols)
 
 
 # converting to data frame to allow for leveraging of dask data frame #partitions
 # Since data is already chunked in xarray, the number of partitions
 # corresponds to the number of chunks which makes it easier for now.
-
-sel_df = sel_chunk.to_dask_dataframe()
+sel_df = ready_ms_obj.to_dask_dataframe()
 
 # add chunk index numbers to the partitions
 nddf = sel_df.map_partitions(compute_idx, bin_width)
 
 sel_cols = ['SCAN_NUMBER', 'FLAG', 'chan_bin']
 
-# additional columns
+# additional columns that will be selected
 additional_cols = []
 
 if doplot == 'ap':
     sel_cols.extend(['Amplitude', 'Phase'])
     additional_cols.extend(['adatmean', 'adatvar',
                             'pdatmean', 'pdatvar', 'flagged_pc'])
+    # save the data types of amplitude
     f64 = sel_df.dtypes.to_dict()['Amplitude']
 elif doplot == 'ri':
     sel_cols.extend(['Real', 'Imaginary'])
@@ -463,18 +548,19 @@ elif doplot == 'ri':
                             'idatmean', 'idatvar', 'flagged_pc'])
     f64 = sel_df.dtypes.to_dict()['Real']
 
-# get colnames from dataframes and add the new col names
+# column names forming the meta model=> expected output column names
 fdf_col_names = sel_cols + additional_cols
 
+# data types for all those output columns in the meta info
+# dask needs to know what kind of data is expected after groupby apply
 fdf_dtypes = nddf[sel_cols].dtypes.to_list() + [f64] * len(additional_cols)
 
-# groupby meta
-
+# groupby meta; without this the code breaks :()
 meta = [(key, value) for key, value in zip(fdf_col_names, fdf_dtypes)]
 
 # grouping by chan_bin and scan_number and select
+# create_mv calculates the mu & variances of the data for each of the chunks
 res = nddf.groupby(['SCAN_NUMBER', 'chan_bin'])[sel_cols].apply(creat_mv,
                                                                 doplot,
                                                                 meta=meta)
-
 make_plot(res, doplot)

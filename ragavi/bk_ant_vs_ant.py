@@ -345,7 +345,7 @@ def make_plot(df, tsource, fsource, yaxis):
 ms_name = "/home/andati/measurement_sets/1491291289.1ghz.1.1ghz.4hrs.ms"
 #ms_name = "/home/andati/measurement_sets/ngc1399_20MHz.ms"
 
-fid = 0
+fid = 1
 ddid = 0
 data_col = 'DATA'
 corr = 0
@@ -394,7 +394,6 @@ for chunk in groups:
     if chunk.FIELD_ID == fid and chunk.DATA_DESC_ID == ddid:
         selections.append(chunk)
 
-
 # process the data, convert to amplitudes and phases and select correlations
 # also change the time format to datetime64
 for sel_chunk in selections:
@@ -428,7 +427,8 @@ for sel_chunk in selections:
 
     ant1 = sel_chunk.ANTENNA1
     ant2 = sel_chunk.ANTENNA2
-
+    print(ant1, ant2)
+    print("%" * 50)
     # create a data source for the time component
     tsource = ColumnDataSource(data={'time': time,
                                      'mean': mean,
