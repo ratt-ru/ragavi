@@ -7,6 +7,10 @@ import xarrayms as xm
 from datetime import datetime
 from dask import delayed, compute
 
+import warnings
+import sys
+import logging
+
 
 def calc_amplitude(ydata):
     """Convert complex data to amplitude (abs value)
@@ -276,3 +280,62 @@ def time_convert(xdata):
 
     newtime = da.array(newtime, dtype='datetime64[s]')
     return newtime
+
+###########################################################
+############## Logger #####################################
+
+
+def config_logger():
+    """This function is used to configure the logger for ragavi and catch
+        all warnings output by sys.stdout.
+    """
+    logfile_name = 'ragavi.log'
+    # capture only a single instance of a matching repeated warning
+    warnings.filterwarnings('default')
+
+    # setting the format for the logging messages
+    start = " (O_o) ".center(80, "=")
+    form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    form = form.format(start)
+    formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
+
+    # setup for ragavi logger
+    logger = logging.getLogger('ragavi')
+    logger.setLevel(logging.DEBUG)
+
+    # capture all stdout warnings
+    logging.captureWarnings(True)
+    warnings_logger = logging.getLogger('py.warnings')
+    warnings_logger.setLevel(logging.DEBUG)
+
+    # console handler
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(formatter)
+
+    # setup for logfile handing ragavi
+    fh = logging.FileHandler(logfile_name)
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(formatter)
+
+    logger.addHandler(fh)
+    warnings_logger.addHandler(logger)
+    logging.getLogger('').addHandler(console)
+    return logger
+
+
+def _handle_uncaught_exceptions(extype, exval, extraceback):
+    """Function to Capture all uncaught exceptions into the log file
+
+       Inputs to this function are acquired from sys.excepthook. This
+       is because this function overrides sys.excepthook
+
+       https://docs.python.org/3/library/sys.html#sys.excepthook
+
+    """
+    message = "Oops ... !"
+    logger.error(message, exc_info=(extype, exval, extraceback))
+
+
+logger = config_logger()
+sys.excepthook = _handle_uncaught_exceptions

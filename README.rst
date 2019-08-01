@@ -16,13 +16,16 @@ Introduction
 This library mainly requires
     1. Bokeh
     2. Nodejs>=8
-    3. casacore-dev
+    3. Python-casacore
 
 **- Install build dependencies:**
 
+Click_ for instructions on how to install `python-casacore`.
+Nodejs is a requirement for bokeh and can be installed using the commands
+
 .. code-block:: bash
     
-    $ apt-get install casacore-dev
+    $ sudo apt-get install curl
     $ curl -sL https://deb.nodesource.com/setup_8.x | bash -
     $ apt-get install -y nodejs
 
@@ -64,6 +67,29 @@ This package is available on *PYPI* via
       
      $ pip install ragavi
 
+=====
+Usage
+=====
+
+For ragavi help run
+
+.. code-block:: bash
+
+    $ ragavi -h
+
+To use ragavi
+
+.. code-block:: bash
+
+    $ ragavi -t /path/to/your/table -g table_type (K / B/ F/ G/ D)
+
+Multiple tables can be plotted on the same document simply by adding them in a space separated list to the -t / --table switch. 
+They must however be accompanied by their respective gain table type in the -g switch. e.g
+
+.. code-block:: bash
+
+    $ ragavi -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
+
 =======
 License
 =======
@@ -87,6 +113,7 @@ Contributions are always welcome! Please ensure that you adhere to our coding st
                      :target: https://pypi.python.org/pypi/ragavi/
                      :alt:
 
+.. _Click: https://github.com/casacore/python-casacore/blob/master/README.rst
 .. _here: https://pypi.org/project/nodeenv
 .. _source: https://github.com/ratt-ru/ragavi
 .. _pep8: https://www.python.org/dev/peps/pep-0008

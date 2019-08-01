@@ -1,80 +1,472 @@
-import sys
+from __future__ import division
+
+import argparse
+import logging
 import glob
 import numpy as np
 import re
-import logging
+import sys
 import warnings
 
-from datetime import datetime
+import dask.array as da
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
-from pyrap.tables import table
+import xarray as xa
+import xarrayms as xm
+
+
 from argparse import ArgumentParser
+from builtins import map
+from collections import OrderedDict, namedtuple
+from dask import delayed, compute
+from datetime import datetime
+from future.utils import listitems, listvalues
 
-from bokeh.plotting import figure
+from bokeh.events import PlotEvent
+from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
+                      save, show)
+from bokeh.layouts import row, column, gridplot, widgetbox, grid
+from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
+                          CustomJS, HoverTool, Range1d, Legend, LinearAxis,
+                          PrintfTickFormatter, Select, Slider, Text, Title,
+                          Toggle, Whisker)
+
 from bokeh.models.widgets import Div, PreText
-from bokeh.layouts import row, column, gridplot, widgetbox
-from bokeh.io import (output_file, show, output_notebook, export_svgs,
-                      export_png, save)
-from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
-                          BasicTicker, Legend, Toggle, CustomJS, Title,
-                          CheckboxGroup, Select, Text, Slider)
+from bokeh.plotting import figure
 
+from . import vis_utils as vu
 
-PLOT_WIDTH = 700
-PLOT_HEIGHT = 600
-GAIN_TYPES = ['B', 'F', 'G', 'K']
+# defining some constants
+# default plot dimensions
+PLOT_WIDTH = 900
+PLOT_HEIGHT = 700
+
+# gain types supported
+GAIN_TYPES = ['B', 'D', 'F', 'G', 'K']
+
+# valueof 1 gigahertz
 GHZ = 1e9
 
+# Switch for rendering in notebook
+NB_RENDER = None
 
-def config_logger():
-    """This function is used to configure the logger for ragavi and catch
-        all warnings output by sys.stdout.
-    """
-    logfile_name = 'ragavi.log'
-    # capture only a single instance of a matching repeated warning
-    warnings.filterwarnings('default')
-
-    # setting the format for the logging messages
-    start = " (O_o) ".center(80, "=")
-    form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    form = form.format(start)
-    formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
-
-    # setup for ragavi logger
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.DEBUG)
-
-    # capture all stdout warnings
-    logging.captureWarnings(True)
-    warnings_logger = logging.getLogger('py.warnings')
-    warnings_logger.setLevel(logging.DEBUG)
-
-    # setup for logfile handing ragavi
-    fh = logging.FileHandler(logfile_name)
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(formatter)
-
-    logger.addHandler(fh)
-    warnings_logger.addHandler(logger)
-    return logger
+# Number of antennas to be grouped together
+BATCH_SIZE = 16
 
 
-def _handle_uncaught_exceptions(extype, exval, extraceback):
-    """Function to Capture all uncaught exceptions into the log file
+logger = vu.logger
+excepthook = vu._handle_uncaught_exceptions
 
-       Inputs to this function are acquired from sys.excepthook. This
-       is because this function overrides sys.excepthook 
-
-       https://docs.python.org/3/library/sys.html#sys.excepthook
-
-    """
-    message = "Oops ... !"
-    logger.error(message, exc_info=(extype, exval, extraceback))
+#######################################################################
+#################### Define some data Processing class ################
 
 
-logger = config_logger()
-sys.excepthook = _handle_uncaught_exceptions
+class DataCoreProcessor:
+
+    def __init__(self, xds_table_obj, ms_name, gtype, fid=None, antenna=None,
+                 doplot='ap', corr=0, flag=True):
+
+        self.xds_table_obj = xds_table_obj
+        self.ms_name = ms_name
+        self.gtype = gtype
+        self.fid = fid
+        self.antenna = antenna
+        self.doplot = doplot
+        self.corr = corr
+        self.flag = flag
+
+    def get_phase(self, ydata, wrap=True):
+        """Convert complex data to angle in degrees
+        Inputs
+        ------
+        ydata: xarray DataArray
+               y-axis data to be processed
+        Outputs
+        -------
+        phase: xarray DataArray
+               y-axis data converted to degrees
+        """
+        phase = xa.apply_ufunc(da.angle, ydata,
+                               dask='allowed', kwargs=dict(deg=True))
+        if wrap:
+            # delay dispatching of wrapped phase
+            phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
+        return phase
+
+    def get_amplitude(self, ydata):
+        """Convert complex data to amplitude (abs value)
+        Inputs
+        ------
+        ydata: xarray DataArray
+               y-axis data to be processed
+        Outputs
+        -------
+        amplitude: xarray DataArray
+               y-axis data converted to amplitude
+        """
+        amplitude = da.absolute(ydata)
+        return amplitude
+
+    def get_real(self, ydata):
+        """Extract real part from complex data
+        Inputs
+        ------
+        ydata: xarray DataArray
+               y-axis data to be processed
+        Outputs
+        -------
+        real: xarray DataArray
+               Real part of the y-axis data
+        """
+        real = ydata.real
+        return real
+
+    def get_imaginary(self, ydata):
+        """Extract imaginary part from complex data
+        Inputs
+        ------
+        ydata: xarray DataArray
+               y-axis data to be processed
+        Outputs
+        -------
+        imag: xarray DataArray
+               Imaginary part of the y-axis data
+        """
+        imag = ydata.imag
+        return imag
+
+    def compute_ydata(self, ydata, yaxis):
+        """Abstraction for processing y-data passes it to the processing function.
+        Inputs
+        ------
+        ydata: xarray DataArray
+               y-data to process
+        yaxis: str
+               Selected yaxis
+        Outputs
+        -------
+        y: xarray DataArray
+           Processed y-data
+        """
+        if yaxis == 'amplitude':
+            y = self.get_amplitude(ydata)
+        elif yaxis == 'imaginary':
+            y = self.get_imaginary(ydata)
+        elif yaxis == 'phase':
+            y = self.get_phase(ydata, wrap=True)
+        elif yaxis == 'real':
+            y = self.get_real(ydata)
+        elif yaxis == 'delay' or yaxis == 'error':
+            y = ydata
+        return y
+
+    def get_errors(self, xds_table_obj):
+        """Function to get error data from PARAMERR column.
+        Inputs
+        ------
+        xdstable_obj: xarrayms table object.
+
+        Outputs
+        errors: xarray data array
+                Error data.
+        """
+        errors = xds_table_obj.PARAMERR
+        return errors
+
+    def get_xaxis_data(self, xds_table_obj, ms_name, gtype):
+        """Function to get x-axis data. It is dependent on the gaintype.
+            This function also returns the relevant x-axis labels for both pairs of plots.
+        Inputs
+        ------
+        xds_table_obj: xarray Dataset
+                       Table as xarray dataset from xarrayms
+        ms_name: str
+                 Name of gain table
+        gtype: str
+               Type of the gain table
+        Outputs
+        -------
+        Tuple (xdadta, x_label)
+
+        xdata: xarray DataArray
+               X-axis data depending  x-axis selected.
+        x_label: str
+                     Label to appear on the x-axis of the plots.
+        """
+
+        if gtype == 'B' or gtype == 'D':
+            xdata = vu.get_frequencies(ms_name)
+            x_label = 'Channel'
+        elif gtype == 'F' or gtype == 'G':
+            xdata = xds_table_obj.TIME
+            x_label = 'Time bin'
+        elif gtype == 'K':
+            xdata = xds_table_obj.ANTENNA1
+            x_label = 'Antenna1'
+        else:
+            logger.error("Invalid xaxis name")
+            return
+
+        return xdata, x_label
+
+    def prep_xaxis_data(self, xdata, gtype='G'):
+        """Prepare the x-axis data for plotting.
+        Inputs
+        ------
+        xdata: xarray DataArray
+               X-axis data depending  x-axis selected.
+        gtype: str
+               Gain table type.
+        freq: xarray DataArray or float
+              Frequency(ies) from which corresponding wavelength will be obtained.
+              REQUIRED ONLY when xaxis specified is 'uvwave'.
+        Outputs
+        -------
+        prepdx: xarray DataArray
+                Prepared data for the x-axis.
+        """
+        if gtype == 'B' or gtype == 'D':
+            prepdx = xdata.chan
+        elif gtype == 'G' or gtype == 'F':
+            prepdx = xdata - xdata[0]
+            # prepdx = vu.time_convert(xdata)
+        elif gtype == 'K':
+            prepdx = xdata
+        return prepdx
+
+    def get_yaxis_data(self, xds_table_obj, ms_name, yaxis):
+        """Extract the required column for the y-axis data.
+        Inputs
+        -----
+        xds_table_obj: xarray Dataset
+                       MS as xarray dataset from xarrayms
+        ms_name: str
+                 Name of table.
+        yaxis: str
+               yaxis to plot.
+
+        Outputs
+        -------
+        ydata: xarray DataArray
+               y-axis data depending  y-axis selected.
+        y_label: str
+                 Label to appear on the y-axis of the plots.
+        """
+
+        # default data column
+        datacol = 'CPARAM'
+
+        if yaxis == 'amplitude':
+            y_label = 'Amplitude'
+        elif yaxis == 'imaginary':
+            y_label = 'Imaginary'
+        elif yaxis == 'phase':
+            y_label = 'Phase [deg]'
+        elif yaxis == 'real':
+            y_label = 'Real'
+        elif yaxis == 'delay':
+            datacol = 'FPARAM'
+            y_label = 'Delay[ns]'
+
+        # attempt to get the specified column from the table
+        try:
+            ydata = xds_table_obj[datacol]
+        except KeyError:
+            logger.exception('Column "{}" not Found'.format(datacol))
+            return sys.exit(-1)
+
+        return ydata, y_label
+
+    def prep_yaxis_data(self, xds_table_obj, ms_name, ydata, yaxis=None, corr=0, flag=True):
+        """Process data for the y-axis which includes:
+        - Correlation selection
+        - Flagging
+        - Conversion form complex to the required form
+        Data selection and flagging are done by this function itself, however ap and ri conversion are done by specified functions.
+        Inputs
+        ------
+        xds_table_obj: xarray Dataset
+                       MS as xarray dataset from xarrayms
+        ms_name: str
+                 Name of gain table.
+        ydata: xarray DataArray
+               y-axis data to be processed
+        yaxis: str
+               selected y-axis
+        corr: int
+              Correlation number to select
+        flag: bool
+              Option on whether to flag the data or not
+        Outputs
+        -------
+        y: xarray DataArray
+           Processed yaxis data.
+        """
+        if corr != None:
+            ydata = ydata.sel(corr=corr)
+            flags = vu.get_flags(xds_table_obj).sel(corr=corr)
+        else:
+            ydata = ydata
+            flags = vu.get_flags(xds_table_obj)
+
+        # if flagging enabled return a list of DataArrays otherwise return a
+        # single dataarray
+        if flag:
+            # if flagging is activated select data only where flag mask is 0
+            processed = self.compute_ydata(ydata, yaxis=yaxis)
+            y = processed.where(flags == False)
+        else:
+            y = self.compute_ydata(ydata, yaxis=yaxis)
+
+        # if B table transpose table to be in shape (chans, solns) rather than
+        #(solns, chans)
+        if self.gtype == 'B' or self.gtype == 'D':
+            y = y.T
+            if y.ndim == 2:
+                # Take the item on the first row of the data before transpose
+                y = y[:, 0]
+
+        return y
+
+    def blackbox(self, xds_table_obj, ms_name, gtype, fid=None, antenna=None,
+                 doplot='ap', corr=0, flag=True):
+
+        Data = namedtuple('Data',
+                          'x x_label y1 y1_label y1_err y2 y2_label y2_err')
+
+        # this to be ran once
+        xdata, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, gtype)
+        prepd_x = self.prep_xaxis_data(xdata, gtype=gtype)
+
+        yerr = self.get_errors(xds_table_obj)
+
+        ##################################################################
+        ##### confirm K table is only plotted in ap mode #################
+        ##################################################################
+
+        if gtype == 'K':
+            # because only one plot should be generated
+            y1data, y1_label = self.get_yaxis_data(xds_table_obj, ms_name,
+                                                   'delay')
+            y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
+                                      yaxis='delay', corr=corr, flag=flag)
+            y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
+                                          yaxis='error', corr=corr, flag=flag)
+            y2 = 0
+            y2_err = 0
+            y2_label = 0
+
+            prepd_x, y1, y1_err = compute(prepd_x.data, y1.data, y1_err.data)
+
+            # shorting y2 to y1 to avoid problems during plotted
+            # y2 does not exist for this table
+            d = Data(x=prepd_x, x_label=xlabel, y1=y1,
+                     y1_label=y1_label, y1_err=y1_err,
+                     y2=y1, y2_label=y1_label,
+                     y2_err=y1_err)
+
+            return d
+
+        ##################################################################
+        ####### The rest of the tables can be plotted in ap or ri mode ###
+        ##################################################################
+
+        if doplot == 'ap':
+            y1data, y1_label = self.get_yaxis_data(xds_table_obj, ms_name,
+                                                   'amplitude')
+            y2data, y2_label = self.get_yaxis_data(
+                xds_table_obj, ms_name, 'phase')
+            y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
+                                      yaxis='amplitude', corr=corr, flag=flag)
+            y2 = self.prep_yaxis_data(xds_table_obj, ms_name, y2data,
+                                      yaxis='phase', corr=corr, flag=flag)
+            y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
+                                          yaxis='error', corr=corr, flag=flag)
+            y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
+                                          yaxis='error', corr=corr, flag=flag)
+        elif doplot == 'ri':
+            y1data, y1_label = self.get_yaxis_data(
+                xds_table_obj, ms_name, 'real')
+            y2data, y2_label = self.get_yaxis_data(xds_table_obj, ms_name,
+                                                   'imaginary')
+            y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
+                                      yaxis='real', corr=corr, flag=flag)
+            y2 = self.prep_yaxis_data(xds_table_obj, ms_name, y2data,
+                                      yaxis='imaginary', corr=corr, flag=flag)
+            y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
+                                          yaxis='error', corr=corr, flag=flag)
+            y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
+                                          yaxis='error', corr=corr, flag=flag)
+
+        prepd_x, y1, y1_err, y2, y2_err = compute(prepd_x.data, y1.data,
+                                                  y1_err.data, y2.data,
+                                                  y2_err.data)
+
+        d = Data(x=prepd_x, x_label=xlabel, y1=y1,
+                 y1_label=y1_label, y1_err=y1_err,
+                 y2=y2,
+                 y2_label=y2_label, y2_err=y2_err)
+
+        return d
+
+    def act(self):
+        return self.blackbox(self.xds_table_obj, self.ms_name, self.gtype,
+                             self.fid, self.antenna, self.doplot, self.corr,
+                             self.flag)
+
+    def x_only(self):
+        """Only return xaxis data and label
+        """
+        Data = namedtuple('Data', 'x x_label')
+        xdata, xlabel = self.get_xaxis_data(
+            self.xds_table_obj, self.ms_name,                                self.gtype)
+        prepd_x = self.prep_xaxis_data(self.xdata, gtype=self.gtype)
+        prepd_x = prepd_x.data.compute()
+
+        d = Data(x=prepd_x, x_label=xlabel)
+        return d
+
+    def y_only(self, yaxis=None):
+        """Only return yaxis data and label
+        """
+
+        Data = namedtuple('Data', 'y y_label')
+        ydata, y_label = self.get_yaxis_data(self.xds_table_obj, self.ms_name,
+                                             yaxis)
+        y = self.prep_yaxis_data(self.xds_table_obj, self.ms_name, ydata,
+                                 yaxis=yaxis, corr=self.corr,
+                                 flag=self.flag)
+        y = y.data.compute()
+        d = Data(y=y, y_label=y_label)
+        return d
+
+
+def get_table(tab_name, antenna=None, fid=None, where=None):
+
+    # defining part of the gain table schema
+    tab_schema = {'CPARAM': ('chan', 'corr'),
+                  'FLAG': ('chan', 'corr'),
+                  'FPARAM': ('chan', 'corr'),
+                  'PARAMERR': ('chan', 'corr'),
+                  'SNR': ('chan', 'corr'),
+                  }
+
+    if where == None:
+        where = []
+        if antenna != None:
+            where.append("ANTENNA1=={}".format(antenna))
+        if fid != None:
+            where.append("FIELD_ID=={}".format(fid))
+
+        where = "&&".join(where)
+
+    try:
+        tab_objs = xm.xds_from_table(tab_name, taql_where=where,
+                                     table_schema=tab_schema)
+        return tab_objs
+    except:
+        logging.exception("Invalid ANTENNA id, FIELD_ID or TAQL clause")
+        sys.exit(-1)
 
 
 def save_svg_image(img_name, figa, figb, glax1, glax2):
@@ -129,17 +521,16 @@ def determine_table(table_name):
                 Name of table /  gain type to be plotted
 
     """
-    pattern = re.compile(r'\.(G|K|B)\d*$', re.I)
+    pattern = re.compile(r'\.(G|K|B|F)\d*$', re.I)
     found = pattern.search(table_name)
     try:
-        result = found.group()
+        result = found.group()[:2]
         return result.upper()
     except AttributeError:
         return -1
 
 
-def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
-             error_kwargs={}):
+def errorbar(fig, x, y, yerr=None, color='red'):
     """Function to plot the error bars for both x and y.
        Takes in 3 compulsory parameters fig, x and y
 
@@ -150,52 +541,34 @@ def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={},
         x_axis value
     y: numpy.ndarray
         y_axis value
-    xerr: numpy.ndarray
-        Errors for x axis, must be an array
     yerr: numpy.ndarray
         Errors for y axis, must be an array
     color: str
         Color for the error bars
 
-
     Outputs
     -------
-    h: fig.multi_line
-        Returns a multiline object for external legend rendering
+    ebars: Whisker annotation model object
+          Return the object containing errorbars
 
     """
     # Setting default return value
-    h = None
-
-    if xerr is not None:
-
-        x_err_x = []
-        x_err_y = []
-
-        for px, py, err in zip(x, y, xerr):
-            x_err_x.append((px - err, px + err))
-            x_err_y.append((py, py))
-
-        h = fig.multi_line(x_err_x, x_err_y, color=color, line_width=3,
-                           level='underlay', visible=False, **error_kwargs)
+    ebars = None
 
     if yerr is not None:
-        y_err_x = []
-        y_err_y = []
 
-        for px, py, err in zip(x, y, yerr):
-            y_err_x.append((px, px))
-            y_err_y.append((py - err, py + err))
+        src = ColumnDataSource(data=dict(upper=y + yerr,
+                                         lower=y - yerr, base=x))
 
-        h = fig.multi_line(y_err_x, y_err_y, color=color, line_width=3,
-                           level='underlay', visible=False, **error_kwargs)
-
-    fig.legend.click_policy = 'hide'
-
-    return h
+        ebars = Whisker(source=src, base='base', upper='upper',
+                        lower='lower', line_color=color, visible=False)
+        ebars.upper_head.line_color = color
+        ebars.lower_head.line_color = color
+        fig.add_layout(ebars)
+    return ebars
 
 
-def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
+def make_plots(source, ax1, ax2, fid=0, color='red', y1err=None, y2err=None):
     """Generate a plot
 
     Inputs
@@ -207,11 +580,13 @@ def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
         First figure
     ax2: figure
         Second Figure
+    fid: int
+         field id number to set the line width
     color: str
         Data points' color
-    y1_err: numpy.ndarray
+    y1err: numpy.ndarray
         y1 error data
-    y2_err: numpy.ndarray
+    y2err: numpy.ndarray
         y2 error data
 
     Outputs
@@ -220,15 +595,57 @@ def make_plots(source, ax1, ax2, color='purple', y1_err=None, y2_err=None):
         Tuple of glyphs
 
     """
-    p1 = ax1.circle('x', 'y1', size=4, alpha=1, color=color, source=source,
-                    nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
-    p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
-                      color=color, yerr=y1_err)
+    markers = ['circle', 'diamond', 'square', 'triangle',
+               'hex']
+    fmarker = 'inverted_triangle'
+    glyph_opts = {'size': 4,
+                  'fill_alpha': 1,
+                  'fill_color': color,
+                  'line_color': 'black',
+                  'nonselection_fill_color': '#7D7D7D',
+                  'nonselection_fill_alpha': 0.3}
 
-    p2 = ax2.circle('x', 'y2', size=4, alpha=1, color=color, source=source,
-                    nonselection_color='#7D7D7D', nonselection_fill_alpha=0.3)
-    p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
-                      color=color, yerr=y2_err)
+    # if there is any flagged data enforce fmarker where flag is active
+    fmarkers = None
+    if np.any(np.isnan(source.data['y1'])):
+        fmarkers = gen_flag_data_markers(source.data['y1'], fid=fid,
+                                         markers=markers, fmarker=fmarker)
+        # update the data source with markers
+        source.add(fmarkers, name='fmarkers')
+
+        p1 = ax1.scatter(x='x', y='y1', marker='fmarkers', source=source,
+                         line_width=0, angle=0.7, **glyph_opts)
+
+        p2 = ax2.scatter(x='x', y='y2', marker='fmarkers', source=source,
+                         line_width=0, angle=0.7, **glyph_opts)
+    else:
+        p1 = ax1.scatter(x='x', y='y1', marker=markers[fid], source=source,
+                         line_width=0, **glyph_opts)
+
+        p2 = ax2.scatter(x='x', y='y2', marker=markers[fid], source=source,
+                         line_width=0, **glyph_opts)
+
+    # add a check for whether all the in y data were NaNs
+    # this causes the errorbars to fail if they all are
+    # they must be checked
+    if np.all(np.isnan(source.data['y1'])):
+        p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
+                          color=color, yerr=None)
+        p2_err = errorbar(fig=ax2, x=source.data['y2'], y=source.data['y2'],
+                          color=color, yerr=None)
+    else:
+        p1_err = errorbar(fig=ax1, x=source.data['x'], y=source.data['y1'],
+                          color=color, yerr=y1err)
+        p2_err = errorbar(fig=ax2, x=source.data['x'], y=source.data['y2'],
+                          color=color, yerr=y2err)
+
+    # link the visible properties of the two plots
+    p1.js_link('visible', p2, 'visible')
+    p2.js_link('visible', p1, 'visible')
+
+    if p1_err:
+        p1.glyph.js_link('size', p1_err, 'line_width')
+        p2.glyph.js_link('size', p2_err, 'line_width')
 
     return p1, p1_err, p2, p2_err
 
@@ -241,6 +658,7 @@ def ant_select_callback():
     code = """
             var i;
              //if toggle button active
+             //num_groups: number of chunks available
             if (this.active==false)
                 {
                     this.label='Select all Antennas';
@@ -261,7 +679,7 @@ def ant_select_callback():
 
                     }
 
-                    batchsel.active = [0,1,2,3]
+                    batchsel.active = [...Array(num_groups).keys()]
                 }
             """
 
@@ -273,18 +691,17 @@ def toggle_err_callback():
         Returns : string
     """
     code = """
-            var i;
+            let i;
              //if toggle button active
             if (this.active==false)
                 {
                     this.label='Show All Error bars';
 
-
                     for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = false;
-                        //checking for error on phase and imaginary planes as these tend to go off
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = false;
+                        //check if the error bars are present first
+                        if (err1[i]){
+                            err1[i].visible = false;
+                            err2[i].visible = false;
                         }
 
 
@@ -294,9 +711,12 @@ def toggle_err_callback():
             else{
                     this.label='Hide All Error bars';
                     for(i=0; i<err1.length; i++){
-                        err1[i][1][0].visible = true;
-                        if (err2[i][1][0]){
-                            err2[i][1][0].visible = true;
+                        //only switch on if corresponding plot is on
+                        if(ax1s[i].visible){
+                            if (err1[i]){
+                                err1[i].visible = true;
+                                err2[i].visible = true;
+                            }
                         }
                     }
                 }
@@ -309,73 +729,64 @@ def batch_select_callback():
         Returns : string
     """
     code = """
-            # bax = [ [batch1], [batch2], [batch3] ]
+            // bax[i][k][l][m]
 
-            # j is batch number
-            # i is glyph number
-            j=0
-            i=0
+            // k: item number in batch
+            // i: batch number
+            // l: 1 legend item number, must be 1 coz of legend specs
+            // m: item number 0 which is the glyph
+            // nfields: number of fields to be plotted by the script. We shall get this from the number of glyph renderers attached to the same legend label
+            // f: field number represented
 
-            if 0 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[0][i][1][0].visible = true
-                    bax2[0][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[0][i][1][0].visible = false
-                    bax2[0][i][1][0].visible = false
-                    i++
+            let num_of_batches = bax1.length;
 
-            if 1 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[1][i][1][0].visible = true
-                    bax2[1][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[1][i][1][0].visible = false
-                    bax2[1][i][1][0].visible = false
-                    i++
-
-            if 2 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[2][i][1][0].visible = true
-                    bax2[2][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[2][i][1][0].visible = false
-                    bax2[2][i][1][0].visible = false
-                    i++
-
-            if 3 in this.active
-                i=0
-                while i < bax1[j].length
-                    bax1[3][i][1][0].visible = true
-                    bax2[3][i][1][0].visible = true
-                    i++
-            else
-                i=0
-                while i < bax1[0].length
-                    bax1[3][i][1][0].visible = false
-                    bax2[3][i][1][0].visible = false
-                    i++
+            //sampling a single item for the length of fields
+            let nfields = bax1[0][0][1].length;
 
 
 
-            if this.active.length == 4
-                antsel.active = true
-                antsel.label =  "Deselect all Antennas"
-            else if this.active.length == 0
-                antsel.active = false
-                antsel.label = "Select all Antennas"
+
+            //for each batch in total number of batches
+            for(i=0; i<num_of_batches; i++){
+                //check whether batch number is included in the active list
+                if (this.active.includes(i)){
+                    k=0;
+                    while (k < batch_size){
+                        //show all items in the active batch
+
+                        for (f=0; f<nfields; f++){
+                            if (bax1[i][k]){
+                                bax1[i][k][1][f].visible = true;
+                                bax2[i][k][1][f].visible = true;
+                                }
+                        }
+                        k++;
+
+                    }
+                }
+
+                else{
+                    k=0;
+                    while (k < batch_size){
+                        for (f=0; f<nfields; f++){
+                            if (bax1[i][k]){
+                                bax1[i][k][1][f].visible = false;
+                                bax2[i][k][1][f].visible = false;
+                                }
+                        }
+                        k++;
+                    }
+                }
+            }
+
+            if (this.active.length == num_of_batches){
+                antsel.active = true;
+                antsel.label =  "Deselect all Antennas";
+            }
+            else if(this.active.length == 0){
+                antsel.active = false;
+                antsel.label = "Select all Antennas";
+            }
            """
     return code
 
@@ -403,40 +814,10 @@ def legend_toggle_callback():
                     }
                 }
 
-
-
-                if (this.value == "elo"){
-                    for(i=0; i<len; i++){
-                        loax1_err[i].visible = true;
-                        loax2_err[i].visible = true;
-
-                    }
-                }
-
-                else{
-                    for(i=0; i<len; i++){
-                        loax1_err[i].visible = false;
-                        loax2_err[i].visible = false;
-
-                    }
-                }
-
-                if (this.value == "all"){
-                    for(i=0; i<len; i++){
-                        loax1[i].visible = true;
-                        loax2[i].visible = true;
-                        loax1_err[i].visible = true;
-                        loax2_err[i].visible = true;
-
-                    }
-                }
-
                 if (this.value == "non"){
                     for(i=0; i<len; i++){
                         loax1[i].visible = false;
                         loax2[i].visible = false;
-                        loax1_err[i].visible = false;
-                        loax2_err[i].visible = false;
 
                     }
                 }
@@ -445,11 +826,11 @@ def legend_toggle_callback():
 
 
 def size_slider_callback():
-    """JS callback to sel
+    """JS callback to select size of glyphs
     """
 
     code = """
-            
+
             var pos, i, numplots;
 
             numplots = p1.length;
@@ -463,7 +844,118 @@ def size_slider_callback():
     return code
 
 
-def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, batch_size=16):
+def alpha_slider_callback():
+    """JS callback to select alpha of glyphs"""
+
+    code = """
+
+            var pos, i, numplots;
+
+            //debugger;
+            numplots = p1.length;
+            pos = alpha.value;
+
+
+            for (i=0; i<numplots; i++){
+                p1[i].glyph.fill_alpha = pos;
+                p2[i].glyph.fill_alpha = pos;
+            }
+           """
+    return code
+
+
+def field_selector_callback():
+    code = """
+            //nants: number of antennas in each field
+            // nfields: number of fields
+
+            let nants = ants.length;
+            let nfields = p1.length / nants;
+            //to keep track of the last antenna number visibilities because
+            //p1 and p2 is are single lists containing all the elements in
+            //all fields
+            let ant_count = 0;
+
+            for(f=0; f<nfields; f++){
+                for(a=0; a<nants; a++){
+                    if (this.active.includes(f)){
+                        p1[a+ant_count].visible = true;
+                        p2[a+ant_count].visible = true;
+                    }
+                    else{
+                        p1[a+ant_count].visible = false;
+                        p2[a+ant_count].visible = false;
+                    }
+                }
+                ant_count+=nants;
+            }
+
+
+
+           """
+    return code
+
+
+def axis_fs_callback():
+    code = """
+            let naxes = ax1.length;
+
+
+            for(i=0; i<naxes; i++){
+                ax1[i].axis_label_text_font_size = `${this.value}pt`;
+                ax2[i].axis_label_text_font_size = `${this.value}pt`;
+            }
+           """
+    return code
+
+
+def title_fs_callback():
+    code = """
+            last_idx = ax1.length-1;
+            ax1[last_idx].text_font_size = `${this.value}px`;
+            ax2[last_idx].text_font_size = `${this.value}px`;
+           """
+    return code
+
+
+def flag_callback():
+    code = """
+            //sources: list of all different sources for the different antennas and available sources
+            //n_sources: number of sources
+            //flagging: status of flag_data
+
+            let n_sources =  sources.length;
+            let state = cb_obj.active.length;
+
+            let init_src = Array();
+            let src_1 = Array();
+
+            for(item in sources){init_src[item] = sources[item][0];}
+            for(item in sources){src_1[item] = sources[item][1];}
+
+            if (state==1){
+                cb_obj.label = flagging ? 'Flag' : 'Un-Flag';
+                for (i=0; i<n_sources; i++){
+                    init_src[i].data.y1 = src_1[i].data.iy1;
+                    init_src[i].data.y2 = src_1[i].data.iy2;
+                    init_src[i].change.emit();
+                }
+            }
+            else{
+                cb_obj.label = flagging ? 'Un-Flag' : 'Flag';
+                for (i=0; i<n_sources; i++){
+                    init_src[i].data.y1 = src_1[i].data.y1;
+                    init_src[i].data.y2 = src_1[i].data.y2;
+                    init_src[i].change.emit();
+                }
+
+
+            }
+           """
+    return code
+
+
+def create_legend_batches(num_leg_objs, li_ax1, li_ax2, batch_size=16):
     """Automates creation of antenna batches of 16 each unless otherwise
 
         batch_0 : li_ax1[:16]
@@ -483,46 +975,41 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, lierr_ax1, lierr_ax2, ba
     li_ax2: list
                 List containing all legend items for antennas for 2nd figure
                 Items are in the form (antenna_legend, [glyph])
-    lierr_ax1: list
-                List containing legend items for errorbars for 1st figure
-                Items are in the form (error_legend, [glyph])
-    lierr_ax2: list
-                List containing legend items for errorbars for 2nd figure
-                Items are in the form (error_legend, [glyph])
-
     Outputs
     -------
 
-    (bax1, bax1_err, bax2, bax2_err): Tuple
+    (bax1, bax2: Tuple
                 Tuple containing List of lists which have batch_size number of legend items for each batch.
-                Results in batches for figure1 antenna legends, figure1 error legends, figure2 antenna legends, figure2 error legends.
+                Results in batches for figure1 antenna legends, figure2 antenna legends
 
                 e.g bax1 = [[batch0], [batch1], ...,  [batch_numOfBatches]]
 
     """
 
-    bax1, bax1_err, bax2, bax2_err = [], [], [], []
+    bax1, bax2 = [], []
+
+    # condense the returned list if two fields were plotted
+    li_ax1, li_ax2 = list(map(condense_legend_items, [li_ax1, li_ax2]))
 
     j = 0
     for i in range(num_leg_objs):
-        # in case the number is not a multiple of 16
+        # in case the number is not a multiple of 16 or is <= num_leg_objs
+        # or on the last iteration
+
         if i == num_leg_objs:
             bax1.extend([li_ax1[j:]])
             bax2.extend([li_ax2[j:]])
-            bax1_err.extend([lierr_ax1[j:]])
-            bax2_err.extend([lierr_ax2[j:]])
+
         else:
             bax1.extend([li_ax1[j:j + batch_size]])
             bax2.extend([li_ax2[j:j + batch_size]])
-            bax1_err.extend([lierr_ax1[j:j + batch_size]])
-            bax2_err.extend([lierr_ax2[j:j + batch_size]])
 
         j += batch_size
 
-    return bax1, bax1_err, bax2, bax2_err
+    return bax1, bax2
 
 
-def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
+def create_legend_objs(num_leg_objs, bax1, bax2):
     """Creates legend objects using items from batches list
        Legend objects allow legends be positioning outside the main plot
 
@@ -534,15 +1021,10 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
          Batches for antenna legends of 1st figure
    bax2: list
          Batches for antenna legends of 2nd figure
-   baerr_ax1: list
-         Batches for error bar legends of 1st figure
-   baerr_ax2: list
-         Batches for error bar legends of 2nd figure
-
 
    Outputs
    -------
-   (lo_ax1, loerr_ax1, lo_ax2, loerr_ax2) tuple
+   (lo_ax1, lo_ax2) tuple
             Tuple containing dictionaries with legend objects for
             ax1 antenna legend objects, ax1 error bar legend objects,
             ax2 antenna legend objects, ax2 error bar legend objects
@@ -554,32 +1036,25 @@ def create_legend_objs(num_leg_objs, bax1, baerr_ax1, bax2, baerr_ax2):
                 items=batch_0, location='top_right', click_policy='hide')
     """
 
-    lo_ax1, lo_ax2, loerr_ax1, loerr_ax2 = {}, {}, {}, {}
+    lo_ax1, lo_ax2 = {}, {}
+
+    l_opts = dict(click_policy='hide',
+                  orientation='horizontal',
+                  label_text_font_size='9pt',
+                  visible=False,
+                  glyph_width=10)
 
     for i in range(num_leg_objs):
-        lo_ax1['leg_%s' % str(i)] = Legend(items=bax1[i],
-                                           location='top_right',
-                                           click_policy='hide',
-                                           visible=False)
-        lo_ax2['leg_%s' % str(i)] = Legend(items=bax2[i],
-                                           location='top_right',
-                                           click_policy='hide',
-                                           visible=False)
-        loerr_ax1['leg_%s' % str(i)] = Legend(
-            items=baerr_ax1[i],
-            location='top_right',
-            click_policy='hide',
-            visible=False)
-        loerr_ax2['leg_%s' % str(i)] = Legend(
-            items=baerr_ax2[i],
-            location='top_right',
-            click_policy='hide',
-            visible=False)
+        leg1 = Legend(items=bax1[i], **l_opts)
+        leg2 = Legend(items=bax2[i], **l_opts)
 
-    return lo_ax1, loerr_ax1, lo_ax2, loerr_ax2
+        lo_ax1['leg_%s' % str(i)] = leg1
+        lo_ax2['leg_%s' % str(i)] = leg2
+
+    return lo_ax1, lo_ax2
 
 
-def gen_checkbox_labels(batch_size, num_leg_objs):
+def gen_checkbox_labels(batch_size, num_leg_objs, antnames):
     """ Auto-generating Checkbox labels
 
     Inputs
@@ -593,12 +1068,17 @@ def gen_checkbox_labels(batch_size, num_leg_objs):
     labels: list
             Batch labels for the check box
     """
+    nants = len(antnames)
 
     labels = []
     s = 0
     e = batch_size - 1
     for i in range(num_leg_objs):
-        labels.append("A%s - A%s" % (s, e))
+        if e < nants:
+            labels.append("{} - {}".format(antnames[s], antnames[e]))
+        else:
+            labels.append("{} - {}".format(antnames[s], antnames[nants - 1]))
+        # after each append, move start number to current+batchsize
         s = s + batch_size
         e = e + batch_size
 
@@ -618,8 +1098,9 @@ def save_html(hname, plot_layout):
     -------
     Nothing
     """
-    output_file(hname + ".html")
-    output = save(plot_layout, hname + ".html", title=hname)
+    hname = hname + ".html"
+    output_file(hname)
+    output = save(plot_layout, hname, title=hname)
     # uncomment next line to automatically plot on web browser
     # show(layout)
 
@@ -642,365 +1123,49 @@ def add_axis(fig, axis_range, ax_label):
     fig.extra_x_ranges = {"fxtra": Range1d(
         start=axis_range[0], end=axis_range[-1])}
     linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
-                         major_label_orientation='horizontal', ticker=BasicTicker(desired_num_ticks=12))
-    return linaxis
+                         major_label_orientation='horizontal',
+                         ticker=BasicTicker(desired_num_ticks=12),
+                         axis_label_text_font_style='normal')
+    fig.add_layout(linaxis, 'above')
+    return fig
 
 
-def name_2id(val, dic):
+def name_2id(tab_name, field_name):
     """Translate field name to field id
 
     Inputs
     -----
-    val: string
+    tab_name: str
+              Table name
+    field_name: string
          Field ID name to convert
-    dic: dict
-         Dictionary containing enumerated source ID names
 
     Outputs
     -------
-    key: int
-         Integer field id
+    field_id: int
+              Integer field id
     """
-    upperfy = lambda x: x.upper()
-    values = dic.values()
-    values = map(upperfy, values)
-    val = val.upper()
+    field_names = vu.get_fields(tab_name).data.compute()
 
-    if val in values:
-        val_index = values.index(val)
-        keys = dic.keys()
+    # make the sup field name uppercase
+    field_name = field_name.upper()
 
-        # get the key to that index from the key values
-        key = keys[val_index]
-        return int(key)
+    if field_name in field_names:
+        field_id = np.where(field_names == field_name)[0][0]
+        return int(field_id)
     else:
         return -1
 
 
-def data_prep_G(masked_data, masked_data_err, doplot):
-    """Preparing the data for plotting gain cal-table
-
-    Inputs
-    ------
-    masked_data: numpy.ndarray
-        Flagged data from CPARAM column to be plotted.
-    masked_data_err : numpy.ndarray
-        Flagged data from the PARAMERR column to be plotted
-    doplot: str
-        Either 'ap' or 'ri'
-
-
-    Outputs
-    -------
-    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array) : tuple
-        Tuple with arrays of the different data
-
-    """
-
-    if doplot == 'ap':
-        y1 = np.ma.abs(masked_data)
-        y1_err = np.ma.abs(masked_data_err)
-        y2 = np.ma.angle(masked_data, deg=True)
-        # Remove phase limit from -pi to pi
-        #y2 = np.unwrap(y2)
-        y2_err = None
-    else:
-        y1 = np.real(masked_data)
-        y1_err = np.ma.abs(masked_data_err)
-        y2 = np.imag(masked_data)
-        y2_err = None
-
-    return y1, y1_err, y2, y2_err
-
-
-def data_prep_B(masked_data, masked_data_err, doplot):
-    """Preparing the data for plotting bandpass cal-table
-
-    Inputs
-    ------
-    masked_data     : numpy.ndarray
-        Flagged data from CPARAM column to be plotted.
-    masked_data_err : numpy.ndarray
-        Flagged data from the PARAMERR column to be plotted
-    doplot: str
-        Either 'ap' or 'ri'
-
-    Outputs
-    -------
-    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array): tuple
-        Tuple with arrays of the different data
-
-    """
-    if doplot == 'ap':
-        y1 = np.ma.abs(masked_data)
-        y1_err = np.ma.abs(masked_data_err)
-        y2 = np.ma.angle(masked_data, deg=True)
-        #y2 = np.unwrap(y2)
-        y2_err = np.ma.angle(masked_data_err, deg=True)
-        y2_err = np.unwrap(y2_err)
-    else:
-        y1 = np.real(masked_data)
-        y1_err = np.abs(masked_data_err)
-        y2 = np.imag(masked_data)
-        y2_err = None
-
-    return y1, y1_err, y2, y2_err
-
-
-def data_prep_K(masked_data, masked_data_err, doplot):
-    """Preparing the data for plotting delay cal-table. Doplot must be 'ap'.
-
-    Inputs
-    ------
-    masked_data: numpy.ndarray
-        Flagged data from CPARAM column to be plotted.
-    masked_data_err: numpy.ndarray
-        Flagged data from the PARAMERR column to be plotted
-
-    Outputs
-    -------
-    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array): tuple
-        Tuple with arrays of the different data
-
-    """
-    y1 = masked_data
-    y1_err = masked_data_err
-
-    # quick fix to hide plot without generating errors
-    y2 = y1
-    y2_err = y1
-
-    return y1, y1_err, y2, y2_err
-
-
-def data_prep_F(masked_data, masked_data_err, doplot):
-    """Preparing the data for plotting flux cal table
-
-    Inputs
-    ------
-    masked_data: numpy.ndarray
-        Flagged data from CPARAM column to be plotted.
-    masked_data_err : numpy.ndarray
-        Flagged data from the PARAMERR column to be plotted
-    doplot: str
-        Either 'ap' or 'ri'
-
-    Outputs
-    -------
-    (y1_data_array, y1_error_data_array, y2_data_array, y2_error_data_array) : tuple
-        Tuple with arrays of the different data
-
-    """
-
-    if doplot == 'ap':
-        y1 = np.ma.abs(masked_data)
-        y1_err = np.ma.abs(masked_data_err)
-        y2 = np.ma.angle(masked_data, deg=True)
-        # Remove phase limit from -pi to pi
-        #y2 = np.unwrap(y2)
-        y2_err = None
-    else:
-        y1 = np.real(masked_data)
-        y1_err = np.ma.abs(masked_data_err)
-        y2 = np.imag(masked_data)
-        y2_err = None
-    return y1, y1_err, y2, y2_err
-
-
-def get_yaxis_data(table_obj, gtype, ptype):
-    """ Function to extract the required column for the y-axis data.
-    This column is determined by ptype which can be amplitude vs phase 'ap'
-    or real vs imaginary 'ri'.
-
-    Inputs
-    -----
-    table_obj: python casacore table object
-               Table in which to get the data
-
-    gtype: str
-           Gain table type B, F, G or K.
-
-    ptype: str
-           Plot type ap / ri
-
-    Outputs
-    -------
-    Returns np.ndarray data as well as the y-axis labels (str) for both plots.
-    """
-    if ptype == 'ap':
-        y1_label = 'Amplitude'
-        y2_label = 'Phase[deg]'
-    else:
-        y1_label = 'Real'
-        y2_label = 'Imaginary'
-
-    if gtype == 'K':
-        data_column = 'FPARAM'
-    else:
-        data_column = 'CPARAM'
-
-    ydata = table_obj.getcol(data_column)
-    return ydata, y1_label, y2_label
-
-
-def prep_yaxis_data(table_obj, ydata, gtype, ptype='ap', corr=0, flag=True):
-    """Function to process data for the y-axis. Part of the processing includes:
-    - Selecting correlation for the data and error
-    - Flagging
-    - Complex correlation parameter conversion to amplitude, phase, real and 
-      imaginary for processing
-    Data selection and flagging are done by this function itself, however ap and ri conversion are done by specified functions.
-
-    Inputs
-    ------
-    table_obj: pyrap table object
-               table object for an already open table
-    ydata: ndarray
-           Relevant y-axis data to be processed
-    gtype: str
-           Gain table type  B, F, G or K.
-    ptype: str
-           Plot type 'ap' / 'ri'
-    corr: int
-          Correlation number to select
-    flag: bool
-          Option on whether to flag the data or not
-
-    Outputs
-    -------
-    y1: masked ndarray
-        Amplitude / real part of the complex input data.
-    y1_err: masked ndarray
-        Error data for y1.
-    y2: masked ndarray
-        Phase angle / Imaginary part of input data.
-    y2_err: masked ndarray
-        Error data for y2.
-
-    """
-    # select data correlation for both the data and the errors
-    ydata = ydata[:, :, corr]
-    ydata_errors = get_errors(table_obj)[:, :, corr]
-
-    if flag:
-        flags = get_flags(table_obj, corr)
-        ydata = np.ma.masked_array(data=ydata, mask=flags)
-        ydata_errors = np.ma.masked_array(data=ydata_errors, mask=flags)
-
-    if gtype == 'B':
-        y1, y1_err, y2, y2_err = data_prep_B(ydata, ydata_errors, ptype)
-    elif gtype == 'F':
-        ydata = ydata[:, 0]
-        ydata_errors = ydata_errors[:, 0]
-        y1, y1_err, y2, y2_err = data_prep_F(ydata, ydata_errors, ptype)
-    elif gtype == 'G':
-        ydata = ydata[:, 0]
-        ydata_errors = ydata_errors[:, 0]
-        y1, y1_err, y2, y2_err = data_prep_G(ydata, ydata_errors, ptype)
-    elif gtype == 'K':
-        ydata = ydata[:, 0]
-        ydata_errors = ydata_errors[:, 0]
-        y1, y1_err, y2, y2_err = data_prep_K(ydata, ydata_errors, ptype)
-
-    return y1, y1_err, y2, y2_err
-
-
-def get_frequencies(table_obj):
-    """Function to get channel frequencies from the SPECTRAL_WINDOW subtable.
-    Inputs
-    ------
-    table_obj: pyrap table object
-
-    Outputs
-    -------
-    freqs: 1D-array
-           Channel centre frequencies.
-    """
-    spw_subtab = table(table_obj.getkeyword('SPECTRAL_WINDOW'), ack=False)
-    freqs = spw_subtab.getcell('CHAN_FREQ', 0)
-    spw_subtab.close()
-    return freqs
-
-
-def get_antennas(table_obj):
-    """Function to get antennae names from the ANTENNA subtable.
-    Inputs
-    ------
-    table_obj: pyrap table object
-
-    Outputs
-    -------
-    ant_names: 1D-array
-               Names for all the antennas available.
-
-    """
-    ant_subtab = table(table_obj.getkeyword('ANTENNA'), ack=False)
-    ant_names = ant_subtab.getcol('NAME')
-    ant_subtab.close()
-    return ant_names
-
-
-def get_flags(table_obj, corr=None):
-    """Function to get Flag values from the FLAG column
-    Allows the selection of flags for a single correlation. If none is specified the entire data is then selected.
-    Inputs
-    ------
-    table_obj: pyrap table object
-    corr: int
-          Correlation number to select.
-
-    Outputs
-    -------
-    flags: ndarray
-           Array containing selected flag values.
-
-    """
-    flags = table_obj.getcol('FLAG')
-    if corr is None:
-        return flags
-    else:
-        flags = flags[:, :, corr]
-    return flags
-
-
-def get_errors(table_obj):
-    """Function to get error data from PARAMERR column.
-    Inputs
-    ------
-    table_obj: pyrap table object.
-
-    Outputs
-    errors: ndarray
-            Error data. 
-    """
-    errors = table_obj.getcol('PARAMERR')
-    return errors
-
-
-def get_fields(table_obj):
-    """Function to get field names from the FIELD subtable.
-    Inputs
-    ------
-    table_obj: pyrap table object
-
-    Outputs
-    -------
-    field_names: 1-D array
-                 String names for the available data in the table
-    """
-    field_subtab = table(table_obj.getkeyword('FIELD'), ack=False)
-    field_names = field_subtab.getcol('NAME')
-    field_subtab.close()
-    return field_names
-
-
-def get_tooltip_data(table_obj, gtype):
+def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
     """Function to get the data to be displayed on the mouse tooltip on the plots.
     Inputs
     ------
-    table_obj: pyrap table object
+    xds_table_obj: xarray dataset
     gtype: str
            Type of gain table being plotted
+    antnames: list
+              List of the antenna names
 
     Outputs
     -------
@@ -1013,84 +1178,27 @@ def get_tooltip_data(table_obj, gtype):
 
 
     """
-    spw_id = table_obj.getcol('SPECTRAL_WINDOW_ID')
-    scan_no = table_obj.getcol('SCAN_NUMBER')
-    ant_id = table_obj.getcol('ANTENNA1')
-    antnames = get_antennas(table_obj)
+    spw_id = xds_table_obj.SPECTRAL_WINDOW_ID.data.astype(np.int)
+    scan_no = xds_table_obj.SCAN_NUMBER.data.astype(np.int)
+    ant_id = xds_table_obj.ANTENNA1.data.astype(np.int)
+
+    spw_id, scan_no, ant_id = compute(spw_id, scan_no, ant_id)
+
     # get available antenna names from antenna id
     ttip_antnames = np.array([antnames[x] for x in ant_id])
 
-    freqs = get_frequencies(table_obj)
-    nchan = len(freqs)
+    # get the number of channels
+    nchan = freqs.size
 
-    if gtype == 'B':
-        spw_id = spw_id.reshape(spw_id.size, 1)
-        spw_id = spw_id.repeat(nchan, axis=1)
-        scan_no = scan_no.reshape(scan_no.size, 1)
-        scan_no = scan_no.repeat(nchan, axis=1)
-        ant_id = ant_id.reshape(ant_id.size, 1)
-        ant_id = ant_id.repeat(nchan, axis=1)
-        # ttip_antnames = ttip_antnames.
-
+    if gtype == 'B' or gtype == 'D':
+        spw_id = spw_id[0].repeat(nchan, axis=0)
+        scan_no = scan_no[0].repeat(nchan, axis=0)
+        ant_id = ant_id[0].repeat(nchan, axis=0)
+        ttip_antnames = antnames[ant_id]
     return spw_id, scan_no, ttip_antnames
 
 
-def get_xaxis_data(table_obj, gtype):
-    """Function to get x-axis data. It is dependent on the gaintype.
-        This function also returns the relevant x-axis labels for both pairs of plots.
-    Inputs
-    ------
-    table_obj: pyrap table object
-
-    gtype:  str
-            Type of gain table being plotted.
-
-    Outputs
-    -------
-    xdata: ndarray
-           X-axis data depending on the gain table to be plotted.
-    xaxis_label: str
-                 Label to appear on the x-axis of the plots. This is shared amongst both plots.
-    """
-    if gtype == 'B':
-        xdata = get_frequencies(table_obj)
-        xaxis_label = 'Channel'
-    elif gtype == 'F' or gtype == 'G':
-        xdata = table_obj.getcol('TIME')
-        xaxis_label = 'Time[s]'
-    elif gtype == 'K':
-        xdata = table_obj.getcol('ANTENNA1')
-        xaxis_label = 'Antenna'
-
-    return xdata, xaxis_label
-
-
-def prep_xaxis_data(xdata, gtype):
-    """Function to Prepare the x-axis data.
-    Inputs
-    ------
-    xdata: 1-D array
-           Data for the xaxis to be prepared
-    gtype: str
-           gain type of the table to plot
-    ptype: str
-           Type of plot, whether ap or ri
-
-    Outputs
-    -------
-    prepdx: 1-D array
-            Data for the x-axid of the plots
-    """
-    if gtype == 'B':
-        prepdx = np.arange(xdata.size)
-    elif gtype == 'G' or gtype == 'F':
-        prepdx = xdata - xdata[0]
-    elif gtype == 'K':
-        prepdx = xdata
-    return prepdx
-
-
-def stats_display(table_obj, gtype, ptype, corr, field):
+def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
     """Function to display some statistics on the plots. These statistics are derived from a specific correlation and a specified field of the data.
     Currently, only the medians of these plots are displayed.
 
@@ -1112,122 +1220,178 @@ def stats_display(table_obj, gtype, ptype, corr, field):
          Preformatted text containing the medians for both model. The object returned must then be placed within the widget box for display.
 
     """
-    subtable = table_obj.query(query="FIELD_ID=={}".format(field))
-    ydata, y1label, y2label = get_yaxis_data(subtable, gtype, ptype)
+    subtable = get_table(tab_name, where='FIELD_ID=={}'.format(field))[0]
 
-    flags = get_flags(subtable)[:, :, corr]
-    ydata = ydata[:, :, corr]
-    m_ydata = np.ma.masked_array(data=ydata, mask=flags)
+    dobj = DataCoreProcessor(subtable, tab_name, gtype, corr=corr, flag=True)
+
+    if gtype == 'K':
+        y1 = dobj.y_only('delay').y
+        med_y1 = np.nanmedian(y1)
+        text = "Field {}: Median Delay: {:.4f}".format(field, med_y1)
+        text2 = ' '
+        return text, text2
 
     if ptype == 'ap':
-        y1 = np.ma.abs(m_ydata)
-        y2 = np.ma.angle(m_ydata, deg=True)
-        med_y1 = np.ma.median(y1)
-        med_y2 = np.ma.median(y2)
-        text = "Median Amplitude: {}\nMedian Phase: {} deg".format(
-            med_y1, med_y2)
-        if gtype == 'K':
-            text = "Median Amplitude: {}".format(med_y1)
+        y1 = dobj.y_only('amplitude').y
+        y2 = dobj.y_only('phase').y
+        med_y1 = np.nanmedian(y1)
+        med_y2 = np.nanmedian(y2)
+
+        text = "Field {} Median: {:.4f}".format(field, med_y1)
+
+        try:
+            text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
+                                                       u"\u00b0")
+        except UnicodeEncodeError:
+            # for python2
+            text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
+                                                       u"\u00b0".encode('utf-8'))
+
     else:
-        y1 = np.ma.real(m_ydata)
-        y2 = np.ma.imag(m_ydata)
+        y1 = dobj.y_only('real').y
+        y2 = dobj.y_only('imaginary').y
 
-        med_y1 = np.ma.median(y1)
-        med_y2 = np.ma.median(y2)
-        text = "Median Real: {}\nMedian Imaginary: {}".format(med_y1, med_y2)
+        med_y1 = np.nanmedian(y1)
+        med_y2 = np.nanmedian(y2)
+        text = "Field {} Median: {:.4f}".format(field, med_y1)
+        text2 = "Field {} Median: {:.4f}".format(field, med_y2)
 
-    pre = PreText(text=text)
-
-    return pre
+    return text, text2
 
 
-def autofill_gains_fields(t, g, f):
+def autofill_gains(t, g):
     """Normalise length of f and g lists to the length of
-       t list. This function is meant to support  the ability to specify multiple gain tables while only specifying single values for field ids and gain table types. An assumption will be made that for all the specified tables, the same field id and gain table type will be used.
+       t list. This function is meant to support  the ability to specify multiple gain tables while only specifying single values for gain table types. An assumption will be made that for all the specified tables, the same gain table type will be used.
 
     Inputs
     ------
     t: list
           list of the gain tables.
-    f: str
-            field id to be plotted.
-    g: list 
+
+    g: list
            type of gain table [B,G,K,F].
 
 
     Outputs
     -------
-    f, g: list
-                    lists of length lengthof(t) containing field ids and gain types.
+    f: list
+                    lists of length lengthof(t) containing gain types.
     """
     ltab = len(t)
-    lfields = len(f)
     lgains = len(g)
 
     if ltab != lgains and lgains == 1:
         g = g * ltab
-    if ltab != lfields and lfields == 1:
-        f = f * ltab
-
-    return g, f
+    return g
 
 
 def get_argparser():
     """Get argument parser"""
-    parser = ArgumentParser(usage='prog [options] <value>')
-    parser.add_argument('-a', '--ant', dest='plotants', type=str,
+    parser = ArgumentParser(usage='%(prog)s [options] <value>',
+                            description='A RadioAstronomy Visibility and Gains Inspector')
+    parser.add_argument('-a', '--ant', dest='plotants', type=str, metavar=' ',
                         help='Plot only this antenna, or comma-separated list\
                               of antennas',
                         default=[-1])
-    parser.add_argument('-c', '--corr', dest='corr', type=int,
+    parser.add_argument('-c', '--corr', dest='corr', type=int, metavar=' ',
                         help='Correlation index to plot (usually just 0 or 1,\
                               default = 0)',
                         default=0)
-    parser.add_argument('--cmap', dest='mycmap', type=str,
+    parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
                         help='Matplotlib colour map to use for antennas\
                              (default=coolwarm)',
                         default='coolwarm')
     parser.add_argument('-d', '--doplot', dest='doplot', type=str,
+                        metavar=' ',
                         help='Plot complex values as amp and phase (ap)'
                         'or real and imag (ri) (default = ap)', default='ap')
     parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
-                        help='Field ID(s) / NAME(s) to plot')
-    parser.add_argument('-g', '--gaintype', nargs='*', type=str,
-                        dest='gain_types', choices=['B', 'G', 'K', 'F'],
-                        help='Type of table(s) to be plotted: B, G, K, F',
+                        metavar=' ', help='Field ID(s) / NAME(s) to plot',
+                        default=None)
+    parser.add_argument('-g', '--gaintype', nargs='+', type=str, metavar=' ',
+                        dest='gain_types', choices=['B', 'D', 'G', 'K', 'F'],
+                        help='Type of table(s) to be plotted: B, D, G, K, F',
                         default=[])
-    parser.add_argument('--htmlname', dest='html_name', type=str,
+    parser.add_argument('--htmlname', dest='html_name', type=str, metavar=' ',
                         help='Output HTMLfile name', default='')
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
-                        help='Output image name', default='')
+                        metavar=' ', help='Output png/svg image name',
+                        default='')
     parser.add_argument('-t', '--table', dest='mytabs',
-                        nargs='*', type=str,
+                        nargs='+', type=str, metavar=(' '),
                         help='Table(s) to plot (default = None)', default=[])
-    parser.add_argument('--t0', dest='t0', type=float,
+    parser.add_argument('--t0', dest='t0', type=float, metavar=' ',
                         help='Minimum time to plot (default = full range)',
                         default=-1)
-    parser.add_argument('--t1', dest='t1', type=float,
+    parser.add_argument('--t1', dest='t1', type=float, metavar=' ',
                         help='Maximum time to plot (default = full range)',
                         default=-1)
-    parser.add_argument('--yu0', dest='yu0', type=float,
+    parser.add_argument('--yu0', dest='yu0', type=float, metavar=' ',
                         help='Minimum y-value to plot for upper panel (default=full range)',
                         default=-1)
-    parser.add_argument('--yu1', dest='yu1', type=float,
+    parser.add_argument('--yu1', dest='yu1', type=float, metavar=' ',
                         help='Maximum y-value to plot for upper panel (default=full range)',
                         default=-1)
-    parser.add_argument('--yl0', dest='yl0', type=float,
+    parser.add_argument('--yl0', dest='yl0', type=float, metavar=' ',
                         help='Minimum y-value to plot for lower panel (default=full range)',
                         default=-1)
-    parser.add_argument('--yl1', dest='yl1', type=float,
+    parser.add_argument('--yl1', dest='yl1', type=float, metavar=' ',
                         help='Maximum y-value to plot for lower panel (default=full range)',
                         default=-1)
 
     return parser
 
 
+def condense_legend_items(inlist):
+    od = OrderedDict()
+    # put all renderers with the same legend labels together
+    for key, value in inlist:
+        if key in od:
+            od[key].extend(value)
+        else:
+            od[key] = value
+
+    # reformulate odict to list
+    outlist = [(key, value) for key, value in od.items()]
+    return outlist
+
+
+def gen_flag_data_markers(y, fid=None, markers=None, fmarker='circle_x'):
+    """Generate different markers for where data has been flagged
+
+        Inputs
+        ------
+        y: numpy.ndarray
+           The flagged data
+        fid: int
+             field id number to identify the marker to be used
+        markers: list
+                 A list of all available markers
+        fmarker: str
+                 the marker to be used for flagged data
+
+        Outputs
+        -------
+        masked_list: list
+                     Edited list containing markers for flagged data
+    """
+
+    # fill an array with the unflagged marker value
+    markers_arr = np.full(y.shape, fill_value=markers[fid], dtype='<U17')
+
+    # mask only where there are nan values
+    masked_markers_arr = np.ma.masked_where(np.isnan(y), markers_arr)
+    # fill with the different marker
+    masked_markers_arr.fill_value = fmarker
+
+    # return filled matrix
+    masked_list = masked_markers_arr.filled()
+
+    return masked_list
+
+
 def main(**kwargs):
     """Main function"""
-    NB_RENDER = None
     if len(kwargs) == 0:
         NB_RENDER = False
 
@@ -1253,7 +1417,7 @@ def main(**kwargs):
     else:
         NB_RENDER = True
 
-        field_ids = kwargs.get('fields', [])
+        field_ids = kwargs.get('fields', None)
         doplot = kwargs.get('doplot', 'ap')
         plotants = kwargs.get('plotants', [-1])
         corr = int(kwargs.get('corr', 0))
@@ -1268,21 +1432,19 @@ def main(**kwargs):
         mytabs = kwargs.get('mytabs', [])
         gain_types = kwargs.get('gain_types', [])
 
+    # To flag or not
+    flag_data = True
+
+    # default spwid
+    spwid = 0
+
     if len(mytabs) == 0:
         logger.error('Exiting: No gain table specified.')
         sys.exit(-1)
 
     mytabs = [x.rstrip("/") for x in mytabs]
 
-    if len(gain_types) == 0:
-        logger.error('Exiting: No gain type specified.')
-        sys.exit(-1)
-
     gain_types = [x.upper() for x in gain_types]
-
-    if len(field_ids) == 0:
-        logger.error('Exiting: No field id specified.')
-        sys.exit(-1)
 
     if doplot not in ['ap', 'ri']:
         logger.error('Exiting: Plot selection must be ap or ri.')
@@ -1294,43 +1456,51 @@ def main(**kwargs):
             logger.error("Exiting: gtype {} invalid".format(gain_type))
             sys.exit(-1)
 
-    gain_types, field_ids = autofill_gains_fields(mytabs, gain_types,
-                                                  field_ids)
+    gain_types = autofill_gains(mytabs, gain_types)
     # array to store final output image
     final_layout = []
 
-    for mytab, gain_type, field in zip(mytabs, gain_types, field_ids):
+    for mytab, gain_type in zip(mytabs, gain_types):
 
-        # reinitialise plotant list for each table
+        # re-initialise plotant list for each table
         if NB_RENDER:
             plotants = kwargs.get('plotants', [-1])
         else:
             plotants = options.plotants
 
-        tt = table(mytab, ack=False)
+        tt = get_table(mytab)[0]
 
-        field_names = get_fields(tt)
-        field_src_ids = dict(enumerate(field_names))
-        antnames = get_antennas(tt)
-        ants = np.unique(tt.getcol('ANTENNA1'))
-        fields = np.unique(tt.getcol('FIELD_ID'))
+        antnames = vu.get_antennas(mytab).data.compute()
 
-        frequencies = get_frequencies(tt) / GHZ
+        ants = np.unique(tt.ANTENNA1.data.compute())
+
+        fields = np.unique(tt.FIELD_ID.data.compute())
+
+        ncorrs = tt.FLAG.corr.data
+
+        # convert field ids to strings
+        valid_fids = []
+        if field_ids is None:
+            valid_fids = [str(f) for f in fields.tolist()]
+        else:
+            for f in field_ids:
+                if f.isdigit():
+                    new_f = int(f)
+                else:
+                    new_f = name_2id(mytab, f)
+
+                if new_f in fields:
+                    valid_fids.append(new_f)
+                else:
+                    logger.info('Field {} not found in {}.'.format(f, mytab))
+                    continue
+
+        freqs = (vu.get_frequencies(mytab, spwid=spwid) / GHZ).data.compute()
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
         mymap = cm = cmx.get_cmap(mycmap)
         scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
-
-        if field.isdigit():
-            field = int(field)
-        else:
-            field = name_2id(field, field_src_ids)
-
-        if int(field) not in fields.tolist():
-            logger.info(
-                'Skipping table: {} : Field id {} not found.'.format(mytab, field))
-            continue
 
         if plotants[0] != -1:
             # creating a list for the antennas to be plotted
@@ -1355,269 +1525,325 @@ def main(**kwargs):
         # range
         TOOLS = dict(tools='box_select, box_zoom, reset, pan, save,\
                             wheel_zoom, lasso_select')
-        ax1 = figure(sizing_mode='scale_both', **TOOLS)
-        ax2 = figure(sizing_mode='scale_both', x_range=ax1.x_range, **TOOLS)
+        ax1 = figure(**TOOLS)
+        ax2 = figure(x_range=ax1.x_range, **TOOLS)
 
-        stats_text = stats_display(tt, gain_type, doplot, corr, field)
-
-        # list for collecting plot states
+        # initialise plot containers
         ax1_plots = []
         ax2_plots = []
 
         # forming Legend object items for data and errors
         legend_items_ax1 = []
         legend_items_ax2 = []
-        legend_items_err_ax1 = []
-        legend_items_err_ax2 = []
+        ebars_ax1 = []
+        ebars_ax2 = []
 
-        # setting default maximum and minimum values for the different axes
-        xmin = 1e20
-        xmax = -1e20
-        ylmin = 1e20
-        ylmax = -1e20
-        yumin = 1e20
-        yumax = -1e20
+        stats_ax1 = []
+        stats_ax2 = []
 
-        # for each antenna
-        for ant in plotants:
-            # creating legend labels
-            antlabel = antnames[ant]
-            legend = antnames[ant]
-            legend_err = "E" + antnames[ant]
+        sources = []
 
-            # creating colors for maps
-            y1col = y2col = scalarMap.to_rgba(float(ant), bytes=True)[:-1]
+        # enumerating available field ids incase of large fids
+        for enum_fid, field in enumerate(valid_fids):
 
-            mytaql = 'ANTENNA1==' + str(ant)
-            mytaql += '&&FIELD_ID==' + str(field)
+            stats_text = stats_display(mytab, gain_type, doplot, corr,
+                                       field, flag=flag_data)
+            stats_ax1.append(stats_text[0])
+            stats_ax2.append(stats_text[1])
 
-            # querying the table for the 2 columns
+            newtab = get_table(mytab, fid=field)[0]
 
-            subtab = tt.query(query=mytaql)
+            # for each antenna
+            for ant in plotants:
 
-            xdata, xlabel = get_xaxis_data(subtab, gain_type)
-            prepd_x = prep_xaxis_data(xdata, gain_type)
-            ydata, y1label, y2label = get_yaxis_data(subtab, gain_type,
-                                                     doplot)
+                # creating legend labels
+                antlabel = antnames[ant]
+                legend = antnames[ant]
+                legend_err = "E" + antnames[ant]
 
-            # for tooltips
-            spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
-                                                              gain_type)
+                # creating colors for maps
+                y1col = y2col = scalarMap.to_rgba(float(ant), bytes=True)[:-1]
 
-            tab_tooltips = [("(x, y)", "($x, $y)"),
-                            ("spw", "@spw"),
-                            ("scan_id", "@scanid"),
-                            ("antenna", "@antname")]
+                subtab = newtab.where(newtab.ANTENNA1 == int(ant), drop=True)
 
-            hover = HoverTool(tooltips=tab_tooltips,
-                              mode='mouse', point_policy='snap_to_data')
-            hover2 = HoverTool(tooltips=tab_tooltips,
-                               mode='mouse', point_policy='snap_to_data')
+                # depending on the status of flag_data, this may
+                # be either flagged or unflagged data
+                data_obj = DataCoreProcessor(subtab, mytab, gain_type,
+                                             fid=field, antenna=ant,
+                                             doplot=doplot, corr=corr,
+                                             flag=flag_data)
+                ready_data = data_obj.act()
 
-            ax1.xaxis.axis_label = ax1_xlabel = xlabel
-            ax2.xaxis.axis_label = ax2_xlabel = xlabel
-            ax1.yaxis.axis_label = ax1_ylabel = y1label
-            ax2.yaxis.axis_label = ax2_ylabel = y2label
+                prepd_x = ready_data.x
+                xlabel = ready_data.x_label
 
-            if gain_type is 'B':
-                nchan = get_frequencies(subtab).size
-                chans = np.arange(nchan)
+                y1 = ready_data.y1
+                y1_err = ready_data.y1_err
+                y1label = ready_data.y1_label
+                y2 = ready_data.y2
+                y2_err = ready_data.y2_err
+                y2label = ready_data.y2_label
+
+                # inverse data object
+                infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
+                                                  fid=field, antenna=ant,
+                                                  doplot=doplot, corr=corr,
+                                                  flag=not flag_data).act()
+
                 # for tooltips
-                ttip_antnames = [antlabel] * nchan
+                spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
+                                                                  gain_type,
+                                                                  antnames,
+                                                                  freqs)
 
-                if ant == plotants[-1]:
-                    linax1 = add_axis(ax1, (frequencies[0], frequencies[-1]),
-                                      ax_label='Frequency [GHz]')
-                    linax2 = add_axis(ax2, (frequencies[0], frequencies[-1]),
-                                      ax_label='Frequency [GHz]')
-                    ax1.add_layout(linax1, 'above')
-                    ax2.add_layout(linax2, 'above')
+                tab_tooltips = [("(x, y)", "($x, $y)"),
+                                ("spw", "@spw"),
+                                ("scan_id", "@scanid"),
+                                ("antenna", "@antname")]
 
-            if gain_type is 'K':
-                if doplot == 'ri':
-                    logger.error('Exiting: No complex values to plot')
-                    # break #[for when there'r multiple tables to be plotted]
-                    sys.exit(-1)
+                hover = HoverTool(tooltips=tab_tooltips,
+                                  mode='mouse', point_policy='snap_to_data')
+                hover2 = HoverTool(tooltips=tab_tooltips,
+                                   mode='mouse', point_policy='snap_to_data')
 
-            y1, y1_err, y2, y2_err = prep_yaxis_data(subtab, ydata,
-                                                     gain_type,
-                                                     ptype=doplot,
-                                                     corr=corr,
-                                                     flag=True)
+                ax1.xaxis.axis_label = ax1_xlabel = xlabel
+                ax2.xaxis.axis_label = ax2_xlabel = xlabel
+                ax1.yaxis.axis_label = ax1_ylabel = y1label
+                ax2.yaxis.axis_label = ax2_ylabel = y2label
 
-            source = ColumnDataSource(data=dict(x=prepd_x, y1=y1, y2=y2,
-                                                spw=spw_id, scanid=scan_no,
-                                                antname=ttip_antnames))
+                ax1.axis.axis_label_text_font_style = 'normal'
+                ax2.axis.axis_label_text_font_style = 'normal'
 
-            p1, p1_err, p2, p2_err = make_plots(
-                source=source, color=y1col, ax1=ax1, ax2=ax2, y1_err=y1_err)
+                if doplot == 'ap':
+                    ax2.yaxis[0].formatter = PrintfTickFormatter(
+                        format=u"%f\u00b0")
 
-            # hide all the other plots until legend is clicked
-            if ant > 0:
-                p1.visible = p2.visible = False
+                if gain_type == 'B' or gain_type == 'D':
+                    if ant == plotants[-1]:
+                        ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
+                                       ax_label='Frequency [GHz]')
+                        ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
+                                       ax_label='Frequency [GHz]')
 
-            # collecting plot states for each iterations
-            ax1_plots.append(p1)
-            ax2_plots.append(p2)
+                if gain_type == 'K':
+                    ax1_ylabel = y1label.replace('[ns]', '')
+                    ax2_ylabel = y2label.replace('[ns]', '')
 
-            # forming legend object items
-            legend_items_ax1.append((legend, [p1]))
-            legend_items_ax2.append((legend, [p2]))
-            # for the errors
-            legend_items_err_ax1.append((legend_err, [p1_err]))
-            legend_items_err_ax2.append((legend_err, [p2_err]))
+                source = ColumnDataSource(data={'x': prepd_x,
+                                                'y1': y1,
+                                                'y2': y2,
+                                                'spw': spw_id,
+                                                'scanid': scan_no,
+                                                'antname': ttip_antnames})
 
-            subtab.close()
+                inv_source = ColumnDataSource(data={'y1': y1,
+                                                    'y2': y2,
+                                                    'iy1': infl_data_obj.y1,
+                                                    'iy2': infl_data_obj.y2})
 
-            if np.min(prepd_x) < xmin:
-                xmin = np.min(prepd_x)
-            if np.max(prepd_x) > xmax:
-                xmax = np.max(prepd_x)
-            if np.min(y1) < yumin:
-                yumin = np.min(y1)
-            if np.max(y1) > yumax:
-                yumax = np.max(y1)
-            if np.min(y2) < ylmin:
-                ylmin = np.min(y2)
-            if np.max(y2) > ylmax:
-                ylmax = np.max(y2)
+                sources.append([source, inv_source])
 
-        # reorienting the min and max vales for x and y axes
-        xmin = xmin - 400
-        xmax = xmax + 400
+                p1, p1_err, p2, p2_err = make_plots(
+                    source=source, color=y1col, ax1=ax1, ax2=ax2,
+                    fid=enum_fid, y1err=y1_err, y2err=y2_err)
 
-        # setting the axis limits for scaliing
-        if yumin < 0.0:
-            yumin = -1 * (1.1 * np.abs(yumin))
-        else:
-            yumin = yumin * 0.9
-        yumax = yumax * 1.1
-        if ylmin < 0.0:
-            ylmin = -1 * (1.1 * np.abs(ylmin))
-        else:
-            ylmin = ylmin * 0.9
-        ylmax = ylmax * 1.1
+                # hide all the other plots until legend is clicked
+                if ant > 0:
+                    p1.visible = p2.visible = False
 
-        if t0 != -1:
-            xmin = float(t0)
-        if t1 != -1:
-            xmax = float(t1)
-        if yl0 != -1:
-            ylmin = yl0
-        if yl1 != -1:
-            ylmax = yl1
-        if yu0 != -1:
-            yumin = yu0
-        if yu1 != -1:
-            yumax = yu1
+                # collecting plot states for each iterations
+                ax1_plots.append(p1)
+                ax2_plots.append(p2)
 
-        ax1.y_range = Range1d(yumin, yumax)
-        ax2.y_range = Range1d(ylmin, ylmax)
+                # forming legend object items
+                legend_items_ax1.append((legend, [p1]))
+                legend_items_ax2.append((legend, [p2]))
+                # for the errors
+                ebars_ax1.append(p1_err)
+                ebars_ax2.append(p2_err)
+
+                subtab.close()
 
         tt.close()
 
         # configuring titles for the plots
-        ax1_title = Title(text=ax1_ylabel + ' vs ' + ax1_xlabel,
-                          align='center', text_font_size='25px')
-        ax2_title = Title(text=ax2_ylabel + ' vs ' + ax2_xlabel,
-                          align='center', text_font_size='25px')
+        ax1_title = Title(text="{} vs {} ({})".format(ax1_ylabel,
+                                                      ax1_xlabel,
+                                                      " ".join(stats_ax1)),
+                          align='center', text_font_size='15px')
+        ax2_title = Title(text="{} vs {} ({})".format(ax2_ylabel,
+                                                      ax2_xlabel,
+                                                      " ".join(stats_ax2)),
+                          align='center', text_font_size='15px')
 
         ax1.add_tools(hover)
         ax2.add_tools(hover2)
         # LEGEND CONFIGURATIONS
-        BATCH_SIZE = 16
         # determining the number of legend objects required to be created
         # for each plot
-        num_legend_objs = int(np.ceil(len(plotants) / float(BATCH_SIZE)))
+        num_legend_objs = int(np.ceil(len(plotants) / BATCH_SIZE))
 
-        batches_ax1, batches_ax1_err, batches_ax2, batches_ax2_err = \
-            create_legend_batches(num_legend_objs, legend_items_ax1,
-                                  legend_items_ax2, legend_items_err_ax1,
-                                  legend_items_err_ax2, batch_size=BATCH_SIZE)
+        batches_ax1, batches_ax2 = create_legend_batches(num_legend_objs,
+                                                         legend_items_ax1,
+                                                         legend_items_ax2,
+                                                         batch_size=BATCH_SIZE)
 
-        legend_objs_ax1, legend_objs_ax1_err, legend_objs_ax2, \
-            legend_objs_ax2_err = create_legend_objs(num_legend_objs,
-                                                     batches_ax1,
-                                                     batches_ax1_err,
-                                                     batches_ax2,
-                                                     batches_ax2_err)
+        legend_objs_ax1, legend_objs_ax2 = create_legend_objs(num_legend_objs,
+                                                              batches_ax1,
+                                                              batches_ax2)
 
         # adding legend objects to the layouts
         for i in range(num_legend_objs):
-            ax1.add_layout(legend_objs_ax1['leg_%s' % str(i)], 'right')
-            ax2.add_layout(legend_objs_ax2['leg_%s' % str(i)], 'right')
-
-            ax1.add_layout(legend_objs_ax1_err['leg_%s' % str(i)], 'left')
-            ax2.add_layout(legend_objs_ax2_err['leg_%s' % str(i)], 'left')
+            ax1.add_layout(legend_objs_ax1['leg_%s' % str(i)], 'below')
+            ax2.add_layout(legend_objs_ax2['leg_%s' % str(i)], 'below')
 
         # adding plot titles
         ax2.add_layout(ax2_title, 'above')
         ax1.add_layout(ax1_title, 'above')
 
-        # creating size slider for the plots
-        size_slider = Slider(end=10, start=1, step=0.5,
-                             value=4, title='Scatter point size')
+        ######################################################################
+        ################ Defining widgets ###################################
+        ######################################################################
+
+        # widget dimensions
+        w_dims = dict(width=150, height=30)
 
         # creating and configuring Antenna selection buttons
         ant_select = Toggle(label='Select All Antennas',
-                            button_type='success', width=200)
+                            button_type='success', **w_dims)
 
         # configuring toggle button for showing all the errors
         toggle_err = Toggle(label='Show All Error bars',
-                            button_type='warning', width=200)
+                            button_type='warning', **w_dims)
 
-        ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs)
+        ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs, antnames)
 
-        batch_select = CheckboxGroup(labels=ant_labs, active=[])
+        batch_select = CheckboxGroup(labels=ant_labs, active=[],
+                                     width=150)
 
         # Dropdown to hide and show legends
         legend_toggle = Select(title="Showing Legends: ", value="non",
-                               options=[("all", "All"), ("alo", "Antennas"),
-                                        ("elo", "Errors"), ("non", "None")])
+                               options=[("alo", "Antennas"),
+                                        ("non", "None")],
+                               width=150, height=45)
+
+        # creating glyph size slider for the plots
+        size_slider = Slider(end=15, start=0.4, step=0.1,
+                             value=4, title='Glyph size',
+                             **w_dims)
+
+        # Alpha slider for the glyphs
+        alpha_slider = Slider(end=1, start=0.1, step=0.1, value=1,
+                              title='Glyph alpha', **w_dims)
+
+        fnames = vu.get_fields(mytab).data.compute()
+        fsyms = [u'\u2B24', u'\u25C6', u'\u25FC', u'\u25B2',
+                 u'\u25BC', u'\u2B22']
+
+        try:
+            field_labels = ["Field {} {}".format(fnames[int(x)],
+                                                 fsyms[enum_fid]) for enum_fid, x in enumerate(fields)]
+        except UnicodeEncodeError:
+            field_labels = ["Field {} {}".format(fnames[int(x)],
+                                                 fsyms[enum_fid].encode('utf-8')) for enum_fid, x in enumerate(fields)]
+
+        field_selector = CheckboxGroup(labels=field_labels,
+                                       active=fields.tolist(),
+                                       **w_dims)
+
+        axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
+                                 title='Axis label size', **w_dims)
+        title_fontslider = Slider(end=35, start=10, step=1, value=15,
+                                  title='Title size', **w_dims)
+
+        # if flag_data is true, i.e data is flagged, label==Un-flag,
+        # button==inactive [not flag_data], otherwise button==in
+        toggle_flag = CheckboxGroup(labels=['Show Flagged-out Data'],
+                                    active=[], **w_dims)
+
+        ######################################################################
+        ############## Defining widget Callbacks ############################
+        ######################################################################
 
         ant_select.callback = CustomJS(args=dict(glyph1=legend_items_ax1,
                                                  glyph2=legend_items_ax2,
-                                                 batchsel=batch_select),
+                                                 batchsel=batch_select,
+                                                 num_groups=num_legend_objs),
                                        code=ant_select_callback())
 
-        toggle_err.callback = CustomJS(args=dict(err1=legend_items_err_ax1,
-                                                 err2=legend_items_err_ax2),
-                                       code=toggle_err_callback())
+        toggle_err.js_on_click(CustomJS(args=dict(ax1s=ax1_plots,
+                                                  err1=ebars_ax1,
+                                                  err2=ebars_ax2),
+                                        code=toggle_err_callback()))
 
         # BATCH SELECTION
-        batch_select.callback = CustomJS.from_coffeescript(
+        batch_select.callback = CustomJS(
             args=dict(bax1=batches_ax1,
-                      bax1_err=batches_ax1_err,
                       bax2=batches_ax2,
-                      bax2_err=batches_ax2_err,
+                      batch_size=BATCH_SIZE,
                       antsel=ant_select),
             code=batch_select_callback())
 
         legend_toggle.callback = CustomJS(
-            args=dict(
-                loax1=legend_objs_ax1.values(),
-                loax1_err=legend_objs_ax1_err.values(),
-                loax2=legend_objs_ax2.values(),
-                loax2_err=legend_objs_ax2_err.values()),
+            args=dict(loax1=listvalues(legend_objs_ax1),
+                      loax2=listvalues(legend_objs_ax2)),
             code=legend_toggle_callback())
 
-        size_slider.callback = CustomJS(args={'slide': size_slider,
-                                              'p1': ax1_plots,
-                                              'p2': ax2_plots},
-                                        code=size_slider_callback())
+        size_slider.js_on_change('value',
+                                 CustomJS(args={'slide': size_slider,
+                                                'p1': ax1_plots,
+                                                'p2': ax2_plots},
+                                          code=size_slider_callback()))
+        alpha_slider.js_on_change('value',
+                                  CustomJS(args={'alpha': alpha_slider,
+                                                 'p1': ax1_plots,
+                                                 'p2': ax2_plots},
+                                           code=alpha_slider_callback()))
+        field_selector.callback = CustomJS(args={'fselect': field_selector,
+                                                 'p1': ax1_plots,
+                                                 'p2': ax2_plots,
+                                                 'ants': plotants},
+                                           code=field_selector_callback())
+        axis_fontslider.js_on_change('value',
+                                     CustomJS(args=dict(ax1=ax1.axis,
+                                                        ax2=ax2.axis),
+                                              code=axis_fs_callback()))
+        title_fontslider.js_on_change('value',
+                                      CustomJS(args=dict(ax1=ax1.above,
+                                                         ax2=ax2.above),
+                                               code=title_fs_callback()))
 
-        plot_widgets = widgetbox([ant_select, batch_select,
-                                  toggle_err, legend_toggle,
-                                  stats_text, size_slider])
+        toggle_flag.callback = CustomJS(args=dict(sources=sources,
+                                                  nants=plotants,
+                                                  flagging=flag_data),
+                                        code=flag_callback())
 
-        if gain_type is not 'K':
-            layout = gridplot([[plot_widgets, ax1, ax2]],
-                              plot_width=700, plot_height=600)
+        #################################################################
+        ########## Define widget layouts #################################
+        ##################################################################
+
+        a = row([ant_select, toggle_err, legend_toggle, size_slider,
+                 alpha_slider])
+        b = row([toggle_flag, batch_select, field_selector, axis_fontslider,
+                 title_fontslider])
+
+        plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
+
+        # setting the gridspecs
+        # gridplot while maintaining the set aspect ratio
+        grid_specs = dict(plot_width=PLOT_WIDTH,
+                          plot_height=PLOT_HEIGHT,
+                          sizing_mode='stretch_width')
+        if gain_type != 'K':
+            layout = gridplot([[plot_widgets], [ax1, ax2]],
+                              **grid_specs)
         else:
-            layout = gridplot([[plot_widgets, ax1]],
-                              plot_width=700, plot_height=600)
+            layout = gridplot([[plot_widgets], [ax1]],
+                              **grid_specs)
 
         final_layout.append(layout)
+
+    logger.info("Table {} done.".format(mytab))
 
     if image_name:
         save_svg_image(image_name, ax1, ax2,
@@ -1637,7 +1863,7 @@ def main(**kwargs):
                 mytab = datetime.now().strftime('%Y%m%d_%H%M%S')
             html_name = "{}_corr_{}_{}_field_{}".format(mytab, corr,
                                                         doplot,
-                                                        ''.join(field_ids))
+                                                        ''.join(valid_fids))
             save_html(html_name, final_layout)
 
         logger.info("Rendered: {}.html".format(html_name))
@@ -1658,7 +1884,7 @@ def plot_table(mytabs, gain_types, fields, **kwargs):
     --------
         mytabs       : The table (list of tables) to be plotted
         gain_types   : Cal-table (list of caltypes) type to be plotted.
-                      Can be either 'B'-bandpass, 'G'-gains, 'K'-delay or 'F'-flux (default=None)
+                      Can be either 'B'-bandpass, 'D'- D jones leakages, G'-gains, 'K'-delay or 'F'-flux (default=None)
         fields       : Field ID / Name (list of field ids or name) to plot
                       (default = 0)',default=0)
 
@@ -1691,7 +1917,7 @@ def plot_table(mytabs, gain_types, fields, **kwargs):
     Returns nothing
 
     """
-    if mytabs is None:
+    if mytabs == None:
         print("Please specify a gain table to plot.")
         logger.error('Exiting: No gain table specfied.')
         sys.exit(-1)
