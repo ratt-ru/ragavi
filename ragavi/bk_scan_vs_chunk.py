@@ -21,6 +21,7 @@ import xarray as xa
 import xarrayms as xm
 
 
+from argparse import ArgumentParser
 from collections import namedtuple
 from dask import compute, delayed
 from functools import partial
@@ -64,8 +65,7 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, where=None):
         fid: int
              field id to select
         where: str
-                TAQL where clause to be used with the MS. Takes precidence over all the other optional arguments
-
+                TAQL where clause to be used with the MS. 
         Outputs
         -------
         tab_objs: list
@@ -82,12 +82,16 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, where=None):
     # always ensure that where stores something
     if where == None:
         where = []
-        if ddid != None:
-            where.append("DATA_DESC_ID=={}".format(ddid))
-        if fid != None:
-            where.append("FIELD_ID=={}".format(fid))
+    else:
+        where = [where]
 
-        where = "&&".join(where)
+    if ddid != None:
+        where.append("DATA_DESC_ID=={}".format(ddid))
+    if fid != None:
+        where.append("FIELD_ID=={}".format(fid))
+
+    # combine the strings to form the where clause
+    where = "&&".join(where)
 
     try:
         tab_objs = xm.xds_from_table(ms_name, taql_where=where,
@@ -357,7 +361,7 @@ def make_plot(inp_df, doplot):
     col_bar = ColorBar(color_mapper=col_mapper,
                        location=(0, 0))
 
-    color_bar_plot = figure(title="%Deviation from mean",
+    color_bar_plot = figure(title="μ - mid_μ %",
                             title_location="right",
                             height=int(plot_height * nrows), width=150,
                             toolbar_location=None, min_border=0,
@@ -388,14 +392,15 @@ def make_plot(inp_df, doplot):
         # fchunk label should be at row [:+1, 0]
         # scan number should be at column -1,or 0 thus [-1, :]
         dis = Div(text='S{}'.format(curr_scan_no),
-                  width=plot_width - 10)
+                  width=int(plot_width * 0.40))
         mygrid[0, col_idx + 1] = dis
 
         # if curr_scan_no == min_scan:
 
         cfreq = np.mean(f_edges[curr_cbin_no])
         dis = Div(text='{:.3f}'.format(cfreq),
-                  width=plot_width - 10,
+                  width=int(plot_width * 0.40),
+                  height=int(plot_width * 0.20),
                   style={'font-size': '100%'})
         mygrid[row_idx + 1, 0] = dis
 
@@ -469,19 +474,51 @@ def make_plot(inp_df, doplot):
     document.add_root(final_plot)
 
 
+def get_argparser():
+    parser = ArgumentParser(usage='prog [options] <value>')
+    parser.add_argument('--bin_width', dest='bin_width', type=int,
+                        help='Plot only this antenna, or comma-separated list\
+                              of antennas',
+                        default=100)
+    parser.add_argument('-c', '--corr', dest='corr', type=int,
+                        help='Correlation index to plot',
+                        default=0)
+    parser.add_argument('--cmap', dest='mycmap', type=str,
+                        help='Matplotlib colour map to use for antennas\
+                             (default=coolwarm)',
+                        default='coolwarm')
+    parser.add_argument('--data_col', dest='data_col', type=str,
+                        help='Data column to select',
+                        default='DATA')
+    parser.add_argument('--ddid', dest='ddid', type=str,
+                        help='DATA_DESC_ID (Spectral window) to select',
+                        default=0)
+    parser.add_argument('-d', '--doplot', dest='doplot', type=str,
+                        help='Plot to be shown on click: "ap" for amp vs phase and "ri" for real vs imaginary',
+                        default='ap')
+    parser.add_argument('-f', '--fid', dest='fid', type=int,
+                        help='Field ID(s) to plot')
+    parser.add_argument('--ms_name', dest='ms_name', type=str,
+                        help='/path/to/your/MS')
+    parser.add_argument('--where', dest='where', type=str,
+                        help='TAQL where query.', default=None)
+
+    return parser
+
+
 #####################################################################
 ################# Main function starts here ##########################
 
-#ms_name = "/home/andati/measurement_sets/1491291289.1ghz.1.1ghz.4hrs.ms"
-ms_name = "/home/andati/tutorials/vla_continuum_tut/3c391_ctm_mosaic_10s_spw0.ms"
-bin_width = 64
-fid = 1
-corr = 0
-ddid = 0
+options = get_argparser().parse_args()
 
-data_col = 'CORRECTED_DATA'
-doplot = 'ap'
-
+bin_width = options.bin_width
+corr = options.corr
+data_col = options.data_col
+ddid = options.ddid
+doplot = options.doplot
+fid = options.fid
+ms_name = options.ms_name
+where = options.where
 
 # desired columns from the data
 columns = [data_col, 'TIME', 'FLAG', 'SCAN_NUMBER', 'ANTENNA1', 'ANTENNA2']
