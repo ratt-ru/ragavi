@@ -3,13 +3,11 @@ from __future__ import division, print_function
 import hvplot
 import hvplot.xarray
 import hvplot.dask
-import logging
 import sys
 
 import astropy.stats as astats
 import bokeh as bk
 import dask.array as da
-import dask.dataframe as dd
 
 import holoviews as hv
 import matplotlib.pyplot as plt
@@ -42,6 +40,7 @@ from bokeh.models import (Band, BasicTicker, Button,
                           ResetTool, WheelZoomTool, Whisker, LinearScale)
 
 from bokeh.layouts import gridplot, row, column, grid, layout
+
 from bokeh.plotting import figure, curdoc
 from bokeh.events import Tap
 from bokeh.resources import INLINE
@@ -50,6 +49,9 @@ from bokeh import events
 
 import vis_utils as ut
 from ipdb import set_trace
+
+logger = ut.logger
+excepthook = ut.sys.excepthook
 
 
 def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, where=None):
@@ -65,7 +67,7 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, where=None):
         fid: int
              field id to select
         where: str
-                TAQL where clause to be used with the MS. 
+                TAQL where clause to be used with the MS.
         Outputs
         -------
         tab_objs: list
@@ -98,7 +100,7 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, where=None):
                                      table_schema=ms_schema)
         return tab_objs
     except:
-        logging.exception("Invalid DATA_DESC_ID, FIELD_ID or TAQL clause")
+        logger.exception("Invalid DATA_DESC_ID, FIELD_ID or TAQL clause")
         sys.exit(-1)
 
 
@@ -122,6 +124,12 @@ def calc_plot_dims(nrows, ncols):
 
     if nrows > ncols:
         plot_height = height // nrows
+
+    if plot_width > 100:
+        plot_width = 80
+
+    if plot_height > 100:
+        plot_height = 80
 
     return int(plot_width), int(plot_height)
 
@@ -182,7 +190,7 @@ def process(chunk, corr=None, data_column='DATA', ptype='ap', flag=True, bin_siz
         chunk['Real'] = convert_data(data, yaxis='real')
         chunk['Imaginary'] = convert_data(data, yaxis='imaginary')
     else:
-        logging.exception("Invalid doplot value")
+        logger.exception("Invalid doplot value")
         sys.exit(-1)
 
     # change time from MJD to UTC
@@ -242,7 +250,7 @@ def percentage_flagged(df):
     """
         Find the percentage of data flagged in each dask dataframe partition
     """
-    true_flag = df.FLAG.where(df['FLAG'] == 1).count()
+    true_flag = df.FLAG.where(df['FLAG'] == True).count()
     nrows = df.FLAG.count()
     percentage = (true_flag / nrows) * 100
     return percentage
@@ -254,7 +262,7 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
     chan = int(chan)
     scn = int(scn)
 
-    logging.info("Callback Active")
+    logger.info("Callback Active")
     if doplot == 'ap':
         xy = ['Phase', 'Amplitude']
     else:
@@ -282,7 +290,7 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
     else:
         avail_roots.children[-1] = im
 
-    logging.info('Callback plot added to root document.')
+    logger.info('Callback plot added to root document.')
 
 
 def make_plot(inp_df, doplot):
@@ -291,16 +299,16 @@ def make_plot(inp_df, doplot):
     # because a single entire partition contains the same values for both mean
     # # and variance
 
-    global document, freqs, ncols, nrows, plot_width, plot_height
+    global document, freqs, ncols, nrows, plot_width, plot_height, cmap
 
-    logging.info("Starting plotting function")
+    logger.info("Starting plotting function")
 
     # dropping duplicate values base on scan_number and flagged_pc
     # cause each chunk has the same scan number, flagged_pc, mean and variance
 
     inp_subdf = inp_df.drop_duplicates(subset=['SCAN_NUMBER', 'adatmean',
                                                'flagged_pc'])
-    logging.info('Dropped duplicate values')
+    logger.info('Dropped duplicate values')
 
     # To Do: conform to numpy matrix rather than sorting
     # rearrange the values in ascending so that plotting is easier
@@ -344,7 +352,7 @@ def make_plot(inp_df, doplot):
     # initialise the layout matrix
     mygrid = np.full((nrows + 1, ncols + 1), None)
 
-    logging.info('Calculations of maximums and minimums done')
+    logger.info('Calculations of maximums and minimums done')
 
     # set the axis bounds
     xmin = lowest_mean - 2 * np.abs(np.log(np.sqrt(lowest_var)))
@@ -353,15 +361,15 @@ def make_plot(inp_df, doplot):
     xdr = Range1d(start=xmin, end=xmax)
     ydr = Range1d(start=xmin, end=xmax)
 
-    col_mapper = LinearColorMapper(
-        palette="Viridis256",
-        low=((lowest_mean - mid_mean) / mid_mean) * 100,
-        high=((highest_mean - mid_mean) / mid_mean) * 100)
+    low = np.log((np.abs(lowest_mean - mid_mean) / mid_mean) * 100)
+    high = np.log(((highest_mean - mid_mean) / mid_mean) * 100)
+
+    col_mapper = LinearColorMapper(palette=cmap, low=low, high=high)
 
     col_bar = ColorBar(color_mapper=col_mapper,
                        location=(0, 0))
 
-    color_bar_plot = figure(title="μ - mid_μ %",
+    color_bar_plot = figure(title="ln( | μ - mid_μ | % )",
                             title_location="right",
                             height=int(plot_height * nrows), width=150,
                             toolbar_location=None, min_border=0,
@@ -371,7 +379,7 @@ def make_plot(inp_df, doplot):
     color_bar_plot.title.align = "center"
     color_bar_plot.title.text_font_size = '12pt'
 
-    logging.info('Starting iterations by row')
+    logger.info('Starting iterations by row')
 
     # cyclic object for iteratively repetition over scans
     cols_cycler = cycle(range(ncols))
@@ -391,21 +399,21 @@ def make_plot(inp_df, doplot):
         # setting the position of the scan label
         # fchunk label should be at row [:+1, 0]
         # scan number should be at column -1,or 0 thus [-1, :]
-        dis = Div(text='S{}'.format(curr_scan_no),
-                  width=int(plot_width * 0.40))
+        dis = Div(text='S{}'.format(curr_scan_no), width=40)
         mygrid[0, col_idx + 1] = dis
 
         # if curr_scan_no == min_scan:
 
         cfreq = np.mean(f_edges[curr_cbin_no])
-        dis = Div(text='{:.3f}'.format(cfreq),
-                  width=int(plot_width * 0.40),
-                  height=int(plot_width * 0.20),
-                  style={'font-size': '100%'})
+        dis = Div(text='{:.3f}'.format(cfreq), width=40,
+                  height=int(plot_width * 0.20))
         mygrid[row_idx + 1, 0] = dis
 
         # percentage deviation mean
-        pc_dev_mean = ((cols[mean_col_a] - mid_mean) / mid_mean) * 100
+
+        pc_dev_mean = np.log(
+            (np.abs(cols[mean_col_a] - mid_mean) / mid_mean) * 100)
+
         source = ColumnDataSource(data={'mean': [cols[mean_col_a]],
                                         'mid_mean': [mid_mean],
                                         'mean_anorm': [pc_dev_mean],
@@ -420,7 +428,7 @@ def make_plot(inp_df, doplot):
                  background_fill_color="#efe8f2")
         circle = Circle(x='mean', y='mean',
                         radius='std',
-                        fill_alpha=0.8,
+                        fill_alpha=1,
                         line_color=None,
                         fill_color={'field': 'mean_anorm',
                                     'transform': col_mapper})
@@ -454,7 +462,7 @@ def make_plot(inp_df, doplot):
         hover = bk.models.HoverTool(tooltips=[('μ', '@mean'),
                                               ('variance', '@var'),
                                               ('flagged %', '@pcf'),
-                                              ("μ-mid_μ%",
+                                              ("ln( | μ - mid_μ | % )",
                                                '@mean_anorm'),
                                               ('mid_μ', '@mid_mean')
                                               ])
@@ -469,7 +477,7 @@ def make_plot(inp_df, doplot):
     grid_plots = grid(children=mygrid.tolist())
     final_plot = gridplot([[grid_plots, color_bar_plot]])
     final_plot.name = 'final_plot'
-    logging.info("Adding plot to root")
+    logger.info("Adding plot to root")
 
     document.add_root(final_plot)
 
@@ -483,14 +491,15 @@ def get_argparser():
     parser.add_argument('-c', '--corr', dest='corr', type=int,
                         help='Correlation index to plot',
                         default=0)
-    parser.add_argument('--cmap', dest='mycmap', type=str,
-                        help='Matplotlib colour map to use for antennas\
-                             (default=coolwarm)',
-                        default='coolwarm')
+    parser.add_argument('--cmap', dest='cmap', type=str,
+                        help='Colormap to use for the summary plot\
+                              supported cmaps can be found here: \
+            https://bokeh.pydata.org/en/latest/docs/reference/palettes.html#bokeh-palettes',
+                        default='viridis256')
     parser.add_argument('--data_col', dest='data_col', type=str,
                         help='Data column to select',
                         default='DATA')
-    parser.add_argument('--ddid', dest='ddid', type=str,
+    parser.add_argument('--ddid', dest='ddid', type=int,
                         help='DATA_DESC_ID (Spectral window) to select',
                         default=0)
     parser.add_argument('-d', '--doplot', dest='doplot', type=str,
@@ -519,6 +528,7 @@ doplot = options.doplot
 fid = options.fid
 ms_name = options.ms_name
 where = options.where
+cmap = options.cmap.capitalize()
 
 # desired columns from the data
 columns = [data_col, 'TIME', 'FLAG', 'SCAN_NUMBER', 'ANTENNA1', 'ANTENNA2']

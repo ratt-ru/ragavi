@@ -7,9 +7,10 @@ import xarrayms as xm
 from datetime import datetime
 from dask import delayed, compute
 
-import warnings
-import sys
+import os
 import logging
+import sys
+import warnings
 
 
 def calc_amplitude(ydata):
@@ -293,8 +294,11 @@ def config_logger():
     # capture only a single instance of a matching repeated warning
     warnings.filterwarnings('default')
 
+    # get the terminal size
+    cols, rows = os.get_terminal_size(0)
+
     # setting the format for the logging messages
-    start = " (O_o) ".center(80, "=")
+    start = " (O_o) ".center(cols, "=")
     form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     form = form.format(start)
     formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
