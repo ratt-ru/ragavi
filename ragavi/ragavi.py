@@ -338,7 +338,10 @@ class DataCoreProcessor:
         xdata, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, gtype)
         prepd_x = self.prep_xaxis_data(xdata, gtype=gtype)
 
-        yerr = self.get_errors(xds_table_obj)
+        # get errors from the plot
+        err_data = self.get_errors(xds_table_obj)
+        yerr = self.prep_yaxis_data(xds_table_obj, ms_name, err_data,
+                                    yaxis='error', corr=corr, flag=flag)
 
         ##################################################################
         ##### confirm K table is only plotted in ap mode #################
@@ -348,22 +351,31 @@ class DataCoreProcessor:
             # because only one plot should be generated
             y1data, y1_label = self.get_yaxis_data(xds_table_obj, ms_name,
                                                    'delay')
+
+            # adding the error for preparations
+            hi = y1data + yerr
+            lo = y1data - yerr
+
             y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
                                       yaxis='delay', corr=corr, flag=flag)
-            y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
-                                          yaxis='error', corr=corr, flag=flag)
+            hi_err = self.prep_yaxis_data(xds_table_obj, ms_name, hi,
+                                          yaxis='delay', corr=corr, flag=flag)
+            lo_err = self.prep_yaxis_data(xds_table_obj, ms_name, lo,
+                                          yaxis='delay', corr=corr, flag=flag)
+
             y2 = 0
             y2_err = 0
             y2_label = 0
 
-            prepd_x, y1, y1_err = compute(prepd_x.data, y1.data, y1_err.data)
+            prepd_x, y1, hi_err, lo_err = compute(
+                prepd_x.data, y1.data, hi_err.data, lo_err.data)
 
             # shorting y2 to y1 to avoid problems during plotted
             # y2 does not exist for this table
             d = Data(x=prepd_x, x_label=xlabel, y1=y1,
-                     y1_label=y1_label, y1_err=y1_err,
+                     y1_label=y1_label, y1_err=(hi_err, lo_err),
                      y2=y1, y2_label=y1_label,
-                     y2_err=y1_err)
+                     y2_err=(hi_err, lo_err))
 
             return d
 
@@ -374,38 +386,75 @@ class DataCoreProcessor:
         if doplot == 'ap':
             y1data, y1_label = self.get_yaxis_data(xds_table_obj, ms_name,
                                                    'amplitude')
-            y2data, y2_label = self.get_yaxis_data(
-                xds_table_obj, ms_name, 'phase')
+            y2data, y2_label = self.get_yaxis_data(xds_table_obj, ms_name,
+                                                   'phase')
+
+            hi_y1 = y1data + yerr
+            lo_y1 = y1data - yerr
+            hi_y2 = y2data + yerr
+            lo_y2 = y2data - yerr
+
             y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
                                       yaxis='amplitude', corr=corr, flag=flag)
             y2 = self.prep_yaxis_data(xds_table_obj, ms_name, y2data,
                                       yaxis='phase', corr=corr, flag=flag)
-            y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
-                                          yaxis='error', corr=corr, flag=flag)
-            y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
-                                          yaxis='error', corr=corr, flag=flag)
+
+            # upper and lower limits for y1
+            hi_y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, hi_y1,
+                                             yaxis='amplitude', corr=corr,
+                                             flag=flag)
+            lo_y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, lo_y1,
+                                             yaxis='amplitude', corr=corr,
+                                             flag=flag)
+
+            # upper and lower limits for y2
+            hi_y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, hi_y2,
+                                             yaxis='phase', corr=corr,
+                                             flag=flag)
+            lo_y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, lo_y2,
+                                             yaxis='phase', corr=corr,
+                                             flag=flag)
+
         elif doplot == 'ri':
-            y1data, y1_label = self.get_yaxis_data(
-                xds_table_obj, ms_name, 'real')
+            y1data, y1_label = self.get_yaxis_data(xds_table_obj, ms_name,
+                                                   'real')
             y2data, y2_label = self.get_yaxis_data(xds_table_obj, ms_name,
                                                    'imaginary')
+
+            hi_y1 = y1data + yerr
+            lo_y1 = y1data - yerr
+            hi_y2 = y2data + yerr
+            lo_y2 = y2data - yerr
+
             y1 = self.prep_yaxis_data(xds_table_obj, ms_name, y1data,
                                       yaxis='real', corr=corr, flag=flag)
             y2 = self.prep_yaxis_data(xds_table_obj, ms_name, y2data,
                                       yaxis='imaginary', corr=corr, flag=flag)
-            y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
-                                          yaxis='error', corr=corr, flag=flag)
-            y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, yerr,
-                                          yaxis='error', corr=corr, flag=flag)
 
-        prepd_x, y1, y1_err, y2, y2_err = compute(prepd_x.data, y1.data,
-                                                  y1_err.data, y2.data,
-                                                  y2_err.data)
+            # upper and lower limits for y1
+            hi_y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, hi_y1,
+                                             yaxis='real', corr=corr,
+                                             flag=flag)
+            lo_y1_err = self.prep_yaxis_data(xds_table_obj, ms_name, lo_y1,
+                                             yaxis='real', corr=corr,
+                                             flag=flag)
+
+            # upper and lower limits for y2
+            hi_y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, hi_y2,
+                                             yaxis='imaginary', corr=corr,
+                                             flag=flag)
+            lo_y2_err = self.prep_yaxis_data(xds_table_obj, ms_name, lo_y2,
+                                             yaxis='imaginary', corr=corr,
+                                             flag=flag)
+
+        prepd_x, y1, hi_y1_err, lo_y1_err, y2, hi_y2_err, lo_y2_err =\
+            compute(prepd_x.data, y1.data, hi_y1_err.data, lo_y1_err.data,
+                    y2.data, hi_y2_err.data, lo_y2_err.data)
 
         d = Data(x=prepd_x, x_label=xlabel, y1=y1,
-                 y1_label=y1_label, y1_err=y1_err,
+                 y1_label=y1_label, y1_err=(hi_y1_err, lo_y1_err),
                  y2=y2,
-                 y2_label=y2_label, y2_err=y2_err)
+                 y2_label=y2_label, y2_err=(hi_y2_err, lo_y2_err))
 
         return d
 
@@ -541,8 +590,8 @@ def errorbar(fig, x, y, yerr=None, color='red'):
         x_axis value
     y: numpy.ndarray
         y_axis value
-    yerr: numpy.ndarray
-        Errors for y axis, must be an array
+    yerr: tuple
+          Tuple with numpy arrays with high and low limits for y axis, must be an array
     color: str
         Color for the error bars
 
@@ -557,8 +606,8 @@ def errorbar(fig, x, y, yerr=None, color='red'):
 
     if yerr is not None:
 
-        src = ColumnDataSource(data=dict(upper=y + yerr,
-                                         lower=y - yerr, base=x))
+        src = ColumnDataSource(data=dict(upper=yerr[0],
+                                         lower=yerr[1], base=x))
 
         ebars = Whisker(source=src, base='base', upper='upper',
                         lower='lower', line_color=color, visible=False)
@@ -646,6 +695,8 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1err=None, y2err=None):
     if p1_err:
         p1.glyph.js_link('size', p1_err, 'line_width')
         p2.glyph.js_link('size', p2_err, 'line_width')
+        p1.glyph.js_link('fill_alpha', p1_err, 'line_alpha')
+        p2.glyph.js_link('fill_alpha', p2_err, 'line_alpha')
 
     return p1, p1_err, p2, p2_err
 
