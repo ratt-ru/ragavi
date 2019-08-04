@@ -256,9 +256,10 @@ def percentage_flagged(df):
     return percentage
 
 
-def on_click_callback(inp_df, scn, chan, doplot, event):
+def on_click_callback(inp_df, scn, chan, doplot, f_edges, event):
 
-    global f_edges
+    global document
+
     chan = int(chan)
     scn = int(scn)
 
@@ -320,13 +321,14 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
     logger.info('Callback plot added to root document.')
 
 
-def make_plot(inp_df, doplot):
+def make_plot(inp_df, doplot='ap', ncols=1, nrows=1, cmap=None, freqs=None,
+              plot_width=None, plot_height=None):
     # get the grouped dataframe with the mean and variance columns
     # drop the duplicate values based on the mean column
     # because a single entire partition contains the same values for both mean
     # # and variance
 
-    global document, freqs, ncols, nrows, plot_width, plot_height, cmap
+    global document
 
     logger.info("Starting plotting function")
 
@@ -396,7 +398,7 @@ def make_plot(inp_df, doplot):
     col_bar = ColorBar(color_mapper=col_mapper,
                        location=(0, 0))
 
-    col_bar_h = int(plot_height * nrows) if nrows > 2 else int(plot_height * 2)
+    col_bar_h = (plot_height * nrows) if nrows > 2 else (plot_height * 2)
     color_bar_plot = figure(title="ln( | μ - mid_μ | % )",
                             title_location="right",
                             height=col_bar_h, width=150,
@@ -449,14 +451,11 @@ def make_plot(inp_df, doplot):
                                         'std': [np.abs(np.log(np.sqrt(cols[var_col_a])))],
                                         'pcf': [flagged_pc]})
 
-        p = Plot(background_fill_alpha=0.95,
-                 x_range=xdr, y_range=xdr,
+        p = Plot(background_fill_alpha=0.95, x_range=xdr, y_range=xdr,
                  plot_width=plot_width, plot_height=plot_height,
                  y_scale=LinearScale(), x_scale=LinearScale(),
                  background_fill_color="#efe8f2")
-        circle = Circle(x='mean', y='mean',
-                        radius='std',
-                        fill_alpha=1,
+        circle = Circle(x='mean', y='mean', radius='std', fill_alpha=1,
                         line_color=None,
                         fill_color={'field': 'mean_anorm',
                                     'transform': col_mapper})
@@ -474,15 +473,13 @@ def make_plot(inp_df, doplot):
         yticker = BasicTicker()
 
         if curr_scan_no == max_scan:
-            xaxis = LinearAxis(major_tick_out=1,
-                               minor_tick_out=1,
+            xaxis = LinearAxis(major_tick_out=1, minor_tick_out=1,
                                axis_line_width=1)
 
             xticker = xaxis.ticker
 
         if curr_cbin_no == min_chan:
-            yaxis = LinearAxis(major_tick_out=1,
-                               minor_tick_out=1,
+            yaxis = LinearAxis(major_tick_out=1, minor_tick_out=1,
                                axis_line_width=1)
 
             yticker = yaxis.ticker
@@ -496,8 +493,8 @@ def make_plot(inp_df, doplot):
                                               ])
 
         p.add_tools(PanTool(), hover, WheelZoomTool(), ResetTool())
-        p.on_event(Tap, partial(on_click_callback, inp_df,
-                                curr_scan_no, curr_cbin_no, doplot))
+        p.on_event(Tap, partial(on_click_callback, inp_df, curr_scan_no,
+                                curr_cbin_no, doplot, f_edges))
 
         # add the divs from the 2nd element to the 2nd last element of the
         mygrid[row_idx + 1, col_idx + 1] = p
@@ -604,7 +601,7 @@ plot_width, plot_height = calc_plot_dims(nrows, ncols)
 sel_df = ready_ms_obj.to_dask_dataframe()
 
 # add chunk index numbers to the partitions
-nddf = sel_df.map_partitions(compute_idx, bin_width)
+sel_df = sel_df.map_partitions(compute_idx, bin_width)
 
 sel_cols = ['SCAN_NUMBER', 'FLAG', 'chan_bin']
 
@@ -628,14 +625,15 @@ fdf_col_names = sel_cols + additional_cols
 
 # data types for all those output columns in the meta info
 # dask needs to know what kind of data is expected after groupby apply
-fdf_dtypes = nddf[sel_cols].dtypes.to_list() + [f64] * len(additional_cols)
+fdf_dtypes = sel_df[sel_cols].dtypes.to_list() + [f64] * len(additional_cols)
 
 # groupby meta; without this the code breaks :()
 meta = [(key, value) for key, value in zip(fdf_col_names, fdf_dtypes)]
 
 # grouping by chan_bin and scan_number and select
 # create_mv calculates the mu & variances of the data for each of the chunks
-res = nddf.groupby(['SCAN_NUMBER', 'chan_bin'])[sel_cols].apply(creat_mv,
-                                                                doplot,
-                                                                meta=meta)
-make_plot(res, doplot)
+ready_df = (sel_df.groupby(['SCAN_NUMBER', 'chan_bin'])[sel_cols]
+            .apply(creat_mv, doplot, meta=meta))
+
+make_plot(ready_df, doplot=doplot, ncols=ncols, nrows=nrows, cmap=cmap,
+          freqs=freqs, plot_width=plot_width, plot_height=plot_height)
