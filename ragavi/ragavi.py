@@ -490,7 +490,26 @@ class DataCoreProcessor:
         return d
 
 
-def get_table(tab_name, antenna=None, fid=None, where=None):
+def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None):
+    """
+        Inputs
+        ------
+        tab_name: str
+                 name of your table or path including its name
+        data_col: str
+                  data column to be used
+        ddid: int
+              DATA_DESC_ID or spectral window to choose
+        fid: int
+             field id to select
+        where: str
+                TAQL where clause to be used with the MS.
+        Outputs
+        -------
+        tab_objs: list
+                  A list containing the specified table objects in xarray
+
+    """
 
     # defining part of the gain table schema
     tab_schema = {'CPARAM': ('chan', 'corr'),
@@ -502,12 +521,17 @@ def get_table(tab_name, antenna=None, fid=None, where=None):
 
     if where == None:
         where = []
-        if antenna != None:
-            where.append("ANTENNA1=={}".format(antenna))
-        if fid != None:
-            where.append("FIELD_ID=={}".format(fid))
+    else:
+        where = [where]
 
-        where = "&&".join(where)
+    if antenna != None:
+        where.append("ANTENNA1=={}".format(antenna))
+    if fid != None:
+        where.append("FIELD_ID=={}".format(fid))
+    if spwid != None:
+        where.append("SPECTRAL_WINDOW_ID=={}".format(spwid))
+
+    where = "&&".join(where)
 
     try:
         tab_objs = xm.xds_from_table(tab_name, taql_where=where,
@@ -1271,7 +1295,7 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
          Preformatted text containing the medians for both model. The object returned must then be placed within the widget box for display.
 
     """
-    subtable = get_table(tab_name, where='FIELD_ID=={}'.format(field))[0]
+    subtable = get_table(tab_name, fid=field)[0]
 
     dobj = DataCoreProcessor(subtable, tab_name, gtype, corr=corr, flag=True)
 
@@ -1368,6 +1392,9 @@ def get_argparser():
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
                         metavar=' ', help='Output png/svg image name',
                         default='')
+    parser.add_argument('--ddid', dest='ddid', type=int, metavar=' ',
+                        help='SPECTRAL_WINDOW_ID or ddid number. Default all',
+                        default=None)
     parser.add_argument('-t', '--table', dest='mytabs',
                         nargs='+', type=str, metavar=(' '),
                         help='Table(s) to plot (default = None)', default=[])
@@ -1377,6 +1404,9 @@ def get_argparser():
     parser.add_argument('--t1', dest='t1', type=float, metavar=' ',
                         help='Maximum time to plot (default = full range)',
                         default=-1)
+    parser.add_argument('--where', dest='where', type=str, metavar=' ',
+                        help='TAQL where caluse',
+                        default=None)
     parser.add_argument('--yu0', dest='yu0', type=float, metavar=' ',
                         help='Minimum y-value to plot for upper panel (default=full range)',
                         default=-1)
@@ -1450,6 +1480,7 @@ def main(**kwargs):
         options = parser.parse_args()
 
         corr = int(options.corr)
+        ddid = options.ddid
         doplot = options.doplot
         field_ids = options.fields
         gain_types = options.gain_types
@@ -1460,6 +1491,7 @@ def main(**kwargs):
         plotants = options.plotants
         t0 = options.t0
         t1 = options.t1
+        where = options.where
         yu0 = options.yu0
         yu1 = options.yu1
         yl0 = options.yl0
@@ -1468,26 +1500,28 @@ def main(**kwargs):
     else:
         NB_RENDER = True
 
-        field_ids = kwargs.get('fields', None)
-        doplot = kwargs.get('doplot', 'ap')
-        plotants = kwargs.get('plotants', [-1])
         corr = int(kwargs.get('corr', 0))
+        ddid = kwargs.get('ddid', None)
+        doplot = kwargs.get('doplot', 'ap')
+        field_ids = kwargs.get('fields', None)
+        gain_types = kwargs.get('gain_types', [])
+        image_name = str(kwargs.get('image_name', ''))
+        mycmap = str(kwargs.get('mycmap', 'coolwarm'))
+        mytabs = kwargs.get('mytabs', [])
+        plotants = kwargs.get('plotants', [-1])
         t0 = float(kwargs.get('t0', -1))
         t1 = float(kwargs.get('t1', -1))
+        where = kwargs.get('where', None)
         yu0 = float(kwargs.get('yu0', -1))
         yu1 = float(kwargs.get('yu1', -1))
         yl0 = float(kwargs.get('yl0', -1))
         yl1 = float(kwargs.get('yl1', -1))
-        mycmap = str(kwargs.get('mycmap', 'coolwarm'))
-        image_name = str(kwargs.get('image_name', ''))
-        mytabs = kwargs.get('mytabs', [])
-        gain_types = kwargs.get('gain_types', [])
 
     # To flag or not
     flag_data = True
 
     # default spwid
-    spwid = 0
+    ddid = 0
 
     if len(mytabs) == 0:
         logger.error('Exiting: No gain table specified.')
@@ -1519,7 +1553,7 @@ def main(**kwargs):
         else:
             plotants = options.plotants
 
-        tt = get_table(mytab)[0]
+        tt = get_table(mytab, spwid=ddid, where=where)[0]
 
         antnames = vu.get_antennas(mytab).data.compute()
 
@@ -1546,7 +1580,7 @@ def main(**kwargs):
                     logger.info('Field {} not found in {}.'.format(f, mytab))
                     continue
 
-        freqs = (vu.get_frequencies(mytab, spwid=spwid) / GHZ).data.compute()
+        freqs = (vu.get_frequencies(mytab, spwid=ddid) / GHZ).data.compute()
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
