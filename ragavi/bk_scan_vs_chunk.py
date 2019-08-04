@@ -34,7 +34,7 @@ from xarrayms.known_table_schemas import MS_SCHEMA, ColumnSchema
 from bokeh.io import show, output_file, save
 from bokeh.models import (Band, BasicTicker, Button,
                           Circle, ColorBar, ColumnDataSource, CustomJS,
-                          DataRange1d, Div, Grid, HoverTool, Line, LinearAxis,
+                          DataRange1d, Div, Ellipse, Grid, HoverTool, Line, LinearAxis,
                           LinearColorMapper, LogColorMapper, LogScale,
                           LogAxis, Patch, PanTool, Plot, Range1d,
                           ResetTool, WheelZoomTool, Whisker, LinearScale)
@@ -268,10 +268,37 @@ def on_click_callback(inp_df, scn, chan, doplot, event):
     else:
         xy = ['Real', 'Imaginary']
 
+    xaxis, yaxis = xy
+
     selection = inp_df[(inp_df['SCAN_NUMBER'] == scn)
                        & (inp_df['chan_bin'] == chan)]
 
+    x_sigma = selection[xaxis].std()
+    x_mean = selection[xaxis].mean()
+
+    y_sigma = selection[yaxis].std()
+    y_mean = selection[yaxis].mean()
+
+    x_sigma, x_mean, y_sigma, y_mean = compute(x_sigma, x_mean,
+                                               y_sigma, y_mean)
+    x_mean = [x_mean] * 3
+    y_mean = [y_mean] * 3
+    x_2sigma = 2 * x_sigma
+    x_3sigma = 3 * x_sigma
+
+    y_2sigma = 2 * y_sigma
+    y_3sigma = 3 * y_sigma
+
+    e_src = ColumnDataSource(data=dict(x=x_mean, y=y_mean,
+                                       w=[x_sigma, x_2sigma, x_3sigma],
+                                       h=[y_sigma, y_2sigma, y_3sigma]))
+
+    ellipse = Ellipse(x='x', y='y', width='w', height='h', fill_alpha=0,
+                      line_width=3)
+
     im = hv.render(selection.hvplot(*xy, kind='scatter', datashade=True))
+
+    im.add_glyph(e_src, ellipse)
 
     im.width = 800
     im.height = 800
@@ -369,9 +396,10 @@ def make_plot(inp_df, doplot):
     col_bar = ColorBar(color_mapper=col_mapper,
                        location=(0, 0))
 
+    col_bar_h = int(plot_height * nrows) if nrows > 2 else int(plot_height * 2)
     color_bar_plot = figure(title="ln( | μ - mid_μ | % )",
                             title_location="right",
-                            height=int(plot_height * nrows), width=150,
+                            height=col_bar_h, width=150,
                             toolbar_location=None, min_border=0,
                             outline_line_color=None)
 
