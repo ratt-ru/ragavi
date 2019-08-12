@@ -47,11 +47,11 @@ from bokeh.resources import INLINE
 from bokeh.models import Button, AjaxDataSource
 from bokeh import events
 
-import vis_utils as ut
+import vis_utils as vu
 from ipdb import set_trace
 
-logger = ut.logger
-excepthook = ut.sys.excepthook
+logger = vu.logger
+excepthook = vu.sys.excepthook
 
 
 def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, where=None):
@@ -136,13 +136,13 @@ def calc_plot_dims(nrows, ncols):
 
 def convert_data(data, yaxis='amplitude'):
     if yaxis == 'amplitude':
-        out_data = ut.calc_amplitude(data)
+        out_data = vu.calc_amplitude(data)
     elif yaxis == 'phase':
-        out_data = ut.calc_phase(data, unwrap=False)
+        out_data = vu.calc_phase(data, wrap=False)
     elif yaxis == 'real':
-        out_data = ut.calc_real(data)
+        out_data = vu.calc_real(data)
     elif yaxis == 'imaginary':
-        out_data = ut.calc_imaginary(data)
+        out_data = vu.calc_imaginary(data)
     return out_data
 
 
@@ -194,7 +194,7 @@ def process(chunk, corr=None, data_column='DATA', ptype='ap', flag=True, bin_siz
         sys.exit(-1)
 
     # change time from MJD to UTC
-    chunk['TIME'] = ut.time_convert(chunk.TIME)
+    chunk['TIME'] = vu.time_convert(chunk.TIME)
     chunk['FLAG'] = flags
 
     return chunk[selection]
@@ -575,7 +575,7 @@ ready_ms_obj = process(sub_ms, corr=corr, data_column=data_col, ptype=doplot,
 document = curdoc()
 
 # frequencies in the specified spw
-freqs = (ut.get_frequencies(ms_name, spwid=ddid) / 1e9).data.compute()
+freqs = (vu.get_frequencies(ms_name, spwid=ddid) / 1e9).data.compute()
 
 # frequency edges depending on the bin size
 f_edges = split_freqs(freqs, bin_width)
