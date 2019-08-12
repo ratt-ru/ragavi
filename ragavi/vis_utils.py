@@ -61,22 +61,24 @@ def calc_real(ydata):
     return real
 
 
-def calc_phase(ydata, unwrap=False):
+def calc_phase(ydata, wrap=True):
     """Convert complex data to angle in degrees
     Inputs
     ------
     ydata: xarray DataArray
            y-axis data to be processed
-
+    wrap: bool
+          whether to wrap angles between 0 and 2pi
     Outputs
     -------
     phase: xarray DataArray
            y-axis data converted to degrees
     """
-    phase = xa.ufuncs.angle(ydata, deg=True)
-    if unwrap:
-        # delay dispatching of unwrapped phase
-        phase = delayed(np.unwrap)(phase)
+    phase = xa.apply_ufunc(da.angle, ydata,
+                           dask='allowed', kwargs=dict(deg=True))
+    if wrap:
+        # delay dispatching of wrapped phase
+        phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
     return phase
 
 
@@ -140,8 +142,8 @@ def get_antennas(ms_name):
 
     Outputs
     -------
-    ant_names: xarray.core.dataarray.DataArray
-               Names for all the antennas available.
+    ant_names: xarray DataArray
+               An xarray Data array containing names for all the antennas available.
 
     """
     subname = "::".join((ms_name, 'ANTENNA'))
@@ -150,30 +152,6 @@ def get_antennas(ms_name):
     ant_names = ant_subtab.NAME
     # ant_subtab('close')
     return ant_names
-
-
-def get_flags(xds_table_obj, corr=None):
-    """ Get Flag values from the FLAG column
-    Allows the selection of flags for a single correlation. If none is specified the entire data is then selected.
-    Inputs
-    ------
-    xds_table_obj: xarray Dataset
-                   MS as xarray dataset from xarrayms
-    corr: int
-          Correlation number to select.
-
-    Outputs
-    -------
-    flags: xarray DataArray
-           Data array containing values from FLAG column selected by correlation if index is available.
-
-    """
-    flags = xds_table_obj.FLAG
-    if corr is None:
-        return flags
-    else:
-        flags = flags.sel(corr=corr)
-    return flags
 
 
 def get_fields(ms_name):
@@ -195,7 +173,7 @@ def get_fields(ms_name):
     return field_names
 
 
-def get_frequencies(ms_name, spwid=0):
+def get_frequencies(ms_name, spwid=0, chan=slice(0, None)):
     """Function to get channel frequencies from the SPECTRAL_WINDOW subtable.
     Inputs
     ------
@@ -203,7 +181,9 @@ def get_frequencies(ms_name, spwid=0):
              Name of measurement set
     spwid: int
            Spectral window id number. Defaults to 0
-
+    chan: slice / numpy array
+          A slice object or numpy array to select some or all of the channels
+          Default is all the channels
     Outputs
     -------
     freqs: xarray DataArray
@@ -213,7 +193,7 @@ def get_frequencies(ms_name, spwid=0):
     spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__',
                                         ack=False))
     spw = spw_subtab[spwid]
-    freqs = spw.CHAN_FREQ
+    freqs = spw.CHAN_FREQ[chan]
     return freqs
 
 
@@ -252,7 +232,159 @@ def get_polarizations(ms_name):
 
 
 ###########################################################
-# conversions
+####################### Get subtables #####################
+
+
+def get_errors(xds_table_obj, corr=0, chan=slice(0, None)):
+    """Function to get error data from PARAMERR column.
+    Inputs
+    ------
+    table_obj: pyrap table object.
+
+    Outputs
+    errors: ndarray
+            Error data.
+    """
+    errors = xds_table_obj.PARAMERR.sel(dict(corr=corr, chan=chan))
+    return errors
+
+
+def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
+    """ Get Flag values from the FLAG column
+        Allow for selections in the channel dimension or the correlation dimension
+    Inputs
+    ------
+    xds_table_obj: xarray Dataset
+                   MS as xarray dataset from xarrayms
+    corr: int
+          Correlation number to select.
+
+    Outputs
+    -------
+    flags: xarray DataArray
+           Data array containing values from FLAG column selected by correlation if index is available.
+
+    """
+    flags = xds_table_obj.FLAG
+    if corr is None:
+        return flags.sel(chan=chan)
+    else:
+        flags = flags.sel(dict(corr=corr, chan=chan))
+    return flags
+
+
+def name_2id(tab_name, field_name):
+    """Translate field name to field id
+    Inputs
+    -----
+    tab_name: str
+              Table name
+    field_name: string
+         Field ID name to convert
+    Outputs
+    -------
+    field_id: int
+              Integer field id
+    """
+    field_names = vu.get_fields(tab_name).data.compute()
+
+    # make the sup field name uppercase
+    field_name = field_name.upper()
+
+    if field_name in field_names:
+        field_id = np.where(field_names == field_name)[0][0]
+        return int(field_id)
+    else:
+        return -1
+
+
+def resolve_ranges(inp):
+    """Create a TAQL string that can be parsed given a range of values
+    Inputs
+    ------
+    inp: str
+         A range of values to be constructed. Can be in the form of:
+         "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range),
+         "5:" (from 5 to last)
+
+    Outputs
+    -------
+    res: str
+         Interval string conforming to TAQL sets and intervals as shown in
+        https://casa.nrao.edu/aips2_docs/notes/199/node5.html#TAQL:EXPRESSIONS
+    """
+
+    if '~' in inp:
+        # create expression fro inclusive range
+        # to form a curly bracket string we need {{}}
+        res = "[{{{}}}]".format(inp.replace('~', ','))
+    else:
+
+        # takes care of 5:8 or 5,6,7 or 5:
+        res = '[{}]'.format(inp)
+    return res
+
+
+def slice_data(inp):
+    """Creates a slicer for an array. To be used to get a data subset.
+
+    Inputs
+    ------
+    inp: str
+         This can be of the form "5", "10~20" (10 to 20 inclusive), "10:21" (same), "10:" (from 10 to end), ":10:2" (0 to 9 inclusive, stepped by 2), "~9:2" (same)
+
+    Outputs
+    -------
+    sl : slice object
+         slicer for an iterable object
+
+    """
+    if inp is None:
+        start = 0
+        stop = None
+        sl = slice(start, stop)
+        return sl
+
+    if inp.isdigit():
+        sl = int(inp)
+        return sl
+    # check where the string is a comma separated list
+    if ',' not in inp:
+        if '~' in inp:
+            splits = inp.replace('~', ':').split(':')
+        else:
+            splits = inp.split(':')
+        splits = [None if x == '' else int(x) for x in splits]
+
+        len_splits = len(splits)
+        start = None
+        stop = None
+        step = 1
+
+        if len_splits == 1:
+            start = int(splits[0])
+        elif len_splits == 2:
+            start, stop = splits
+        elif len_splits == 3:
+            start, stop, step = splits
+
+        # since ~ only alters the end value, we can then only change the stop
+        # value
+        if '~' in inp:
+            stop += 1
+
+        sl = slice(start, stop, step)
+    else:
+        # assuming string is a comma separated list
+        splits = [int(x) for x in inp.split(',')]
+        sl = np.array(splits)
+
+    return sl
+
+###########################################################
+######################## conversions ######################
+
+
 def time_convert(xdata):
     """ Convert time from MJD to UTC time
     Inputs
@@ -282,8 +414,9 @@ def time_convert(xdata):
     newtime = da.array(newtime, dtype='datetime64[s]')
     return newtime
 
+
 ###########################################################
-############## Logger #####################################
+####################### Logger ############################
 
 
 def config_logger():
