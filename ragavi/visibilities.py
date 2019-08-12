@@ -21,6 +21,7 @@ import pyrap.quanta as qa
 
 from holoviews import opts, dim
 from africanus.averaging import time_and_channel as ntc
+from collections import namedtuple
 from dask import compute, delayed
 from argparse import ArgumentParser
 from datetime import datetime
@@ -37,61 +38,373 @@ from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           BasicTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
 
-
-def config_logger():
-    """This function is used to configure the logger for ragavi and catch
-        all warnings output by sys.stdout.
-    """
-    logfile_name = 'ragavi.log'
-    # capture only a single instance of a matching repeated warning
-    warnings.filterwarnings('once')
-    logging.captureWarnings(True)
-
-    # setting the format for the logging messages
-    start = " (O_o) ".center(80, "=")
-    form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    form = form.format(start)
-    formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
-
-    # setup for ragavi logger
-    logger = logging.getLogger(__name__)
-    logger.setLevel(logging.ERROR)
-
-    warnings_logger = logging.getLogger('py.warnings')
-
-    xmslog = logging.getLogger('xarrayms')
-    xmslog.setLevel(logging.ERROR)
-
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.ERROR)
-    ch.setFormatter(formatter)
-    # setup for logfile handing ragavi
-    fh = logging.FileHandler(logfile_name)
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(formatter)
-
-    logger.addHandler(fh)
-    logger.addHandler(ch)
-    xmslog.addHandler(fh)
-    warnings_logger.addHandler(fh)
-    return logger
+import vis_utils as vu
+from ipdb import set_trace
 
 
-def _handle_uncaught_exceptions(extype, exval, extraceback):
-    """Function to Capture all uncaught exceptions into the log file
-
-       Inputs to this function are acquired from sys.excepthook. This
-       is because this function overrides sys.excepthook 
-
-       https://docs.python.org/3/library/sys.html#sys.excepthook
-
-    """
-    message = "Oops ... !"
-    logger.error(message, exc_info=(extype, exval, extraceback))
+logger = vu.logger
+excepthook = vu.sys.excepthook
 
 
-logger = config_logger()
-sys.excepthook = _handle_uncaught_exceptions
+class DataCoreProcessor:
+
+    def __init__(self, xds_table_obj, ms_name, xaxis, yaxis,
+                 chan=slice(0, None), corr=0, ddid=0, datacol='DATA',
+                 flag=True, iterate=None):
+
+        self.xds_table_obj = xds_table_obj
+        self.ms_name = ms_name
+        self.xaxis = xaxis
+        self.yaxis = yaxis
+        self.corr = corr
+        self.ddid = ddid
+        self.chan = chan
+        self.datacol = datacol
+        self.flag = flag
+        self.iterate = iterate
+
+    def process_data(self, ydata, yaxis, wrap=True):
+        """Abstraction for processing y-data passes it to the processing function.
+        Inputs
+        ------
+        ydata: xarray DataArray
+               y-data to process
+        yaxis: str
+               Selected yaxis
+
+        Outputs
+        -------
+        y: xarray DataArray
+           Processed y-data
+        """
+        if yaxis == 'amplitude':
+            y = vu.calc_amplitude(ydata)
+        elif yaxis == 'imaginary':
+            y = vu.calc_imaginary(ydata)
+        elif yaxis == 'phase':
+            y = vu.calc_phase(ydata, wrap=wrap)
+        elif yaxis == 'real':
+            y = vu.calc_real(ydata)
+        return y
+
+    def get_xaxis_data(self, xds_table_obj, ms_name, xaxis, datacol='DATA'):
+        """
+            Function to get x-axis data. It is dependent on the gaintype.
+            This function also returns the relevant x-axis labels for both pairs of plots.
+
+            Inputs
+            ------
+            xds_table_obj: xarray Dataset
+                           MS as xarray dataset from xarrayms
+            ms_name: str
+                     Name of measurement set
+            xaxis: str
+                   Name of xaxis
+
+            Outputs
+            -------
+            xdata: xarray DataArray
+                   X-axis data depending  x-axis selected.
+            x_label: str
+                         Label to appear on the x-axis of the plots.
+        """
+
+        if xaxis == 'antenna1':
+            xdata = xds_table_obj.ANTENNA1
+            x_label = 'Antenna1'
+        elif xaxis == 'antenna2':
+            xdata = xds_table_obj.ANTENNA2
+            x_label = 'Antenna2'
+        elif xaxis == 'frequency' or xaxis == 'channel':
+            xdata = vu.get_frequencies(ms_name)
+            if xaxis == 'channel':
+                x_label = 'Channel'
+            else:
+                x_label = 'Frequency GHz'
+        elif xaxis == 'phase':
+            xdata = xds_table_obj[datacol]
+            x_label = 'Phase'
+        elif xaxis == 'real':
+            xdata = xds_table_obj[datacol]
+            x_label = 'Real'
+        elif xaxis == 'scan':
+            xdata = xds_table_obj.SCAN_NUMBER
+            x_label = 'Scan'
+        elif xaxis == 'time':
+            xdata = xds_table_obj.TIME
+            x_label = 'Time [s]'
+        elif xaxis == 'uvdistance':
+            xdata = xds_table_obj.UVW
+            x_label = 'UV Distance [m]'
+        elif xaxis == 'uvwave':
+            xdata = xds_table_obj.UVW
+            x_label = 'UV Wave [lambda]'
+        else:
+            logger.error("Invalid xaxis name")
+            return
+
+        return xdata, x_label
+
+    def get_yaxis_data(self, xds_table_obj, ms_name, yaxis, datacol='DATA'):
+        """
+            Extract the required column for the y-axis data.
+
+
+            Inputs
+            -----
+            xds_table_obj: xarray Dataset
+                           MS as xarray dataset from xarrayms
+            ms_name: str
+                     Name of measurement set.
+            yaxis: str
+                   yaxis to plot.
+            datacol: str
+                     Data column to be selected.
+
+            Outputs
+            -------
+            ydata: xarray DataArray
+                   y-axis data depending  y-axis selected.
+            y_label: str
+                     Label to appear on the y-axis of the plots.
+
+        """
+        if yaxis == 'amplitude':
+            y_label = 'Amplitude'
+        elif yaxis == 'imaginary':
+            y_label = 'Imaginary'
+        elif yaxis == 'phase':
+            y_label = 'Phase[deg]'
+        elif yaxis == 'real':
+            y_label = 'Real'
+
+        try:
+            ydata = xds_table_obj[datacol]
+        except KeyError:
+            logger.exception('Column "{}" not Found'.format(datacol))
+            return sys.exit(-1)
+
+        return ydata, y_label
+
+    def prep_xaxis_data(self, xdata, freq=None, xaxis='time'):
+        """
+            Prepare the x-axis data for plotting.
+
+            Inputs
+            ------
+            xdata: xarray DataArray
+                   X-axis data depending  x-axis selected.
+            xaxis: str
+                   xaxis to plot.
+
+            freq: xarray DataArray or float
+                  Frequency(ies) from which corresponding wavelength will be obtained.
+                  REQUIRED ONLY when xaxis specified is 'uvwave'.
+
+            Outputs
+            -------
+            prepdx: xarray DataArray
+                    Prepared data for the x-axis.
+        """
+        if xaxis == 'channel':
+            prepdx = xdata
+        elif xaxis == 'frequency':
+            prepdx = xdata / 1e9
+        elif xaxis == 'phase':
+            prepdx = xdata
+        elif xaxis == 'time':
+            prepdx = vu.time_convert(xdata)
+        elif xaxis == 'uvdistance':
+            prepdx = vu.calc_uvdist(xdata)
+        elif xaxis == 'uvwave':
+            prepdx = vu.calc_uvwave(xdata, freq)
+        elif xaxis == 'antenna1' or xaxis == 'antenna2' or xaxis == 'scan':
+            prepdx = xdata
+        return prepdx
+
+    def prep_yaxis_data(self, xds_table_obj, ms_name, ydata,
+                        chan=slice(0, None), corr=0, flag=True, iterate=None,
+                        yaxis='amplitude'):
+        """
+            Process data for the y-axis which includes:
+                - Correlation selection
+                - Flagging
+                - Conversion form complex to the required form
+            Data selection and flagging are done by this function itself, however ap and ri conversion are done by specified functions.
+
+            Inputs
+            ------
+            xds_table_obj: xarray Dataset
+                           MS as xarray dataset from xarrayms
+            ms_name: str
+                     Name of measurement set.
+            ydata: xarray DataArray
+                   y-axis data to be processed
+            yaxis: str
+                   selected y-axis
+            corr: int
+                  Correlation number to select
+            flag: bool
+                  Option on whether to flag the data or not
+            iterate: str
+                     Data to iterate over.
+
+            Outputs
+            -------
+            y: xarray DataArray
+               Processed yaxis data.
+        """
+        if iterate == 'corr':
+            # group data by correlations and store it in a list
+            # groupby list returns the tuple (group_idx, group_item_DA)
+            ydata = list(ydata.groupby('corr'))
+            ydata = [x[1].sel(chan=chan) for x in ydata]
+
+            # group flags for that data as well and store in a list
+            flags = vu.get_flags(xds_table_obj).groupby('corr')
+            flags = [x[1].sel(chan=chan) for x in flags]
+        else:
+            ydata = ydata.sel(dict(corr=corr, chan=chan))
+            flags = vu.get_flags(xds_table_obj).sel(dict(corr=corr, chan=chan))
+
+        # if flagging enabled return a list of DataArrays otherwise return a
+        # single dataarray
+        if flag:
+            if isinstance(ydata, list):
+                y = []
+                for d, f in zip(ydata, flags):
+                    processed = self.process_data(d, yaxis=yaxis, wrap=True)
+                    # replace with NaNs where flags is not 1
+                    y.append(processed.where(f == False))
+            else:
+                processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
+                y = processed.where(flags == False)
+        else:
+            if isinstance(ydata, list):
+                y = []
+                for d in ydata:
+                    y.append(self.process_data(d, yaxis=yaxis))
+            else:
+                y = self.process_data(ydata, yaxis=yaxis)
+
+        return y
+
+    def blackbox(self, xds_table_obj, ms_name, xaxis, yaxis,
+                 chan=slice(0, None), corr=0, datacol='DATA', ddid=None,
+                 flag=True, iterate=None, ititle=None):
+        """
+            Takes in raw input and gives out a holomap.
+
+            Inputs
+            ------
+
+            chan: slice / numpy array
+                  For the selection of the channels. Defaults to all
+            corr: int
+                  Correlation index to select
+            ddid:
+                  spectral window(s) to be selected
+            datacol: str
+                     Column from which data is pulled. Default is 'DATA'
+            flag: bool
+                         Switch flags on or off.
+            ititle: str
+                    Title to use incase of an iteration
+            iterate: str
+                     Paramater over which to iterate
+            ms_name: str
+                     Measurement set name
+            xaxis: str
+                   Selected x-axis
+            xds_table_obj: xarray Dataset
+                           MS as xarray dataset from xarrayms
+            yaxis: str
+                   Selected y-axis
+
+            Outputs
+            -------
+            data:
+                  Processed data for x and y
+        """
+
+        Data = namedtuple('Data', "x xlabel y ylabel")
+
+        xs = self.x_only(xds_table_obj, ms_name, xaxis, corr=corr, chan=chan,
+                         ddid=ddid, flag=flag, datacol=datacol)
+        x_prepd = xs.x
+        xlabel = xs.xlabel
+
+        ys = self.y_only(xds_table_obj, ms_name, yaxis, chan=chan, corr=corr,
+                         flag=flag, datacol=datacol)
+        y_prepd = ys.y
+        ylabel = ys.ylabel
+
+        if xaxis == 'channel' or xaxis == 'frequency':
+            if y_prepd.ndim == 3:
+                y_prepd = y_prepd.transpose('chan', 'row', 'corr',
+                                            transpose_coords=True)
+            else:
+                y_prepd = y_prepd.T
+        """
+        if xaxis == 'uvwave':
+            # compute uvwave using the available frequencies
+            freqs = vu.get_frequencies(ms_name, spwid=ddid).compute()
+            x_prepd = prep_xaxis_data(x_data, xaxis, freq=freqs)
+        elif xaxis == 'real' or xaxis == 'phase':
+            x_prepd = prep_yaxis_data(xds_table_obj, ms_name, x_data,
+                                      yaxis=xaxis, corr=corr, chan=chan,
+                                      flag=flag)
+        else:
+            x_prepd = prep_xaxis_data(x_data, xaxis)
+        """
+
+        d = Data(x=x_prepd, xlabel=xlabel, y=y_prepd, ylabel=ylabel)
+
+        return d
+
+    def act(self):
+        return self.blackbox(self.xds_table_obj, self.ms_name, self.xaxis,
+                             self.yaxis, chan=self.chan, corr=self.corr,
+                             datacol=self.datacol, ddid=self.ddid,
+                             flag=self.flag, iterate=self.iterate)
+
+    def x_only(self, xds_table_obj, ms_name, xaxis, flag=True, corr=0,
+               chan=slice(0, None), ddid=None, datacol='DATA'):
+        """Only return xaxis data and label
+        """
+        Data = namedtuple('Data', 'x xlabel')
+        x_data, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, xaxis,
+                                             datacol=datacol)
+
+        if xaxis == 'uvwave':
+            # compute uvwave using the available frequencies
+            freqs = vu.get_frequencies(ms_name, spwid=ddid,
+                                       chan=chan).compute()
+            x = prep_xaxis_data(xdata, xaxis, freq=freqs, chan=chan)
+
+        # if we have x-axes corresponding to ydata
+        elif xaxis == 'real' or xaxis == 'phase':
+            x = self.prep_yaxis_data(xds_table_obj, ms_name, x_data,
+                                     yaxis=xaxis, corr=corr, chan=chan,
+                                     flag=flag)
+        else:
+            x = self.prep_xaxis_data(x_data, xaxis)
+
+        d = Data(x=x, xlabel=xlabel)
+        return d
+
+    def y_only(self, xds_table_obj, ms_name, yaxis, chan=slice(0, None),
+               corr=0, datacol='DATA', flag=True):
+        """Only return yaxis data and label
+        """
+
+        Data = namedtuple('Data', 'y ylabel')
+        y_data, ylabel = self.get_yaxis_data(xds_table_obj, ms_name, yaxis,
+                                             datacol=datacol)
+        y = self.prep_yaxis_data(xds_table_obj, ms_name, y_data, yaxis=yaxis,
+                                 chan=chan, corr=corr, flag=flag)
+        d = Data(y=y, ylabel=ylabel)
+        return d
 
 
 def save_svg_image(img_name, figa, figb, glax1, glax2):
@@ -214,121 +527,6 @@ def add_axis(fig, axis_range, ax_label):
     return linaxis
 
 
-def name_2id(val, dic):
-    """Translate field name to field id
-
-    Inputs
-    -----
-    val: string
-         Field ID name to convert
-    dic: dict
-         Dictionary containing enumerated source ID names
-
-    Outputs
-    -------
-    key: int
-         Integer field id
-    """
-    upperfy = lambda x: x.upper()
-    values = dic.values()
-    values = [upperfy(x) for x in values]
-    val = val.upper()
-
-    if val in values:
-        val_index = values.index(val)
-        keys = [x for x in dic.keys()]
-
-        # get the key to that index from the key values
-        key = keys[val_index]
-        return int(key)
-    else:
-        return -1
-
-
-def get_polarizations(ms_name):
-
-    # Stokes types in this case are 1 based and NOT 0 based.
-    stokes_types = ['I', 'Q', 'U', 'V', 'RR', 'RL', 'LR', 'LL', 'XX', 'XY', 'YX', 'YY', 'RX', 'RY', 'LX', 'LY', 'XR', 'XL', 'YR',
-                    'YL', 'PP', 'PQ', 'QP', 'QQ', 'RCircular', 'LCircular', 'Linear', 'Ptotal', 'Plinear', 'PFtotal', 'PFlinear', 'Pangle']
-    subname = "::".join((ms_name, 'POLARIZATION'))
-    pol_subtable = list(xm.xds_from_table(subname, ack=False))
-    pol_subtable = pol_subtable[0]
-    # ofsetting the acquired corr typeby one to match correctly the stokes type
-    corr_types = pol_subtable.CORR_TYPE.sel(row=0).data.compute() - 1
-    cor2stokes = []
-    for typ in corr_types:
-        cor2stokes.append(stokes_types[typ])
-    return cor2stokes
-
-
-def get_frequencies(ms_name, spwid=0):
-    """Function to get channel frequencies from the SPECTRAL_WINDOW subtable.
-    Inputs
-    ------
-    ms_name: str
-             Name of measurement set
-    spwid: int
-           Spectral window id number. Defaults to 0
-
-    Outputs
-    -------
-    freqs: xarray DataArray
-           Channel centre frequencies for specified spectral window.
-    """
-    subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
-    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__',
-                                        ack=False))
-    spw = spw_subtab[spwid]
-    freqs = spw.CHAN_FREQ
-    # spw_subtab('close')
-    return freqs
-
-
-def get_antennas(ms_name):
-    """Function to get antennae names from the ANTENNA subtable.
-    Inputs
-    ------
-    ms_name: str
-             Name of measurement set
-
-    Outputs
-    -------
-    ant_names: xarray.core.dataarray.DataArray
-               Names for all the antennas available.
-
-    """
-    subname = "::".join((ms_name, 'ANTENNA'))
-    ant_subtab = list(xm.xds_from_table(subname, ack=False))
-    ant_subtab = ant_subtab[0]
-    ant_names = ant_subtab.NAME
-    # ant_subtab('close')
-    return ant_names
-
-
-def get_flags(xds_table_obj, corr=None):
-    """ Get Flag values from the FLAG column
-    Allows the selection of flags for a single correlation. If none is specified the entire data is then selected.
-    Inputs
-    ------
-    xds_table_obj: xarray Dataset
-                   MS as xarray dataset from xarrayms
-    corr: int
-          Correlation number to select.
-
-    Outputs
-    -------
-    flags: xarray DataArray
-           Data array containing values from FLAG column selected by correlation if index is available.
-
-    """
-    flags = xds_table_obj.FLAG
-    if corr is None:
-        return flags
-    else:
-        flags = flags.sel(corr=corr)
-    return flags
-
-
 def get_errors(xds_table_obj, corr=None):
     # CoONFIRM IF ITWORKS ACTUALLY
     #-------------------------------------------
@@ -343,468 +541,6 @@ def get_errors(xds_table_obj, corr=None):
     """
     errors = xds_table_obj.PARAMERR
     return errors
-
-
-def get_fields(ms_name):
-    """Get field names from the FIELD subtable.
-    Inputs
-    ------
-    ms_name: str
-             Name of measurement set
-
-    Outputs
-    -------
-    field_names: xarray DataArray
-                 String names for the available data in the table
-    """
-    subname = "::".join((ms_name, 'FIELD'))
-    field_subtab = list(xm.xds_from_table(subname, ack=False))
-    field_subtab = field_subtab[0]
-    field_names = field_subtab.NAME
-    return field_names
-
-
-def calc_uvdist(uvw):
-    """ Calculate uv distance in metres
-    Inputs
-    ------
-    uvw: xarray DataArray
-         UVW column from measurement set
-
-    Outputs
-    -------
-    uvdist: xarray DataArray
-            uv distance in meters
-    """
-    u = uvw.isel(**{'(u,v,w)': 0})
-    v = uvw.isel(**{'(u,v,w)': 1})
-    uvdist = xa.ufuncs.sqrt(xa.ufuncs.square(u) + xa.ufuncs.square(v))
-    return uvdist
-
-
-def calc_uvwave(uvw, freq):
-    """
-        Calculate uv distance in wavelength for availed frequency.
-        This function also calculates the corresponding wavelength.
-
-    Inputs
-    ------
-    uvw: xarray DataArray
-         UVW column from the MS dataset
-    freq: xarray DataArray or float
-          Frequency(ies) from which corresponding wavelength will be obtained.
-
-    Outputs
-    -------
-    uvwave: xarray DataArray
-            uv distance in wavelength for specific frequency
-    """
-
-    # speed of light
-    C = 3e8
-
-    # wavelength = velocity / frequency
-    wavelength = (C / freq)
-    uvdist = calc_uvdist(uvw)
-
-    uvwave = uvdist / wavelength
-    return uvwave
-
-
-def time_convert(xdata):
-    """ Convert time from MJD to UTC time
-    Inputs
-    ------
-    xdata: xarray DataArray
-           TIME column from the MS xarray dataset in MJD format.
-
-    Outputs
-    -------
-    newtime: xarray DataArray
-             TIME column in a more human readable UTC format. Stored as np.datetime type.
-
-    """
-
-    # get first time instance
-    init_time = xdata[0].data.compute()
-
-    # get number of seconds from initial time
-    time = xdata - init_time
-
-    # convert the initial time to unix time in seconds
-    init_time = qa.quantity(init_time, 's').to_unix_time()
-
-    # Add the initial unix time in seconds to get actual time progrssion
-    newtime = time + init_time
-
-    newtime = da.array(newtime, dtype='datetime64[s]')
-    return newtime
-
-
-def get_xaxis_data(xds_table_obj, ms_name, xaxis):
-    """Function to get x-axis data. It is dependent on the gaintype.
-        This function also returns the relevant x-axis labels for both pairs of plots.
-    Inputs
-    ------
-    xds_table_obj: xarray Dataset
-                   MS as xarray dataset from xarrayms
-    ms_name: str
-             Name of measurement set
-    xaxis: str
-           Name of xaxis
-
-    Outputs
-    -------
-    xdata: xarray DataArray
-           X-axis data depending  x-axis selected.
-    x_label: str
-                 Label to appear on the x-axis of the plots.
-    """
-    if xaxis == 'antenna1':
-        xdata = xds_table_obj.ANTENNA1
-        x_label = 'Antenna1'
-    elif xaxis == 'antenna2':
-        xdata = xds_table_obj.ANTENNA2
-        x_label = 'Antenna2'
-    elif xaxis == 'frequency' or xaxis == 'channel':
-        xdata = get_frequencies(ms_name)
-        if xaxis == 'channel':
-            x_label = 'Channel'
-        else:
-            x_label = 'Frequency GHz'
-    elif xaxis == 'real':
-        xdata = xds_table_obj.DATA
-        x_label = 'Real'
-    elif xaxis == 'scan':
-        xdata = xds_table_obj.SCAN_NUMBER
-        x_label = 'Scan'
-    elif xaxis == 'time':
-        xdata = xds_table_obj.TIME
-        x_label = 'Time [s]'
-    elif xaxis == 'uvdistance':
-        xdata = xds_table_obj.UVW
-        x_label = 'UV Distance [m]'
-    elif xaxis == 'uvwave':
-        xdata = xds_table_obj.UVW
-        x_label = 'UV Wave [lambda]'
-    else:
-        logger.error("Invalid xaxis name")
-        return
-
-    return xdata, x_label
-
-
-def prep_xaxis_data(xdata, xaxis='time', freq=None):
-    """Prepare the x-axis data for plotting.
-    Inputs
-    ------
-    xdata: xarray DataArray
-           X-axis data depending  x-axis selected.
-    xaxis: str
-           xaxis to plot.
-
-    freq: xarray DataArray or float
-          Frequency(ies) from which corresponding wavelength will be obtained.
-          REQUIRED ONLY when xaxis specified is 'uvwave'.
-
-    Outputs
-    -------
-    prepdx: xarray DataArray
-            Prepared data for the x-axis.
-    """
-    if xaxis == 'channel':
-        prepdx = xdata.chan
-    elif xaxis == 'frequency':
-        prepdx = xdata / 1e9
-    elif xaxis == 'phase':
-        prepdx = xdata
-    elif xaxis == 'time':
-        prepdx = time_convert(xdata)
-    elif xaxis == 'uvdistance':
-        prepdx = calc_uvdist(xdata)
-    elif xaxis == 'uvwave':
-        prepdx = calc_uvwave(xdata, freq)
-    elif xaxis == 'antenna1' or xaxis == 'antenna2' or xaxis == 'scan':
-        prepdx = xdata
-    elif xaxis == 'phase':
-        # TODO: add clause for phase. It must be processed
-        pass
-    return prepdx
-
-
-def get_yaxis_data(xds_table_obj, ms_name, yaxis, datacol='DATA'):
-    """Extract the required column for the y-axis data.
-
-
-    Inputs
-    -----
-    xds_table_obj: xarray Dataset
-                   MS as xarray dataset from xarrayms
-    ms_name: str
-             Name of measurement set.
-    yaxis: str
-           yaxis to plot.
-    datacol: str
-             Data column to be selected.
-
-    Outputs
-    -------
-    ydata: xarray DataArray
-           y-axis data depending  y-axis selected.
-    y_label: str
-             Label to appear on the y-axis of the plots.
-
-    """
-    if yaxis == 'amplitude':
-        y_label = 'Amplitude'
-    elif yaxis == 'imaginary':
-        y_label = 'Imaginary'
-    elif yaxis == 'phase':
-        y_label = 'Phase[deg]'
-    elif yaxis == 'real':
-        y_label = 'Real'
-
-    try:
-        ydata = xds_table_obj[datacol]
-    except KeyError:
-        logger.exception('Column "{}" not Found'.format(datacol))
-        return sys.exit(-1)
-
-    return ydata, y_label
-
-
-def prep_yaxis_data(xds_table_obj, ms_name, ydata, yaxis='amplitude', corr=0, flag=False, iterate=None):
-    """Process data for the y-axis which includes:
-    - Correlation selection
-    - Flagging
-    - Conversion form complex to the required form
-    Data selection and flagging are done by this function itself, however ap and ri conversion are done by specified functions.
-
-    Inputs
-    ------
-    xds_table_obj: xarray Dataset
-                   MS as xarray dataset from xarrayms
-    ms_name: str
-             Name of measurement set.
-    ydata: xarray DataArray
-           y-axis data to be processed
-    yaxis: str
-           selected y-axis
-    corr: int
-          Correlation number to select
-    flag: bool
-          Option on whether to flag the data or not
-    iterate: str
-             Data to iterate over.
-
-    Outputs
-    -------
-    y: xarray DataArray
-       Processed yaxis data.
-    """
-    if iterate == 'corr':
-        # group data by correlations and store it in a list
-        ydata = list(ydata.groupby('corr'))
-        ydata = [x[1] for x in ydata]
-
-        # group flags for that data as well and store in a list
-        flags = get_flags(xds_table_obj).groupby('corr')
-        flags = [x[1] for x in flags]
-    else:
-        ydata = ydata.sel(corr=corr)
-        flags = get_flags(xds_table_obj).sel(corr=corr)
-
-    # if flagging enabled return a list of DataArrays otherwise return a
-    # single dataarray
-    if flag:
-        if isinstance(ydata, list):
-            y = []
-            for d, f in zip(ydata, flags):
-                processed = process_data(d, yaxis=yaxis)
-                # replace with NaNs where flags is not 1
-                y.append(processed.where(f < 1))
-        else:
-            processed = process_data(ydata, yaxis=yaxis)
-            y = processed.where(flags < 1)
-    else:
-        if isinstance(ydata, list):
-            y = []
-            for d in ydata:
-                y.append(process_data(d, yaxis=yaxis))
-        else:
-            y = process_data(ydata, yaxis=yaxis)
-
-    return y
-
-
-def get_phase(ydata, unwrap=False):
-    """Convert complex data to angle in degrees
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
-
-    Outputs
-    -------
-    phase: xarray DataArray
-           y-axis data converted to degrees
-    """
-    phase = xa.ufuncs.angle(ydata, deg=True)
-    if unwrap:
-        # delay dispatching of unwrapped phase
-        phase = delayed(np.unwrap)(phase)
-    return phase
-
-
-def get_amplitude(ydata):
-    """Convert complex data to amplitude (abs value)
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
-
-    Outputs
-    -------
-    amplitude: xarray DataArray
-           y-axis data converted to amplitude
-    """
-    amplitude = da.absolute(ydata)
-    return amplitude
-
-
-def get_real(ydata):
-    """Extract real part from complex data
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
-
-    Outputs
-    -------
-    real: xarray DataArray
-           Real part of the y-axis data
-    """
-    real = ydata.real
-    return real
-
-
-def get_imaginary(ydata):
-    """Extract imaginary part from complex data
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
-
-    Outputs
-    -------
-    imag: xarray DataArray
-           Imaginary part of the y-axis data
-    """
-    imag = ydata.imag
-    return imag
-
-
-def process_data(ydata, yaxis):
-    """Abstraction for processing y-data passes it to the processing function.
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-data to process
-    yaxis: str
-           Selected yaxis
-
-    Outputs
-    -------
-    y: xarray DataArray
-       Processed y-data
-    """
-    if yaxis == 'amplitude':
-        y = get_amplitude(ydata)
-    elif yaxis == 'imaginary':
-        y = get_imaginary(ydata)
-    elif yaxis == 'phase':
-        y = get_phase(ydata)
-    elif yaxis == 'real':
-        y = get_real(ydata)
-    return y
-
-
-def blackbox(xds_table_obj, ms_name, xaxis, yaxis, corr, datacol='DATA', showFlagged=False, ititle=None, color='blue', iterate=None):
-    """Takes in raw input and gives out a holomap.
-    Inputs
-    ------
-    xds_table_obj: xarray Dataset
-                   MS as xarray dataset from xarrayms
-    ms_name: str
-             Measurement set name
-    xaxis: str
-           Selected x-axis
-    yaxis: str
-           Selected y-axis
-    corr: int
-          Correlation index to select
-    datacol: str
-             Column from which data is pulled. Default is 'DATA'
-    showFlagged: bool
-                 Switch flags on or off.
-    ititle: str
-            Title to use incase of an iteration
-    color: str / colormap
-           Color to use for the plot. May be a color in the form of a string or a colormap.
-    iterate: str
-             Paramater over which to iterate
-
-    Outputs
-    -------
-    fig:  
-         A plotable metacontainer**
-    """
-
-    x_data, xlabel = get_xaxis_data(xds_table_obj, ms_name, xaxis)
-    y_data, ylabel = get_yaxis_data(xds_table_obj, ms_name, yaxis,
-                                    datacol=datacol)
-    y_prepd = prep_yaxis_data(xds_table_obj, ms_name, y_data,
-                              yaxis=yaxis, corr=corr,
-                              flag=showFlagged, iterate=iterate)
-    if xaxis == 'channel' or xaxis == 'frequency':
-        y_prepd = y_prepd.transpose()
-        y_prepd = y_prepd.transpose()
-
-    if xaxis == 'uvwave':
-        freqs = get_frequencies(ms_name).compute()
-        x_prepd = prep_xaxis_data(x_data, xaxis, freq=freqs)
-    elif xaxis == 'real':
-        x_prepd = prep_yaxis_data(xds_table_obj, ms_name, x_data,
-                                  yaxis=xaxis, corr=corr,
-                                  flag=showFlagged)
-    else:
-        x_prepd = prep_xaxis_data(x_data, xaxis)
-
-    fig = hv_plotter(x_prepd, y_prepd, xaxis, xlab=xlabel,
-                     yaxis=yaxis, ylab=ylabel, ititle=ititle,
-                     color=color, iterate=iterate,
-                     xds_table_obj=xds_table_obj, ms_name=ms_name)
-    return fig
-
-
-def mpl_plotter(ax1, x, y1, y2, xaxis, xlab='', yaxis='amplitude',
-                ylab='', ititle=None, color='blue'):
-    x, y = compute(x, y)
-    ax1.plot(x, y1, marker='o', markersize=0.5, linewidth=0, color=color)
-
-    ax1.set_xlabel(xlab)
-    ax1.set_ylabel(y1lab)
-
-    if ititle is not None:
-        ax1.set_title("{}: {} vs {}".format(ititle, y1lab, xlab))
-        plt.savefig(fname="{}_{}_{}".format(ititle, ptype, xaxis))
-    else:
-        ax1.set_title("{} vs {}".format(y1lab, xlab))
-        plt.savefig(fname="{}_{}".format(ptype, xaxis))
-    plt.close('all')
-
-    return None
-    # return ax1
 
 
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
@@ -841,6 +577,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     w = 900
     h = 700
 
+    set_trace()
     ys = {'amplitude': [('Amplitude', 'Amplitude')],
           'phase': [('Phase', 'Phase (deg)')],
           'real': [('Real', 'Real')],
@@ -854,7 +591,8 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
           'uvwave': [('Uvwave', 'UVDistance (lambda)')],
           'frequency': [('Frequency', 'Frequency GHz')],
           'channel': [('Channel', 'Channel')],
-          'real': [('Real', 'Real')]
+          'real': [('Real', 'Real')],
+          'phase': [('Phase', 'Phase (deg)')]
           }
 
     # changing the Name of the dataArray to the name provided as xaxis
@@ -890,7 +628,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         res_ds = xa.merge([x, y])
         res_df = res_ds.to_dask_dataframe()
         res_hds = hv.Dataset(res_df, kdims, vdims)
-        #res_hds = hv.NdOverlay(res_hds)
+        # res_hds = hv.NdOverlay(res_hds)
         ax = hd.datashade(res_hds, dynamic=False,
                           cmap=color).opts(title=title,
                                            width=w,
@@ -945,7 +683,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
 
     return ax
 
-
+'''
 def stats_display(table_obj, gtype, ptype, corr, field):
     """Function to display some statistics on the plots. These statistics are derived from a specific correlation and a specified field of the data.
     Currently, only the medians of these plots are displayed.
@@ -971,7 +709,7 @@ def stats_display(table_obj, gtype, ptype, corr, field):
     subtable = table_obj.query(query="FIELD_ID=={}".format(field))
     ydata, y1label, y2label = get_yaxis_data(subtable, gtype, ptype)
 
-    flags = get_flags(subtable)[:, :, corr]
+    flags = vu.get_flags(subtable)[:, :, corr]
     ydata = ydata[:, :, corr]
     m_ydata = np.ma.masked_array(data=ydata, mask=flags)
 
@@ -996,44 +734,14 @@ def stats_display(table_obj, gtype, ptype, corr, field):
 
     return pre
 
-
-def resolve_ranges(inp):
-    """Parse string range to numpy range.
-    Returns a single integer value for the case whereby the input is of the format e.g "7:" returns 7, otherwise, an array will be returned
-    e.g
-    Inputs
-    ------
-    inp: str
-         String to be resolved into numeric range
-
-    Outputs:
-    res: numpy.ndarray
-         Numpy array containing a range of values or a single value
-    """
-    delimiters = ['~', ':', ',']
-    if '~' in inp:
-        outp = [int(x) for x in inp.split('~')]
-        res = np.arange(outp[0], outp[-1] + 1)
-    elif ':' in inp:
-        split = inp.split(':')
-        if split[-1] != '':
-            outp = [int(x) for x in split]
-            res = np.arange(outp[0], outp[-1])
-        else:
-            res = int(split[0])
-    elif ',' in inp:
-        outp = [int(x) for x in inp.split(',')]
-        res = np.array(outp)
-    else:
-        res = np.array(int(inp))
-    return res
+'''
 
 
 def get_argparser():
     """Get argument parser"""
 
     x_choices = ['antenna1', 'antenna2',
-                 'channel', 'frequency',
+                 'channel', 'frequency', 'phase',
                  'real', 'scan', 'time',
                  'uvdistance', 'uvwave']
 
@@ -1044,27 +752,26 @@ def get_argparser():
     # TODO: make this arg parser inherit from ragavi the common options
     parser = ArgumentParser(usage='prog [options] <value>')
 
-    parser.add_argument('-c', '--corr', dest='corr', type=int, metavar='',
-                        help='Correlation index to plot (usually just 0 or 1,\
-                              default = 0)',
+    parser.add_argument('-c', '--corr', dest='corr', type=str, metavar='',
+                        help="""Correlation index or subset to plot Can be specified using normal python slicing syntax i.e 0:5 for 0<=corr<5 or ::2 for every 2nd corr or 0 for corr 0 etc. Default is all""",
                         default=0)
+    parser.add_argument('--chan', dest='chan', type=str, metavar='',
+                        help="""Channels to select. Can be specified using syntax i.e 0:5  (or 0~4) for 0<=channel<5 or 20 for channel 20 or 10~20 (10<=channel<21) (same as 10:21) ::10 for every 10th channel etc. Default is all""",
+                        default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar='',
-                        help=' Colour or matplotlib colour map to use \
-                                (default=coolwarm)',
+                        help="""Colour or matplotlib colour map to use(default=coolwarm )""",
                         default='coolwarm')
-    parser.add_argument('--datacolumn', dest='datacolumn', type=str,
+    parser.add_argument('--data_column', dest='data_column', type=str,
                         metavar='',
                         help='Column from MS to use for data', default='DATA')
     parser.add_argument('--ddid', dest='ddid', type=str,
                         metavar='',
-                        help='DATA_DESC_ID(s) to select. (default is all) Can\
-                              be specified as e.g. "5", "5,6,7", "5~7"\
-                              (inclusive range), "5:8" (exclusive range),"5:"\
-                              (from 5 to last)',
+                        help="""DATA_DESC_ID(s) to select. (default is all) Can be specified as e.g. "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range), 5:(from 5 to last)""",
                         default=None)
-    parser.add_argument('-f', '--field', dest='fields', nargs='+', type=str,
+    parser.add_argument('-f', '--field', dest='fields', type=str,
                         metavar='',
-                        help='Field ID(s) / NAME(s) to plot', default=None)
+                        help='Field ID(s) / NAME(s) to plot (Default all)',
+                        default=None)
     parser.add_argument('--flag', dest='flag', action='store_true',
                         help='Plot only unflagged data',
                         default=True)
@@ -1075,15 +782,16 @@ def get_argparser():
                         help='Output HTMLfile name', default='')
     parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
                         choices=iter_choices,
-                        help='Select which variable to iterate over \
-                              (defaults to none)',
+                        help="""Select which variable to iterate over (defaults to none)""",
                         default=None)
-    parser.add_argument('--scan_no', dest='scan_no', type=str, metavar='',
+    parser.add_argument('--scan', dest='scan', type=str, metavar='',
                         help='Scan Number to select. (default is all)',
                         default=None)
     parser.add_argument('-t', '--table', dest='mytabs',
                         nargs='*', type=str, metavar='',
                         help='Table(s) to plot (default = None)', default=[])
+    parser.add_argument('--taql', dest='where', type=str, metavar='',
+                        help='TAQL where', default=None)
     parser.add_argument('--xaxis', dest='xaxis', type=str, metavar='',
                         choices=x_choices, help='x-axis to plot',
                         default='time')
@@ -1126,6 +834,59 @@ def get_argparser():
     return parser
 
 
+def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None):
+    """
+        Inputs
+        ------
+        ms_name: str
+                 name of your MS or path including its name
+        data_col: str
+                  data column to be used
+        ddid: int
+              DATA_DESC_ID or spectral window to choose
+        fid: int
+             field id to select
+        scan: int
+              SCAN_NUMBER to select
+        where: str
+                TAQL where clause to be used with the MS.
+        Outputs
+        -------
+        tab_objs: list
+                  A list containing the specified table objects in xarray
+    """
+
+    ms_schema = MS_SCHEMA.copy()
+
+    # defining part of the gain table schema
+    if data_col != 'DATA':
+        ms_schema[data_col] = ColumnSchema(dims=('chan', 'corr'))
+
+    # always ensure that where stores something
+    if where == None:
+        where = []
+    else:
+        where = [where]
+
+    if ddid is not None:
+        where.append("DATA_DESC_ID IN {}".format(ddid))
+    if fid is not None:
+        where.append("FIELD_ID IN {}".format(fid))
+    if scan is not None:
+        where.append("SCAN_NUMBER IN {}".format(scan))
+
+    # combine the strings to form the where clause
+    where = " && ".join(where)
+    try:
+        tab_objs = xm.xds_from_table(ms_name, taql_where=where,
+                                     table_schema=ms_schema, group_cols=None)
+        return tab_objs
+    except:
+        logger.exception(
+            "Invalid DATA_DESC_ID, FIELD_ID, SCAN_NUMBER or TAQL clause")
+        sys.exit(-1)
+
+
 def main(**kwargs):
 
     if len(kwargs) == 0:
@@ -1134,28 +895,23 @@ def main(**kwargs):
         parser = get_argparser()
         options = parser.parse_args()
 
-        corr = int(options.corr)
-        datacolumn = options.datacolumn
+        chan = options.chan
+        corr = options.corr
+        data_column = options.data_column
         ddid = options.ddid
-        field_ids = options.fields
+        fields = options.fields
         flag = options.flag
         iterate = options.iterate
         html_name = options.html_name
-        #image_name = options.image_name
+        # image_name = options.image_name
         mycmap = options.mycmap
         mytabs = options.mytabs
-        scan_no = options.scan_no
-        #plotants = options.plotants
-        #t0 = options.t0
-        #t1 = options.t1
-        #yu0 = options.yu0
-        #yu1 = options.yu1
-        #yl0 = options.yl0
-        #yl1 = options.yl1
+        scan = options.scan
+        where = options.where
         xaxis = options.xaxis
         yaxis = options.yaxis
-        #timebin = options.timebin
-        #chanbin = options.chanbin
+        # timebin = options.timebin
+        # chanbin = options.chanbin
 
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
@@ -1163,43 +919,28 @@ def main(**kwargs):
         logger.error('ragavi exited: No Measurement set specified.')
         sys.exit(-1)
 
-    if len(field_ids) == 0:
-        logger.error('ragavi exited: No field id specified.')
-        sys.exit(-1)
-
-    for mytab, field in zip(mytabs, field_ids):
+    for mytab in mytabs:
         # for each pair of table and field
 
-        field_names = get_fields(mytab).data.compute()
+        if fields is not None:
+            if '~' in fields or ':' in fields or fields.isdigit():
+                fields = vu.resolve_ranges(fields)
+            else:
+                fields = vu.name_2id(mytab, fields)
+                fields = vu.resolve_ranges(fields)
 
-        # get id: field_name pairs
-        field_ids = dict(enumerate(field_names))
+        if scan != None:
+            scan = vu.resolve_ranges(scan)
 
-        # convert all field names to their field ids
-        if field.isdigit():
-            field = int(field)
-        else:
-            field = name_2id(field, field_ids)
-
-        groupings = ['FIELD_ID', 'DATA_DESC_ID']
-
-        if scan_no != None:
-            groupings.append('SCAN_NUMBER')
-            scan_no = resolve_ranges(scan_no)
         if ddid != None:
-            ddid = resolve_ranges(ddid)
+            ddid = vu.resolve_ranges(ddid)
 
-        if datacolumn == 'DATA':
-            # iterate over spw and field ids by default
-            # by default data is grouped in field ids and data description
-            partitions = list(xm.xds_from_ms(mytab, group_cols=groupings,
-                                             ack=False))
-        else:
-            ms_schema = MS_SCHEMA.copy()
-            ms_schema[datacolumn] = ColumnSchema(dims=('chan', 'corr'))
-            partitions = list(xm.xds_from_table(mytab, ack=False,
-                                                group_cols=groupings,
-                                                table_schema=ms_schema))
+        chan = vu.slice_data(chan)
+
+        corr = vu.slice_data(corr)
+
+        partitions = get_ms(mytab, data_col=data_column, ddid=ddid,
+                            fid=fields, scan=scan, where=where)
 
         mymap = cmx.get_cmap(mycmap)
         oup_a = []
@@ -1208,44 +949,26 @@ def main(**kwargs):
 
             colour = mymap
 
-            # Only plot the specified field id
-            if chunk.FIELD_ID != field:
-                continue
-
-            # if ddid or scan number has been specified
-            if ddid is not None:
-                if isinstance(ddid, int):
-                    if chunk.DATA_DESC_ID < ddid:
-                        continue
-                else:
-                    if chunk.DATA_DESC_ID not in ddid:
-                        continue
-
-            if scan_no is not None:
-                if isinstance(scan_no, int):
-                    if chunk.SCAN_NUMBER < scan_no:
-                        continue
-                else:
-                    if chunk.SCAN_NUMBER not in scan_no:
-                        continue
-
             # black box returns an plottable element / composite element
             if iterate != None:
                 title = "TEST"
                 colour = cycle(['red', 'blue', 'green', 'purple'])
-                f = blackbox(chunk, mytab, xaxis, yaxis, corr,
-                             showFlagged=flag, ititle=title,
-                             color=colour, iterate=iterate,
-                             datacol=datacolumn)
+
+                f = DataCoreProcessor(chunk, mytab, xaxis, yaxis, corr=corr,
+                                      chan=chan, ddid=ddid, flag=flag,
+                                      iterate=iterate, datacol=data_column)
+
             else:
                 ititle = None
-                f = blackbox(chunk, mytab, xaxis, yaxis, corr,
-                             showFlagged=flag, ititle=ititle,
-                             color=colour, iterate=iterate,
-                             datacol=datacolumn)
+                f = DataCoreProcessor(chunk, mytab, xaxis, yaxis, chan=chan,
+                                      corr=corr, flag=flag, iterate=iterate,
+                                      datacol=data_column)
 
+            ready = f.act()
+            fig = hv_plotter(ready.x, ready.y, xaxis=xaxis, xlab=ready.xlabel, yaxis=yaxis, ylab=ready.ylabel,
+                             ititle=ititle, color=colour, iterate=iterate, xds_table_obj=chunk, ms_name=mytab)
             # store resulting dynamicmaps
-            oup_a.append(f)
+            oup_a.append(fig)
 
         try:
             l = hv.Overlay(oup_a).collate().opts(width=900, height=700)
