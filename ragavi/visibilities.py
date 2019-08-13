@@ -375,12 +375,11 @@ class DataCoreProcessor:
         Data = namedtuple('Data', 'x xlabel')
         x_data, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, xaxis,
                                              datacol=datacol)
-
         if xaxis == 'uvwave':
-            # compute uvwave using the available frequencies
+            # compute uvwave using the available selected frequencies
             freqs = vu.get_frequencies(ms_name, spwid=ddid,
                                        chan=chan).compute()
-            x = prep_xaxis_data(xdata, xaxis, freq=freqs, chan=chan)
+            x = self.prep_xaxis_data(x_data, xaxis=xaxis, freq=freqs)
 
         # if we have x-axes corresponding to ydata
         elif xaxis == 'real' or xaxis == 'phase':
@@ -388,8 +387,7 @@ class DataCoreProcessor:
                                      yaxis=xaxis, corr=corr, chan=chan,
                                      flag=flag)
         else:
-            x = self.prep_xaxis_data(x_data, xaxis)
-
+            x = self.prep_xaxis_data(x_data, xaxis=xaxis)
         d = Data(x=x, xlabel=xlabel)
         return d
 
@@ -577,7 +575,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     w = 900
     h = 700
 
-    set_trace()
     ys = {'amplitude': [('Amplitude', 'Amplitude')],
           'phase': [('Phase', 'Phase (deg)')],
           'real': [('Real', 'Real')],
@@ -588,7 +585,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
           'antenna1': [('Antenna1', 'Ant1')],
           'antenna2': [('Antenna2', 'Ant2')],
           'uvdistance': [('Uvdistance', 'UVDistance (m)')],
-          'uvwave': [('Uvwave', 'UVDistance (lambda)')],
+          'uvwave': [('Uvwave', 'UVWave (lambda)')],
           'frequency': [('Frequency', 'Frequency GHz')],
           'channel': [('Channel', 'Channel')],
           'real': [('Real', 'Real')],
@@ -669,8 +666,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                                                               'labels': 16})
 
     if xaxis == 'time':
-
-        mint = x.min().data.compute()
+        mint = np.nanmin(x).data  # x.min().data.compute()
         mint = mint.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
         maxt = x.max().data.compute()
         maxt = maxt.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
@@ -754,7 +750,7 @@ def get_argparser():
 
     parser.add_argument('-c', '--corr', dest='corr', type=str, metavar='',
                         help="""Correlation index or subset to plot Can be specified using normal python slicing syntax i.e 0:5 for 0<=corr<5 or ::2 for every 2nd corr or 0 for corr 0 etc. Default is all""",
-                        default=0)
+                        default='0')
     parser.add_argument('--chan', dest='chan', type=str, metavar='',
                         help="""Channels to select. Can be specified using syntax i.e 0:5  (or 0~4) for 0<=channel<5 or 20 for channel 20 or 10~20 (10<=channel<21) (same as 10:21) ::10 for every 10th channel etc. Default is all""",
                         default=None)
@@ -798,38 +794,6 @@ def get_argparser():
     parser.add_argument('--yaxis', dest='yaxis', type=str, metavar='',
                         choices=y_choices, help='Y axis variable to plot',
                         default='amplitude')
-
-    """
-    parser.add_argument('-a', '--ant', dest='plotants', type=str,
-                        help='Plot only this antenna, or comma-separated list\
-                              of antennas',
-                        default=[-1])
-    parser.add_argument('-p', '--plotname', dest='image_name', type=str,
-                        help='Output image name', default='')
-
-    parser.add_argument('--t0', dest='t0', type=float,
-                        help='Minimum time to plot (default = full range)',
-                        default=-1)
-    parser.add_argument('--t1', dest='t1', type=float,
-                        help='Maximum time to plot (default = full range)',
-                        default=-1)
-    parser.add_argument('--yu0', dest='yu0', type=float,
-                        help='Minimum y-value to plot for upper panel (default=full range)',
-                        default=-1)
-    parser.add_argument('--yu1', dest='yu1', type=float,
-                        help='Maximum y-value to plot for upper panel (default=full range)',
-                        default=-1)
-    parser.add_argument('--yl0', dest='yl0', type=float,
-                        help='Minimum y-value to plot for lower panel (default=full range)',
-                        default=-1)
-    parser.add_argument('--yl1', dest='yl1', type=float,
-                        help='Maximum y-value to plot for lower panel (default=full range)',
-                        default=-1)
-    parser.add_argument('--timebin', dest='timebin', type=str,
-                        help='Number of timestamsp in each bin')
-    parser.add_argument('--chanbin', dest='chanbin', type=str,
-                        help='Number of channels in each bin')
-    """
 
     return parser
 
