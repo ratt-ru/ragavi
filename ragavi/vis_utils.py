@@ -77,8 +77,9 @@ def calc_phase(ydata, wrap=True):
     phase = xa.apply_ufunc(da.angle, ydata,
                            dask='allowed', kwargs=dict(deg=True))
     if wrap:
-        # delay dispatching of wrapped phase
-        phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
+        #phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
+        # using an alternative method to avoid warnings
+        phase = phase.reduce(np.unwrap)
     return phase
 
 
@@ -94,9 +95,9 @@ def calc_uvdist(uvw):
     uvdist: xarray DataArray
             uv distance in meters
     """
-    u = uvw.isel(**{'(u,v,w)': 0})
-    v = uvw.isel(**{'(u,v,w)': 1})
-    uvdist = xa.ufuncs.sqrt(xa.ufuncs.square(u) + xa.ufuncs.square(v))
+    u = uvw.isel(uvw=0)
+    v = uvw.isel(uvw=1)
+    uvdist = da.sqrt(da.square(u) + da.square(v))
     return uvdist
 
 
@@ -376,6 +377,7 @@ def slice_data(inp):
         sl = slice(start, stop, step)
     else:
         # assuming string is a comma separated list
+        inp = inp.replace(' ', '')
         splits = [int(x) for x in inp.split(',')]
         sl = np.array(splits)
 
