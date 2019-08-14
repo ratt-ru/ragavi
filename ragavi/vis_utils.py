@@ -401,20 +401,28 @@ def time_convert(xdata):
 
     """
 
+    # difference between MJD and unix time i.e. munix = MJD - unix_time
+    # so unix_time = MJD - munix
+    # munix = 3506716800.0
+
     # get first time instance
     init_time = xdata[0].data.compute()
 
     # get number of seconds from initial time
-    time = xdata - init_time
+    # not using int_time coz its a single element rather than array
+    # using a single element throws warnings
+    time_diff = xdata - xdata[0]
 
     # convert the initial time to unix time in seconds
     init_time = qa.quantity(init_time, 's').to_unix_time()
 
     # Add the initial unix time in seconds to get actual time progrssion
-    newtime = time + init_time
+    unix_time = time_diff + init_time
 
-    newtime = da.array(newtime, dtype='datetime64[s]')
-    return newtime
+    #unix_time = da.array(unix_time, dtype='datetime64[s]')
+    unix_time = unix_time.astype('datetime64[s]')
+
+    return unix_time
 
 
 ###########################################################
