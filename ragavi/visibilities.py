@@ -666,9 +666,9 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                                                               'labels': 16})
 
     if xaxis == 'time':
-        mint = np.nanmin(x).data  # x.min().data.compute()
+        mint = np.nanmin(x)
         mint = mint.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
-        maxt = x.max().data.compute()
+        maxt = np.nanmax(x)
         maxt = maxt.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
 
         xlab = "Time [{} to {}]".format(mint, maxt)
