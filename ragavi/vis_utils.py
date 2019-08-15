@@ -287,7 +287,7 @@ def name_2id(tab_name, field_name):
     field_id: int
               Integer field id
     """
-    field_names = vu.get_fields(tab_name).data.compute()
+    field_names = get_fields(tab_name).data.compute()
 
     # make the sup field name uppercase
     field_name = field_name.upper()

@@ -1,46 +1,42 @@
 from __future__ import division
 
-import sys
+import logging
 import glob
 import re
-import logging
+import sys
 import warnings
+
+import dask.array as da
+import datashader as ds
+import datashader.transfer_functions as tf
 
 import matplotlib.colors as colors
 import matplotlib.cm as cmx
 import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
+import numpy as np
+import pyrap.quanta as qa
 import xarrayms as xm
 import xarray as xa
-import dask.array as da
-import numpy as np
-import holoviews as hv
-import holoviews.operation.datashader as hd
-import datashader as ds
-import pyrap.quanta as qa
-import datashader.transfer_functions as tf
 
 
-from holoviews import opts, dim
-from africanus.averaging import time_and_channel as ntc
-from collections import namedtuple
-from dask import compute, delayed
 from argparse import ArgumentParser
+from collections import namedtuple
 from datetime import datetime
+from dask import compute, delayed
+from datashader.bokeh_ext import InteractiveImage
 from itertools import cycle
 from xarrayms.known_table_schemas import MS_SCHEMA, ColumnSchema
-from datashader.bokeh_ext import InteractiveImage
 
 
 from bokeh.plotting import figure
-from bokeh.models.widgets import Div
-from bokeh.layouts import row, column, gridplot, widgetbox
-from bokeh.io import (output_file, show, output_notebook, export_svgs,
-                      export_png, save)
-from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
-                          BasicTicker, Legend, Toggle, CustomJS, Title,
-                          CheckboxGroup, Select, Text)
-from bokeh.models import DatetimeTickFormatter, DatetimeAxis
+from bokeh.layouts import column, gridplot, row, widgetbox
+from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
+                      show, save)
+from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
+                          CustomJS, Div,
+                          HoverTool, LinearAxis, Legend, Range1d,
+                          Select, Text, Toggle, Title)
 
 import vis_utils as vu
 from ipdb import set_trace
@@ -387,62 +383,6 @@ def save_png_image(img_name, disp_layout):
     export_png(img_name, disp_layout)
 
 
-def errorbar(fig, x, y, xerr=None, yerr=None, color='red', point_kwargs={}, error_kwargs={}):
-    """Function to plot the error bars for both x and y.
-       Takes in 3 compulsory parameters fig, x and y
-
-    Inputs
-    ------
-    fig: the figure object
-    x: numpy.ndarray
-        x_axis value
-    y: numpy.ndarray
-        y_axis value
-    xerr: numpy.ndarray
-        Errors for x axis, must be an array
-    yerr: numpy.ndarray
-        Errors for y axis, must be an array
-    color: str
-        Color for the error bars
-
-
-    Outputs
-    -------
-    h: fig.multi_line
-        Returns a multiline object for external legend rendering
-
-    """
-    # Setting default return value
-    h = None
-
-    if xerr is not None:
-
-        x_err_x = []
-        x_err_y = []
-
-        for px, py, err in zip(x, y, xerr):
-            x_err_x.append((px - err, px + err))
-            x_err_y.append((py, py))
-
-        h = fig.multi_line(x_err_x, x_err_y, color=color, line_width=3,
-                           level='underlay', visible=False, **error_kwargs)
-
-    if yerr is not None:
-        y_err_x = []
-        y_err_y = []
-
-        for px, py, err in zip(x, y, yerr):
-            y_err_x.append((px, px))
-            y_err_y.append((py - err, py + err))
-
-        h = fig.multi_line(y_err_x, y_err_y, color=color, line_width=3,
-                           level='underlay', visible=False, **error_kwargs)
-
-    fig.legend.click_policy = 'hide'
-
-    return h
-
-
 def add_axis(fig, axis_range, ax_label):
     """Add an extra axis to the current figure
 
@@ -518,11 +458,11 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     h = 700
 
     # iteration key word: data column name
-    iters = {'scan': 'SCAN_NUMBER',
-             'spw': 'DATA_DESC_ID',
-             'field': 'FIELD_ID',
-             'chan': 'chan',
+    iters = {'chan': 'chan',
              'corr': 'corr',
+             'field': 'FIELD_ID',
+             'scan': 'SCAN_NUMBER',
+             'spw': 'DATA_DESC_ID',
              None: None}
 
     def image_callback(xr, yr, w, h, x=None, y=None, cat=None, col=None):
@@ -621,47 +561,50 @@ def get_argparser():
 
     y_choices = ['amplitude', 'imaginary', 'phase', 'real']
 
-    iter_choices = ['scan', 'corr', 'spw']
+    iter_choices = ['chan', 'corr', 'field', 'scan', 'spw']
 
     # TODO: make this arg parser inherit from ragavi the common options
     parser = ArgumentParser(usage='prog [options] <value>')
 
-    parser.add_argument('-c', '--corr', dest='corr', type=str, metavar='',
-                        help="""Correlation index or subset to plot Can be specified using normal python slicing syntax i.e 0:5 for 0<=corr<5 or ::2 for every 2nd corr or 0 for corr 0 etc. Default is all""",
-                        default='0')
+    parser.add_argument('--corr', dest='corr', type=str, metavar='',
+                        help="""Correlation index or subset to plot Can be specified using normal python slicing syntax i.e "0:5" for 0<=corr<5 or "::2" for every 2nd corr or "0" for corr 0  or "0,1,3". Default is all.""",
+                        default='0:')
     parser.add_argument('--chan', dest='chan', type=str, metavar='',
-                        help="""Channels to select. Can be specified using syntax i.e 0:5  (or 0~4) for 0<=channel<5 or 20 for channel 20 or 10~20 (10<=channel<21) (same as 10:21) ::10 for every 10th channel etc. Default is all""",
+                        help="""Channels to select. Can be specified using syntax i.e "0:5" (exclusive range) or "20" for channel 20 or "10~20" (inclusive range) (same as 10:21) "::10" for every 10th channel or "0,1,3" etc. Default is all.""",
                         default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar='',
-                        help="""Colour or matplotlib colour map to use(default=coolwarm )""",
+                        help="""Colour or matplotlib colour map to use. Default is coolwarm.""",
                         default='coolwarm')
     parser.add_argument('--data_column', dest='data_column', type=str,
                         metavar='',
-                        help='Column from MS to use for data', default='DATA')
+                        help="""Column from MS to use for data. Default is DATA.""", default='DATA')
     parser.add_argument('--ddid', dest='ddid', type=str,
                         metavar='',
-                        help="""DATA_DESC_ID(s) to select. (default is all) Can be specified as e.g. "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range), 5:(from 5 to last)""",
+                        help="""DATA_DESC_ID(s) to select. Can be specified as e.g. "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range), 5:(from 5 to last). Default is all.""",
                         default=None)
-    parser.add_argument('-f', '--field', dest='fields', type=str,
+    parser.add_argument('--field', dest='fields', type=str,
                         metavar='',
-                        help='Field ID(s) / NAME(s) to plot (Default all)',
+                        help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Default is all""",
                         default=None)
     parser.add_argument('--flag', dest='flag', action='store_true',
                         help='Plot only unflagged data',
                         default=True)
-    parser.add_argument('--no-flag', dest='flag', action='store_false',
-                        help='Plot both flagged and unflagged data',
-                        default=True)
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar='',
                         help='Output HTMLfile name', default=None)
+    parser.add_argument('--image_name', dest='image_name', type=str,
+                        metavar='',
+                        help='Output png name', default=None)
     parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
                         choices=iter_choices,
                         help="""Select which variable to iterate over (defaults to none)""",
                         default=None)
+    parser.add_argument('--no-flag', dest='flag', action='store_false',
+                        help='Plot both flagged and unflagged data',
+                        default=True)
     parser.add_argument('--scan', dest='scan', type=str, metavar='',
                         help='Scan Number to select. (default is all)',
                         default=None)
-    parser.add_argument('-t', '--table', dest='mytabs',
+    parser.add_argument('--table', dest='mytabs',
                         nargs='*', type=str, metavar='',
                         help='Table(s) to plot (default = None)', default=[])
     parser.add_argument('--taql', dest='where', type=str, metavar='',
@@ -745,7 +688,7 @@ def main(**kwargs):
         flag = options.flag
         iterate = options.iterate
         html_name = options.html_name
-        # image_name = options.image_name
+        image_name = options.image_name
         mycmap = options.mycmap
         mytabs = options.mytabs
         scan = options.scan
@@ -766,6 +709,13 @@ def main(**kwargs):
 
         if fields is not None:
             if '~' in fields or ':' in fields or fields.isdigit():
+                fields = vu.resolve_ranges(fields)
+            elif ',' in fields:
+                # check if all are digits in fields, if not convert field
+                # name to field id and join all the resulting field ids with a
+                # comma
+                fields = ",".join(
+                    [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
                 fields = vu.resolve_ranges(fields)
             else:
                 fields = vu.name_2id(mytab, fields)
@@ -801,12 +751,16 @@ def main(**kwargs):
                              iterate=iterate, xds_table_obj=chunk,
                              ms_name=mytab)
 
-        if html_name != None:
+        if image_name:
+            save_png_image(image_name, fig)
+
+        if html_name:
             fname = html_name
         else:
-            fname = "{}_{}_{}.html".format(mytab.split('/')[-1], yaxis, xaxis)
-        output_file(fname, title=fname)
-        save(fig)
+            fname = "{}_{}_{}.html".format(
+                mytab.split('/')[-1], yaxis, xaxis)
+            output_file(fname, title=fname)
+            save(fig)
 
 # for demo
 if __name__ == '__main__':
