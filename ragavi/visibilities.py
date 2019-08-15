@@ -374,13 +374,13 @@ class DataCoreProcessor:
         return d
 
 
-def save_png_image(img_name, disp_layout):
+def save_png_image(name, disp_layout):
     """To save plots as png
 
     Note: One image will emerge
 
     """
-    export_png(img_name, disp_layout)
+    export_png(disp_layout, filename=name)
 
 
 def add_axis(fig, axis_range, ax_label):
@@ -453,9 +453,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                  Path to measurement set
 
     """
-    hv.extension('bokeh', logo=False)
-    w = 900
-    h = 700
 
     # iteration key word: data column name
     iters = {'chan': 'chan',
@@ -495,8 +492,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                                         bds[-1].strftime("%Y-%m-%d %H:%M:%S"))
         # convert to milliseconds from epoch for bokeh
         x = x.astype('float64') * 1000
-        x_axis_type = 'datetime'
-
+        x_axis_type = "datetime"
     else:
         x_axis_type = 'linear'
 
@@ -530,6 +526,10 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     im = InteractiveImage(fig, image_callback, x=x_cap,
                           y=y_cap, cat=iterate,
                           col=color)
+
+    h_tool = HoverTool(tooltips=[(x_cap, '$x'),
+                                 (y_cap, '$y')])
+    fig.add_tools(h_tool)
 
     fig.xaxis.axis_label = txaxis if xaxis == 'time' else xlab
 
@@ -593,7 +593,7 @@ def get_argparser():
                         help='Output HTMLfile name', default=None)
     parser.add_argument('--image_name', dest='image_name', type=str,
                         metavar='',
-                        help='Output png name', default=None)
+                        help="""Output png name. This requires works with phantomJS and selenium installed packages installed.""", default=None)
     parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
                         choices=iter_choices,
                         help="""Select which variable to iterate over (defaults to none)""",
@@ -743,16 +743,25 @@ def main(**kwargs):
             if iterate != None:
                 mymap = cycle(['red', 'blue', 'green', 'purple'])
 
+            logger.info("Starting data processing.")
+
             f = DataCoreProcessor(chunk, mytab, xaxis, yaxis, chan=chan,
                                   corr=corr, flag=flag, ddid=ddid,
                                   datacol=data_column)
             ready = f.act()
+
+            logger.info("Starting plotting function.")
+
             fig = hv_plotter(ready.x, ready.y, xaxis=xaxis, xlab=ready.xlabel,             yaxis=yaxis, ylab=ready.ylabel, color=mymap,
                              iterate=iterate, xds_table_obj=chunk,
                              ms_name=mytab)
 
+            logger.info("Plotting complete.")
+
         if image_name:
+            image_name += '.png'
             save_png_image(image_name, fig)
+            logger.info("Saved PNG image under name: {}".format(image_name))
 
         if html_name:
             fname = html_name
@@ -761,6 +770,8 @@ def main(**kwargs):
                 mytab.split('/')[-1], yaxis, xaxis)
             output_file(fname, title=fname)
             save(fig)
+
+        logger.info("Rendered plot to: {}".format(fname))
 
 # for demo
 if __name__ == '__main__':
