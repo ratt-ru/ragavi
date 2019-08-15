@@ -77,9 +77,12 @@ def calc_phase(ydata, wrap=True):
     phase = xa.apply_ufunc(da.angle, ydata,
                            dask='allowed', kwargs=dict(deg=True))
     if wrap:
-        #phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
         # using an alternative method to avoid warnings
-        phase = phase.reduce(np.unwrap)
+        try:
+            phase = phase.reduce(np.unwrap)
+        except TypeError:
+            # this is for python2 compat
+            phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
     return phase
 
 
@@ -448,7 +451,10 @@ def config_logger():
     warnings.filterwarnings('default')
 
     # get the terminal size
-    cols, rows = os.get_terminal_size(0)
+    try:
+        cols, rows = os.get_terminal_size(0)
+    except:
+        cols, rows = (40, 40)
 
     # setting the format for the logging messages
     start = " (O_o) ".center(cols, "=")
