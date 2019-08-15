@@ -18,6 +18,8 @@ import holoviews as hv
 import holoviews.operation.datashader as hd
 import datashader as ds
 import pyrap.quanta as qa
+import datashader.transfer_functions as tf
+
 
 from holoviews import opts, dim
 from africanus.averaging import time_and_channel as ntc
@@ -27,6 +29,7 @@ from argparse import ArgumentParser
 from datetime import datetime
 from itertools import cycle
 from xarrayms.known_table_schemas import MS_SCHEMA, ColumnSchema
+from datashader.bokeh_ext import InteractiveImage
 
 
 from bokeh.plotting import figure
@@ -37,6 +40,7 @@ from bokeh.io import (output_file, show, output_notebook, export_svgs,
 from bokeh.models import (Range1d, HoverTool, ColumnDataSource, LinearAxis,
                           BasicTicker, Legend, Toggle, CustomJS, Title,
                           CheckboxGroup, Select, Text)
+from bokeh.models import DatetimeTickFormatter, DatetimeAxis
 
 import vis_utils as vu
 from ipdb import set_trace
@@ -50,7 +54,7 @@ class DataCoreProcessor:
 
     def __init__(self, xds_table_obj, ms_name, xaxis, yaxis,
                  chan=slice(0, None), corr=0, ddid=0, datacol='DATA',
-                 flag=True, iterate=None):
+                 flag=True):
 
         self.xds_table_obj = xds_table_obj
         self.ms_name = ms_name
@@ -61,7 +65,7 @@ class DataCoreProcessor:
         self.chan = chan
         self.datacol = datacol
         self.flag = flag
-        self.iterate = iterate
+        #self.iterate = iterate
 
     def process_data(self, ydata, yaxis, wrap=True):
         """Abstraction for processing y-data passes it to the processing function.
@@ -117,10 +121,7 @@ class DataCoreProcessor:
             x_label = 'Antenna2'
         elif xaxis == 'frequency' or xaxis == 'channel':
             xdata = vu.get_frequencies(ms_name)
-            if xaxis == 'channel':
-                x_label = 'Channel'
-            else:
-                x_label = 'Frequency GHz'
+            x_label = 'Frequency GHz'
         elif xaxis == 'phase':
             xdata = xds_table_obj[datacol]
             x_label = 'Phase'
@@ -186,7 +187,8 @@ class DataCoreProcessor:
 
         return ydata, y_label
 
-    def prep_xaxis_data(self, xdata, freq=None, xaxis='time'):
+    def prep_xaxis_data(self, xdata, chan=slice(0, None), freq=None,
+                        xaxis='time'):
         """
             Prepare the x-axis data for plotting.
 
@@ -206,10 +208,8 @@ class DataCoreProcessor:
             prepdx: xarray DataArray
                     Prepared data for the x-axis.
         """
-        if xaxis == 'channel':
-            prepdx = xdata
-        elif xaxis == 'frequency':
-            prepdx = xdata / 1e9
+        if xaxis == 'channel' or xaxis == 'frequency':
+            prepdx = xdata.sel(chan=chan) / 1e9
         elif xaxis == 'phase':
             prepdx = xdata
         elif xaxis == 'time':
@@ -223,7 +223,7 @@ class DataCoreProcessor:
         return prepdx
 
     def prep_yaxis_data(self, xds_table_obj, ms_name, ydata,
-                        chan=slice(0, None), corr=0, flag=True, iterate=None,
+                        chan=slice(0, None), corr=0, flag=True,
                         yaxis='amplitude'):
         """
             Process data for the y-axis which includes:
@@ -246,52 +246,28 @@ class DataCoreProcessor:
                   Correlation number to select
             flag: bool
                   Option on whether to flag the data or not
-            iterate: str
-                     Data to iterate over.
 
             Outputs
             -------
             y: xarray DataArray
                Processed yaxis data.
         """
-        if iterate == 'corr':
-            # group data by correlations and store it in a list
-            # groupby list returns the tuple (group_idx, group_item_DA)
-            ydata = list(ydata.groupby('corr'))
-            ydata = [x[1].sel(chan=chan) for x in ydata]
-
-            # group flags for that data as well and store in a list
-            flags = vu.get_flags(xds_table_obj).groupby('corr')
-            flags = [x[1].sel(chan=chan) for x in flags]
-        else:
-            ydata = ydata.sel(dict(corr=corr, chan=chan))
-            flags = vu.get_flags(xds_table_obj).sel(dict(corr=corr, chan=chan))
+        ydata = ydata.sel(dict(corr=corr, chan=chan))
+        flags = vu.get_flags(xds_table_obj).sel(dict(corr=corr, chan=chan))
 
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
         if flag:
-            if isinstance(ydata, list):
-                y = []
-                for d, f in zip(ydata, flags):
-                    processed = self.process_data(d, yaxis=yaxis, wrap=True)
-                    # replace with NaNs where flags is not 1
-                    y.append(processed.where(f == False))
-            else:
-                processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
-                y = processed.where(flags == False)
+            processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
+            y = processed.where(flags == False)
         else:
-            if isinstance(ydata, list):
-                y = []
-                for d in ydata:
-                    y.append(self.process_data(d, yaxis=yaxis))
-            else:
-                y = self.process_data(ydata, yaxis=yaxis)
+            y = self.process_data(ydata, yaxis=yaxis)
 
         return y
 
     def blackbox(self, xds_table_obj, ms_name, xaxis, yaxis,
                  chan=slice(0, None), corr=0, datacol='DATA', ddid=None,
-                 flag=True, iterate=None, ititle=None):
+                 flag=True):
         """
             Takes in raw input and gives out a holomap.
 
@@ -308,10 +284,6 @@ class DataCoreProcessor:
                      Column from which data is pulled. Default is 'DATA'
             flag: bool
                          Switch flags on or off.
-            ititle: str
-                    Title to use incase of an iteration
-            iterate: str
-                     Paramater over which to iterate
             ms_name: str
                      Measurement set name
             xaxis: str
@@ -345,18 +317,19 @@ class DataCoreProcessor:
                                             transpose_coords=True)
             else:
                 y_prepd = y_prepd.T
-        """
-        if xaxis == 'uvwave':
-            # compute uvwave using the available frequencies
-            freqs = vu.get_frequencies(ms_name, spwid=ddid).compute()
-            x_prepd = prep_xaxis_data(x_data, xaxis, freq=freqs)
-        elif xaxis == 'real' or xaxis == 'phase':
-            x_prepd = prep_yaxis_data(xds_table_obj, ms_name, x_data,
-                                      yaxis=xaxis, corr=corr, chan=chan,
-                                      flag=flag)
-        else:
-            x_prepd = prep_xaxis_data(x_data, xaxis)
-        """
+
+            # assign chan coordinates to both x and y
+            # these coordinates should correspond to the selected channels
+            y_prepd = y_prepd.assign_coords(chan=np.arange(chan.start,
+                                                           chan.stop,
+                                                           chan.step))
+            x_prepd = x_prepd.assign_coords(chan=np.arange(chan.start,
+                                                           chan.stop,
+                                                           chan.step))
+
+            # delete table row coordinates for channel data because of
+            # incompatibility
+            del x_prepd.coords['table_row']
 
         d = Data(x=x_prepd, xlabel=xlabel, y=y_prepd, ylabel=ylabel)
 
@@ -366,7 +339,7 @@ class DataCoreProcessor:
         return self.blackbox(self.xds_table_obj, self.ms_name, self.xaxis,
                              self.yaxis, chan=self.chan, corr=self.corr,
                              datacol=self.datacol, ddid=self.ddid,
-                             flag=self.flag, iterate=self.iterate)
+                             flag=self.flag)
 
     def x_only(self, xds_table_obj, ms_name, xaxis, flag=True, corr=0,
                chan=slice(0, None), ddid=None, datacol='DATA'):
@@ -387,7 +360,7 @@ class DataCoreProcessor:
                                      yaxis=xaxis, corr=corr, chan=chan,
                                      flag=flag)
         else:
-            x = self.prep_xaxis_data(x_data, xaxis=xaxis)
+            x = self.prep_xaxis_data(x_data, xaxis=xaxis, chan=chan)
         d = Data(x=x, xlabel=xlabel)
         return d
 
@@ -403,39 +376,6 @@ class DataCoreProcessor:
                                  chan=chan, corr=corr, flag=flag)
         d = Data(y=y, ylabel=ylabel)
         return d
-
-
-def save_svg_image(img_name, figa, figb, glax1, glax2):
-    """To save plots as svg
-
-    Note: Two images will emerge
-
-    Inputs
-    ------
-    img_name: string
-              Desired image name
-    figa: figure object
-          First figure
-    figb: figure object
-          Second figure
-    glax1: list
-           Contains glyph metadata saved during execution
-    glax2: list
-           Contains glyph metadata saved during execution
-
-    Outputs
-    -------
-    Returns nothing
-
-    """
-    for i in range(len(glax1)):
-        glax1[i][1][0].visible = True
-        glax2[i][1][0].visible = True
-
-    figa.output_backend = "svg"
-    figb.output_backend = "svg"
-    export_svgs([figa], filename="{:s}_{:s}".format(img_name, "a.svg"))
-    export_svgs([figb], filename="{:s}_{:s}".format(img_name, "b.svg"))
 
 
 def save_png_image(img_name, disp_layout):
@@ -511,18 +451,21 @@ def add_axis(fig, axis_range, ax_label):
     fig: Bokeh figure
          The figure onto which to add extra axis
 
-    axis_range: tuple
-                Starting and ending point for the range
+    axis_range: ordered iterable
+                A range of sorted values or a tuple with 2 values containing or the order (min, max)
 
     Output
     ------
-    Nothing
+    fig
     """
     fig.extra_x_ranges = {"fxtra": Range1d(
         start=axis_range[0], end=axis_range[-1])}
     linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
-                         major_label_orientation='horizontal', ticker=BasicTicker(desired_num_ticks=12))
-    return linaxis
+                         minor_tick_line_alpha=0,
+                         major_label_orientation='horizontal',
+                         ticker=BasicTicker(desired_num_ticks=30))
+    fig.add_layout(linaxis, 'above')
+    return fig
 
 
 def get_errors(xds_table_obj, corr=None):
@@ -542,8 +485,7 @@ def get_errors(xds_table_obj, corr=None):
 
 
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
-               iterate=None, ititle=None, color='blue',
-               xds_table_obj=None, ms_name=None):
+               color='blue', xds_table_obj=None, ms_name=None, iterate=None):
     """
         Plotting with holoviews
     Input
@@ -575,162 +517,98 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     w = 900
     h = 700
 
-    ys = {'amplitude': [('Amplitude', 'Amplitude')],
-          'phase': [('Phase', 'Phase (deg)')],
-          'real': [('Real', 'Real')],
-          'imaginary': [('Imaginary', 'Imaginary')]}
+    # iteration key word: data column name
+    iters = {'scan': 'SCAN_NUMBER',
+             'spw': 'DATA_DESC_ID',
+             'field': 'FIELD_ID',
+             'chan': 'chan',
+             'corr': 'corr',
+             None: None}
 
-    xs = {'time': [('Time', 'Time')],
-          'scan': [('Scan', 'Scan')],
-          'antenna1': [('Antenna1', 'Ant1')],
-          'antenna2': [('Antenna2', 'Ant2')],
-          'uvdistance': [('Uvdistance', 'UVDistance (m)')],
-          'uvwave': [('Uvwave', 'UVWave (lambda)')],
-          'frequency': [('Frequency', 'Frequency GHz')],
-          'channel': [('Channel', 'Channel')],
-          'real': [('Real', 'Real')],
-          'phase': [('Phase', 'Phase (deg)')]
-          }
+    def image_callback(xr, yr, w, h, x=None, y=None, cat=None, col=None):
+        cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
+        if cat:
+            agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
+            img = tf.shade(agg, color_key=col)
+        else:
+            agg = cvs.points(xy_df, x, y, ds.count())
+            img = tf.shade(agg, cmap=col)
+        return img
+
+    # change xaxis name to frequency if xaxis is channel. For df purpose
+    xaxis = 'frequency' if xaxis == 'channel' else xaxis
 
     # changing the Name of the dataArray to the name provided as xaxis
-    x.name = xaxis.capitalize()
+    x_cap = xaxis.capitalize()
+    y_cap = yaxis.capitalize()
 
-    if isinstance(y, list):
-        for i in y:
-            i.name = yaxis.capitalize()
-    else:
-        y.name = yaxis.capitalize()
+    x.name = x_cap
+    y.name = y_cap
 
-    if xaxis == 'channel' or xaxis == 'frequency':
-        y = y.assign_coords(table_row=x.table_row)
-        xma = x.max().data.compute()
-        xmi = x.min().data.compute()
-
-        def twinx(plot, element):
-            # Setting the second y axis range name and range
-            start, end = (element.range(1))
-            label = element.dimensions()[1].pprint_label
-            plot.state.extra_y_ranges = {"foo": Range1d(start=xmi, end=xma)}
-            # Adding the second axis to the plot.
-            linaxis = LinearAxis(axis_label='% Channel', y_range_name='foo')
-            plot.state.add_layout(linaxis, 'above')
-
-    # setting dependent variables in the data
-    vdims = ys[yaxis]
-    kdims = xs[xaxis]
-
-    # by default, colorize over baseline
-    if iterate == None:
-        title = "{} vs {}".format(ylab, xlab)
-        res_ds = xa.merge([x, y])
-        res_df = res_ds.to_dask_dataframe()
-        res_hds = hv.Dataset(res_df, kdims, vdims)
-        # res_hds = hv.NdOverlay(res_hds)
-        ax = hd.datashade(res_hds, dynamic=False,
-                          cmap=color).opts(title=title,
-                                           width=w,
-                                           height=h,
-                                           fontsize={'title': 20,
-                                                     'labels': 16})
-
-    else:
-        title = "Iteration over {}: {} vs {}".format(iterate, ylab, xlab)
-        if iterate == 'scan':
-            scans = get_xaxis_data(xds_table_obj, ms_name, 'scan')[0]
-            kdims = kdims + xs['scan']
-            res_ds = xa.merge([x, y, scans])
-            res_df = res_ds.to_dask_dataframe()
-            res_hds = hv.Dataset(res_df, kdims, vdims).groupby('Scan')
-            res_hds = hv.NdOverlay(res_hds)
-            ax = hd.datashade(res_hds, dynamic=False, color_key=color,
-                              aggregator=ds.count_cat('Scan')
-                              ).opts(title=title, width=w,
-                                     height=h, fontsize={'title': 20,
-                                                         'labels': 16})
-        elif iterate == 'spw':
-            pass
-
-        elif iterate == 'corr':
-            outs = []
-            for item in y:
-                res_ds = xa.merge([x, item])
-                res_df = res_ds.to_dask_dataframe()
-                res_hds = hv.Dataset(res_df, kdims, vdims)
-
-                outs.append(hd.datashade(res_hds,
-                                         dynamic=False,
-                                         cmap=color.next()))
-
-            ax = hv.Overlay(outs)
-            ax.opts(title=title, width=w, height=h, fontsize={'title': 20,
-                                                              'labels': 16})
+    # set plot title name
+    title = "{} vs {}".format(y_cap, x_cap)
 
     if xaxis == 'time':
-        mint = np.nanmin(x)
-        mint = mint.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
-        maxt = np.nanmax(x)
-        maxt = maxt.astype(datetime).strftime("%Y-%m-%d %H:%M:%S'")
+        bds = np.array([np.nanmin(x), np.nanmax(x)]).astype(datetime)
+        # creating the x-xaxis label
+        txaxis = "Time {} to {}".format(bds[0].strftime("%Y-%m-%d %H:%M:%S"),
+                                        bds[-1].strftime("%Y-%m-%d %H:%M:%S"))
+        # convert to milliseconds from epoch for bokeh
+        x = x.astype('float64') * 1000
+        x_axis_type = 'datetime'
 
-        xlab = "Time [{} to {}]".format(mint, maxt)
-        timeax_opts = {'xrotation': 45,
-                       'xticks': 30,
-                       'xlabel': xlab}
-        ax.opts(**timeax_opts)
-
-    return ax
-
-'''
-def stats_display(table_obj, gtype, ptype, corr, field):
-    """Function to display some statistics on the plots. These statistics are derived from a specific correlation and a specified field of the data.
-    Currently, only the medians of these plots are displayed.
-
-    Inputs
-    ------
-    table_obj: pyrap table object
-    gtype: str
-           Type of gain table to be plotted.
-    ptype: str
-            Type of plot ap / ri
-    corr: int
-          Correlation number of the data to be displayed
-    field: int
-            Integer field id of the field being plotted. If a string name was provided, it is converted within the main function by the name2id function.
-
-    Outputs
-    -------
-    pre: Bokeh widget model object
-         Preformatted text containing the medians for both model. The object returned must then be placed within the widget box for display.
-
-    """
-    subtable = table_obj.query(query="FIELD_ID=={}".format(field))
-    ydata, y1label, y2label = get_yaxis_data(subtable, gtype, ptype)
-
-    flags = vu.get_flags(subtable)[:, :, corr]
-    ydata = ydata[:, :, corr]
-    m_ydata = np.ma.masked_array(data=ydata, mask=flags)
-
-    if ptype == 'ap':
-        y1 = np.ma.abs(m_ydata)
-        y2 = np.unwrap(np.ma.angle(m_ydata, deg=True))
-        med_y1 = np.ma.median(y1)
-        med_y2 = np.ma.median(y2)
-        text = "Median Amplitude: {}\nMedian Phase: {} deg".format(
-            med_y1, med_y2)
-        if gtype == 'K':
-            text = "Median Amplitude: {}".format(med_y1)
     else:
-        y1 = np.ma.real(m_ydata)
-        y2 = np.ma.imag(m_ydata)
+        x_axis_type = 'linear'
 
-        med_y1 = np.ma.median(y1)
-        med_y2 = np.ma.median(y2)
-        text = "Median Real: {}\nMedian Imaginary: {}".format(med_y1, med_y2)
+    x_min = np.nanmin(x)
+    x_max = np.nanmax(x)
 
-    pre = PreText(text=text)
+    y_min = np.nanmin(y) - np.nanstd(y)
+    y_max = np.nanmax(y) + np.nanstd(y)
 
-    return pre
+    if iterate:
+        title = title + " Colorise By: {}".format(iterate.capitalize())
+        if iterate == 'corr' or iterate == 'chan':
+            xy = xa.merge([x, y])
+        else:
+            iter_data = xds_table_obj[iters[iterate]]
+            xy = xa.merge([x, y, iter_data])
+        # change value of iterate to the required data column
+        iterate = iters[iterate]
+        xy_df = xy.to_dask_dataframe()
+        xy_df = xy_df.astype({iterate: 'category'})
+    else:
+        xy = xa.merge([x, y])
+        xy_df = xy.to_dask_dataframe()
 
-'''
+    fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
+                 x_range=(x_min, x_max), y_axis_label=ylab,
+                 y_range=(y_min, y_max),
+                 x_axis_type=x_axis_type, title=title,
+                 plot_width=900, plot_height=700, sizing_mode='stretch_both')
+
+    im = InteractiveImage(fig, image_callback, x=x_cap,
+                          y=y_cap, cat=iterate,
+                          col=color)
+
+    fig.xaxis.axis_label = txaxis if xaxis == 'time' else xlab
+
+    x_axis = fig.xaxis[0]
+    x_axis.major_label_orientation = 45
+    x_axis.ticker.desired_num_ticks = 30
+
+    if xaxis == 'channel' or xaxis == 'frequency':
+        fig = add_axis(fig=fig,
+                       axis_range=x.chan.values,
+                       ax_label='Channel')
+
+    fig.axis.axis_label_text_font_style = "normal"
+    fig.axis.axis_label_text_font_size = "15px"
+    fig.title.text_font = "helvetica"
+    fig.title.text_font_size = "25px"
+    fig.title.align = 'center'
+
+    return fig
 
 
 def get_argparser():
@@ -775,7 +653,7 @@ def get_argparser():
                         help='Plot both flagged and unflagged data',
                         default=True)
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar='',
-                        help='Output HTMLfile name', default='')
+                        help='Output HTMLfile name', default=None)
     parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
                         choices=iter_choices,
                         help="""Select which variable to iterate over (defaults to none)""",
@@ -911,43 +789,24 @@ def main(**kwargs):
 
         for count, chunk in enumerate(partitions):
 
-            colour = mymap
-
             # black box returns an plottable element / composite element
             if iterate != None:
-                title = "TEST"
-                colour = cycle(['red', 'blue', 'green', 'purple'])
+                mymap = cycle(['red', 'blue', 'green', 'purple'])
 
-                f = DataCoreProcessor(chunk, mytab, xaxis, yaxis, corr=corr,
-                                      chan=chan, ddid=ddid, flag=flag,
-                                      iterate=iterate, datacol=data_column)
-
-            else:
-                ititle = None
-                f = DataCoreProcessor(chunk, mytab, xaxis, yaxis, chan=chan,
-                                      corr=corr, flag=flag, iterate=iterate,
-                                      datacol=data_column)
-
+            f = DataCoreProcessor(chunk, mytab, xaxis, yaxis, chan=chan,
+                                  corr=corr, flag=flag, ddid=ddid,
+                                  datacol=data_column)
             ready = f.act()
-            fig = hv_plotter(ready.x, ready.y, xaxis=xaxis, xlab=ready.xlabel, yaxis=yaxis, ylab=ready.ylabel,
-                             ititle=ititle, color=colour, iterate=iterate, xds_table_obj=chunk, ms_name=mytab)
-            # store resulting dynamicmaps
-            oup_a.append(fig)
-
-        try:
-            l = hv.Overlay(oup_a).collate().opts(width=900, height=700)
-        except TypeError:
-            logger.error(
-                'Unable to plot; Specified FIELD_IDs or DATA_DESC_ID(s) or SCAN_NUMBER(s) not found.')
-            sys.exit(-1)
-
-        layout = hv.Layout([l])
-
-        fname = "{}_{}.html".format(yaxis, xaxis)
+            fig = hv_plotter(ready.x, ready.y, xaxis=xaxis, xlab=ready.xlabel,             yaxis=yaxis, ylab=ready.ylabel, color=mymap,
+                             iterate=iterate, xds_table_obj=chunk,
+                             ms_name=mytab)
 
         if html_name != None:
-            fname = html_name + '_' + fname
-        hv.save(layout, fname)
+            fname = html_name
+        else:
+            fname = "{}_{}_{}.html".format(mytab.split('/')[-1], yaxis, xaxis)
+        output_file(fname, title=fname)
+        save(fig)
 
 # for demo
 if __name__ == '__main__':
