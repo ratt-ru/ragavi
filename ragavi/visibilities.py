@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from __future__ import division
 
 import logging
@@ -34,8 +36,8 @@ from bokeh.layouts import column, gridplot, row, widgetbox
 from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
                       show, save)
 from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
-                          CustomJS, Div,
-                          HoverTool, LinearAxis, Legend, Range1d,
+                          CustomJS, Div, HoverTool, LinearAxis, Legend,
+                          PrintfTickFormatter, Range1d,
                           Select, Text, Toggle, Title)
 
 import vis_utils as vu
@@ -120,7 +122,7 @@ class DataCoreProcessor:
             x_label = 'Frequency GHz'
         elif xaxis == 'phase':
             xdata = xds_table_obj[datacol]
-            x_label = 'Phase'
+            x_label = 'Phase [deg]'
         elif xaxis == 'real':
             xdata = xds_table_obj[datacol]
             x_label = 'Real'
@@ -135,7 +137,7 @@ class DataCoreProcessor:
             x_label = 'UV Distance [m]'
         elif xaxis == 'uvwave':
             xdata = xds_table_obj.UVW
-            x_label = 'UV Wave [lambda]'
+            x_label = 'UV Wave [{}]'.format(u'\u03bb')
         else:
             logger.error("Invalid xaxis name")
             return
@@ -171,7 +173,7 @@ class DataCoreProcessor:
         elif yaxis == 'imaginary':
             y_label = 'Imaginary'
         elif yaxis == 'phase':
-            y_label = 'Phase[deg]'
+            y_label = 'Phase [deg]'
         elif yaxis == 'real':
             y_label = 'Real'
 
@@ -541,6 +543,8 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         fig = add_axis(fig=fig,
                        axis_range=x.chan.values,
                        ax_label='Channel')
+    if yaxis == 'phase':
+        fig.yaxis[0].formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
     fig.axis.axis_label_text_font_style = "normal"
     fig.axis.axis_label_text_font_size = "15px"
@@ -586,9 +590,6 @@ def get_argparser():
                         metavar='',
                         help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Default is all""",
                         default=None)
-    parser.add_argument('--flag', dest='flag', action='store_true',
-                        help='Plot only unflagged data',
-                        default=True)
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar='',
                         help='Output HTMLfile name', default=None)
     parser.add_argument('--image_name', dest='image_name', type=str,
@@ -718,14 +719,18 @@ def main(**kwargs):
                     [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
                 fields = vu.resolve_ranges(fields)
             else:
-                fields = vu.name_2id(mytab, fields)
+                fields = str(vu.name_2id(mytab, fields))
                 fields = vu.resolve_ranges(fields)
 
         if scan != None:
             scan = vu.resolve_ranges(scan)
 
         if ddid != None:
+            n_ddid = vu.slice_data(ddid)
             ddid = vu.resolve_ranges(ddid)
+        else:
+            # set data selection to all unless ddid is specified
+            n_ddid = slice(0, None)
 
         chan = vu.slice_data(chan)
 
@@ -746,7 +751,7 @@ def main(**kwargs):
             logger.info("Starting data processing.")
 
             f = DataCoreProcessor(chunk, mytab, xaxis, yaxis, chan=chan,
-                                  corr=corr, flag=flag, ddid=ddid,
+                                  corr=corr, flag=flag, ddid=n_ddid,
                                   datacol=data_column)
             ready = f.act()
 

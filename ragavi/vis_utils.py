@@ -174,7 +174,7 @@ def get_fields(ms_name):
     return field_names
 
 
-def get_frequencies(ms_name, spwid=0, chan=slice(0, None)):
+def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
     """Function to get channel frequencies from the SPECTRAL_WINDOW subtable.
     Inputs
     ------
@@ -193,8 +193,18 @@ def get_frequencies(ms_name, spwid=0, chan=slice(0, None)):
     subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
     spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__',
                                         ack=False))
-    spw = spw_subtab[spwid]
-    freqs = spw.CHAN_FREQ[chan]
+
+    if len(spw_subtab) == 1:
+        # select the desired spectral windows using slicer
+        spw = spw_subtab[spwid.start]
+        freqs = spw.CHAN_FREQ[chan]
+    else:
+        # if multiple SPWs,concatenate all the items in the list of SPWs to
+        # form a single dataset and then extract the channels
+        spw = xa.concat(spw_subtab, 'row')
+        spw = spw.sel(row=spwid)
+        freqs = spw.CHAN_FREQ[chan]
+
     return freqs
 
 
