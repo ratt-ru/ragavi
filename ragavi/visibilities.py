@@ -46,6 +46,12 @@ from ipdb import set_trace
 
 logger = vu.logger
 excepthook = vu.sys.excepthook
+wrapper = vu.textwrap.TextWrapper(initial_indent='',
+                                  break_long_words=True,
+                                  subsequent_indent=''.rjust(50),
+                                  width=160)
+
+vu.welcome()
 
 
 class DataCoreProcessor:
@@ -63,7 +69,7 @@ class DataCoreProcessor:
         self.chan = chan
         self.datacol = datacol
         self.flag = flag
-        #self.iterate = iterate
+        # self.iterate = iterate
 
     def process_data(self, ydata, yaxis, wrap=True):
         """Abstraction for processing y-data passes it to the processing function.
@@ -137,7 +143,10 @@ class DataCoreProcessor:
             x_label = 'UV Distance [m]'
         elif xaxis == 'uvwave':
             xdata = xds_table_obj.UVW
-            x_label = 'UV Wave [{}]'.format(u'\u03bb')
+            try:
+                x_label = 'UV Wave [{}]'.format(u'\u03bb')
+            except UnicodeEncodeError:
+                x_label = 'UV Wave [{}]'.format(u'\u03bb'.encode('utf-8'))
         else:
             logger.error("Invalid xaxis name")
             return
@@ -311,19 +320,14 @@ class DataCoreProcessor:
 
         if xaxis == 'channel' or xaxis == 'frequency':
             if y_prepd.ndim == 3:
-                y_prepd = y_prepd.transpose('chan', 'row', 'corr',
-                                            transpose_coords=True)
+                y_prepd = y_prepd.transpose('chan', 'row', 'corr')
             else:
                 y_prepd = y_prepd.T
 
             # assign chan coordinates to both x and y
             # these coordinates should correspond to the selected channels
-            y_prepd = y_prepd.assign_coords(chan=np.arange(chan.start,
-                                                           chan.stop,
-                                                           chan.step))
-            x_prepd = x_prepd.assign_coords(chan=np.arange(chan.start,
-                                                           chan.stop,
-                                                           chan.step))
+            y_prepd = y_prepd.assign_coords(chan=y_prepd.chan.values[chan])
+            x_prepd = x_prepd.assign_coords(chan=y_prepd.chan.values[chan])
 
             # delete table row coordinates for channel data because of
             # incompatibility
@@ -457,7 +461,9 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     """
 
     # iteration key word: data column name
-    iters = {'chan': 'chan',
+    iters = {'antenna1': 'ANTENNA1',
+             'antenna2': 'ANTENNA2',
+             'chan': 'chan',
              'corr': 'corr',
              'field': 'FIELD_ID',
              'scan': 'SCAN_NUMBER',
@@ -565,7 +571,8 @@ def get_argparser():
 
     y_choices = ['amplitude', 'imaginary', 'phase', 'real']
 
-    iter_choices = ['chan', 'corr', 'field', 'scan', 'spw']
+    iter_choices = ['antenna1', 'antenna2', 'chan', 'corr', 'field', 'scan',
+                    'spw']
 
     # TODO: make this arg parser inherit from ragavi the common options
     parser = ArgumentParser(usage='prog [options] <value>')
@@ -769,14 +776,19 @@ def main(**kwargs):
             logger.info("Saved PNG image under name: {}".format(image_name))
 
         if html_name:
+            if 'html' not in html_name:
+                html_name += '.html'
             fname = html_name
         else:
             fname = "{}_{}_{}.html".format(
                 mytab.split('/')[-1], yaxis, xaxis)
-            output_file(fname, title=fname)
-            save(fig)
+
+        output_file(fname, title=fname)
+        save(fig)
 
         logger.info("Rendered plot to: {}".format(fname))
+        logger.info(wrapper.fill("With arguments:\n" + str(options.__dict__)))
+        logger.info(">" * (len(fname) + 19))
 
 # for demo
 if __name__ == '__main__':

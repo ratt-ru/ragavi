@@ -1,16 +1,22 @@
+import logging
+import os
+import sys
+import textwrap
+import warnings
+
 import dask.array as da
 import numpy as np
 import pyrap.quanta as qa
 import xarray as xa
 import xarrayms as xm
 
-from datetime import datetime
 from dask import delayed, compute
+from datetime import datetime
+from pyfiglet import Figlet
 
-import os
-import logging
-import sys
-import warnings
+
+########################################################################
+####################### Computation Functions ##########################
 
 
 def calc_amplitude(ydata):
@@ -133,8 +139,8 @@ def calc_uvwave(uvw, freq):
     return uvwave
 
 
-###########################################################
-####################### Get subtables #####################
+########################################################################
+####################### Get subtables ##################################
 
 
 def get_antennas(ms_name):
@@ -245,8 +251,7 @@ def get_polarizations(ms_name):
     return cor2stokes
 
 
-###########################################################
-####################### Get subtables #####################
+# some common rows
 
 
 def get_errors(xds_table_obj, corr=0, chan=slice(0, None)):
@@ -286,6 +291,9 @@ def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
         flags = flags.sel(dict(corr=corr, chan=chan))
     return flags
 
+
+########################################################################
+####################### Some utils for use #############################
 
 def name_2id(tab_name, field_name):
     """Translate field name to field id
@@ -396,8 +404,8 @@ def slice_data(inp):
 
     return sl
 
-###########################################################
-######################## conversions ######################
+########################################################################
+######################## conversions ###################################
 
 
 def time_convert(xdata):
@@ -432,14 +440,28 @@ def time_convert(xdata):
     # Add the initial unix time in seconds to get actual time progrssion
     unix_time = time_diff + init_time
 
-    #unix_time = da.array(unix_time, dtype='datetime64[s]')
+    # unix_time = da.array(unix_time, dtype='datetime64[s]')
     unix_time = unix_time.astype('datetime64[s]')
 
     return unix_time
 
 
-###########################################################
-####################### Logger ############################
+########################################################################
+####################### Logger #########################################
+
+
+def wrap_warning_text(message, category, filename, lineno, file=None,
+                      line=None):
+    wrapper = textwrap.TextWrapper(initial_indent=''.rjust(51),
+                                   break_long_words=True,
+                                   subsequent_indent=''.rjust(49),
+                                   width=160)
+    message = wrapper.fill(str(message))
+    return "%s:%s:\n%s:\n%s" % (filename, lineno,
+                                category.__name__.rjust(64), message)
+
+
+warnings.formatwarning = wrap_warning_text
 
 
 def config_logger():
@@ -447,43 +469,49 @@ def config_logger():
         all warnings output by sys.stdout.
     """
     logfile_name = 'ragavi.log'
-    # capture only a single instance of a matching repeated warning
-    warnings.filterwarnings('default')
 
-    # get the terminal size
+    # capture only a single instance of a matching repeated warning
+    warnings.filterwarnings('module')
+
+    # capture warnings from all modules
+    logging.captureWarnings(True)
+
     try:
         cols, rows = os.get_terminal_size(0)
     except:
-        cols, rows = (40, 40)
+        # for python2
+        cols, rows = (100, 100)
+
+    # create logger named ragavi
+    logger = logging.getLogger('ragavi')
+    logger.setLevel(logging.INFO)
+
+    # warnings logger
+    w_logger = logging.getLogger('py.warnings')
+    w_logger.setLevel(logging.INFO)
+
+    # console handler
+    c_handler = logging.StreamHandler()
+    f_handler = logging.FileHandler(logfile_name)
+
+    c_handler.setLevel(logging.INFO)
+    f_handler.setLevel(logging.INFO)
 
     # setting the format for the logging messages
     start = " (O_o) ".center(cols, "=")
-    form = '{}\n%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    form = form.format(start)
-    formatter = logging.Formatter(form, datefmt='%d.%m.%Y@%H:%M:%S')
 
-    # setup for ragavi logger
-    logger = logging.getLogger('ragavi')
-    logger.setLevel(logging.DEBUG)
+    c_formatter = logging.Formatter(
+        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""", datefmt='%d.%m.%Y@%H:%M:%S')
+    f_formatter = logging.Formatter(
+        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""" , datefmt='%d.%m.%Y@%H:%M:%S')
 
-    # capture all stdout warnings
-    logging.captureWarnings(True)
-    warnings_logger = logging.getLogger('py.warnings')
-    warnings_logger.setLevel(logging.DEBUG)
+    c_handler.setFormatter(c_formatter)
+    f_handler.setFormatter(f_formatter)
 
-    # console handler
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console.setFormatter(formatter)
+    logger.addHandler(c_handler)
+    logger.addHandler(f_handler)
+    w_logger.addHandler(f_handler)
 
-    # setup for logfile handing ragavi
-    fh = logging.FileHandler(logfile_name)
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(formatter)
-
-    logger.addHandler(fh)
-    warnings_logger.addHandler(logger)
-    logging.getLogger('').addHandler(console)
     return logger
 
 
@@ -502,3 +530,15 @@ def _handle_uncaught_exceptions(extype, exval, extraceback):
 
 logger = config_logger()
 sys.excepthook = _handle_uncaught_exceptions
+
+
+########################################################################
+############################# Welcome ##################################
+def welcome():
+    """Welcome to ragavi"""
+    print('\n\n')
+    #print("_*+_" * 23)
+    #print("Welcome to ")
+    print(Figlet(font='nvscript').renderText('ragavi'))
+    #print("_*+_" * 23)
+    print('\n\n')
