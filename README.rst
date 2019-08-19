@@ -17,6 +17,7 @@ This library mainly requires
     1. Bokeh
     2. Nodejs>=8
     3. Python-casacore
+    4. Datashader
 
 **- Install build dependencies:**
 
@@ -71,13 +72,17 @@ This package is available on *PYPI* via
 Usage
 =====
 
-For ragavi help run
+Ragavi currently has two segements: 
+  1. Gain plotter
+  2. Visibility plotter
+
+For the gain plotter, the name-space :code:`ragavi` is used. To get help for this, run
 
 .. code-block:: bash
 
     $ ragavi -h
 
-To use ragavi
+To use ragavi gain plotter
 
 .. code-block:: bash
 
@@ -89,6 +94,19 @@ They must however be accompanied by their respective gain table type in the -g s
 .. code-block:: bash
 
     $ ragavi -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
+
+
+For the visibility plotter, the name-space :code:`ragavi-vis` is used. Help can be obtained by running
+
+.. code-block:: bash
+
+    $ ragavi-vis -h
+
+To run ragavi-vis, a measurement-set name, xaxis and yaxis name is required e.g.
+
+.. code-block:: bash
+
+    $ ragavi-vis --table /my/measurement/set --xaxis time --yaxis amplitude
 
 =======
 License
