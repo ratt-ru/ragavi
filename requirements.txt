@@ -1,5 +1,5 @@
 bokeh
-dask
+dask[complete]
 datashader
 future
 holoviews
