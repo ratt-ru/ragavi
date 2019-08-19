@@ -525,17 +525,18 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None):
         where = [where]
 
     if antenna != None:
-        where.append("ANTENNA1=={}".format(antenna))
+        where.append("ANTENNA1 IN {}".format(antenna))
     if fid != None:
-        where.append("FIELD_ID=={}".format(fid))
+        where.append("FIELD_ID IN {}".format(fid))
     if spwid != None:
-        where.append("SPECTRAL_WINDOW_ID=={}".format(spwid))
+        where.append("SPECTRAL_WINDOW_ID IN {}".format(spwid))
 
     where = "&&".join(where)
 
     try:
         tab_objs = xm.xds_from_table(tab_name, taql_where=where,
-                                     table_schema=tab_schema)
+                                     table_schema=tab_schema,
+                                     group_cols=None)
         return tab_objs
     except:
         logging.exception("Invalid ANTENNA id, FIELD_ID or TAQL clause")
@@ -1205,33 +1206,6 @@ def add_axis(fig, axis_range, ax_label):
     return fig
 
 
-def name_2id(tab_name, field_name):
-    """Translate field name to field id
-
-    Inputs
-    -----
-    tab_name: str
-              Table name
-    field_name: string
-         Field ID name to convert
-
-    Outputs
-    -------
-    field_id: int
-              Integer field id
-    """
-    field_names = vu.get_fields(tab_name).data.compute()
-
-    # make the sup field name uppercase
-    field_name = field_name.upper()
-
-    if field_name in field_names:
-        field_id = np.where(field_names == field_name)[0][0]
-        return int(field_id)
-    else:
-        return -1
-
-
 def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
     """Function to get the data to be displayed on the mouse tooltip on the plots.
     Inputs
@@ -1365,12 +1339,10 @@ def get_argparser():
     parser = ArgumentParser(usage='%(prog)s [options] <value>',
                             description='A RadioAstronomy Visibility and Gains Inspector')
     parser.add_argument('-a', '--ant', dest='plotants', type=str, metavar=' ',
-                        help='Plot only this antenna, or comma-separated list\
-                              of antennas',
-                        default=[-1])
+                        help="""Plot only this antenna, or comma-separated list of antennas. Default is all.""",
+                        default=None)
     parser.add_argument('-c', '--corr', dest='corr', type=int, metavar=' ',
-                        help='Correlation index to plot (usually just 0 or 1,\
-                              default = 0)',
+                        help="""Correlation index to plot Default is 0.""",
                         default=0)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
                         help='Matplotlib colour map to use for antennas\
@@ -1378,10 +1350,11 @@ def get_argparser():
                         default='coolwarm')
     parser.add_argument('-d', '--doplot', dest='doplot', type=str,
                         metavar=' ',
-                        help='Plot complex values as amp and phase (ap)'
-                        'or real and imag (ri) (default = ap)', default='ap')
-    parser.add_argument('-f', '--field', dest='fields', nargs='*', type=str,
-                        metavar=' ', help='Field ID(s) / NAME(s) to plot',
+                        help="""Plot complex values as amp and phase (ap) or real and imag (ri). Default is ap.""",
+                        default='ap')
+    parser.add_argument('--field', dest='fields', type=str,
+                        metavar='',
+                        help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Default is all""",
                         default=None)
     parser.add_argument('-g', '--gaintype', nargs='+', type=str, metavar=' ',
                         dest='gain_types', choices=['B', 'D', 'G', 'K', 'F'],
@@ -1399,26 +1372,14 @@ def get_argparser():
                         nargs='+', type=str, metavar=(' '),
                         help='Table(s) to plot (default = None)', default=[])
     parser.add_argument('--t0', dest='t0', type=float, metavar=' ',
-                        help='Minimum time to plot (default = full range)',
-                        default=-1)
+                        help='Minimum time to plot [in seconds]. Default is full range]',
+                        default=0)
     parser.add_argument('--t1', dest='t1', type=float, metavar=' ',
-                        help='Maximum time to plot (default = full range)',
-                        default=-1)
-    parser.add_argument('--where', dest='where', type=str, metavar=' ',
+                        help='Maximum time to plot [in seconds].Default is full range.',
+                        default=None)
+    parser.add_argument('--taql', dest='where', type=str, metavar=' ',
                         help='TAQL where caluse',
                         default=None)
-    parser.add_argument('--yu0', dest='yu0', type=float, metavar=' ',
-                        help='Minimum y-value to plot for upper panel (default=full range)',
-                        default=-1)
-    parser.add_argument('--yu1', dest='yu1', type=float, metavar=' ',
-                        help='Maximum y-value to plot for upper panel (default=full range)',
-                        default=-1)
-    parser.add_argument('--yl0', dest='yl0', type=float, metavar=' ',
-                        help='Minimum y-value to plot for lower panel (default=full range)',
-                        default=-1)
-    parser.add_argument('--yl1', dest='yl1', type=float, metavar=' ',
-                        help='Maximum y-value to plot for lower panel (default=full range)',
-                        default=-1)
 
     return parser
 
@@ -1482,7 +1443,7 @@ def main(**kwargs):
         corr = int(options.corr)
         ddid = options.ddid
         doplot = options.doplot
-        field_ids = options.fields
+        fields = options.fields
         gain_types = options.gain_types
         html_name = options.html_name
         image_name = options.image_name
@@ -1492,10 +1453,6 @@ def main(**kwargs):
         t0 = options.t0
         t1 = options.t1
         where = options.where
-        yu0 = options.yu0
-        yu1 = options.yu1
-        yl0 = options.yl0
-        yl1 = options.yl1
 
     else:
         NB_RENDER = True
@@ -1503,19 +1460,15 @@ def main(**kwargs):
         corr = int(kwargs.get('corr', 0))
         ddid = kwargs.get('ddid', None)
         doplot = kwargs.get('doplot', 'ap')
-        field_ids = kwargs.get('fields', None)
+        fields = kwargs.get('fields', None)
         gain_types = kwargs.get('gain_types', [])
         image_name = str(kwargs.get('image_name', ''))
         mycmap = str(kwargs.get('mycmap', 'coolwarm'))
         mytabs = kwargs.get('mytabs', [])
-        plotants = kwargs.get('plotants', [-1])
+        plotants = kwargs.get('plotants', None)
         t0 = float(kwargs.get('t0', -1))
         t1 = float(kwargs.get('t1', -1))
         where = kwargs.get('where', None)
-        yu0 = float(kwargs.get('yu0', -1))
-        yu1 = float(kwargs.get('yu1', -1))
-        yl0 = float(kwargs.get('yl0', -1))
-        yl1 = float(kwargs.get('yl1', -1))
 
     # To flag or not
     flag_data = True
@@ -1549,61 +1502,55 @@ def main(**kwargs):
 
         # re-initialise plotant list for each table
         if NB_RENDER:
-            plotants = kwargs.get('plotants', [-1])
+            plotants = kwargs.get('plotants', None)
         else:
             plotants = options.plotants
 
-        tt = get_table(mytab, spwid=ddid, where=where)[0]
+        if fields is not None:
+            if '~' in fields or ':' in fields or fields.isdigit():
+                fields = vu.resolve_ranges(fields)
+            elif ',' in fields:
+                # check if all are digits in fields, if not convert field
+                # name to field id and join all the resulting field ids with a
+                # comma
+                fields = ",".join(
+                    [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
+                fields = vu.resolve_ranges(fields)
+            else:
+                fields = str(vu.name_2id(mytab, fields))
+                fields = vu.resolve_ranges(fields)
+
+        if plotants is not None:
+            plotants = vu.resolve_ranges(plotants)
+
+        tt = get_table(mytab, spwid=ddid, where=where, fid=fields,
+                       antenna=plotants)[0]
+
+        if t1 != None or t1 != None:
+            # selection of specified times
+            time_s = tt.TIME - tt.TIME[0]
+            if t0 != None:
+                tt = tt.where((time_s >= t0), drop=True)
+                time_s = time_s.where(time_s >= t0, drop=True)
+            if t1 != None:
+                tt = tt.where((time_s <= t1), drop=True)
+                time_s = time_s.where(time_s <= t1, drop=True)
 
         antnames = vu.get_antennas(mytab).data.compute()
 
-        ants = np.unique(tt.ANTENNA1.data.compute())
+        plotants = np.unique(tt.ANTENNA1.data.compute()).astype(int)
 
-        fields = np.unique(tt.FIELD_ID.data.compute())
-
+        # unique field ids
+        ufids = np.unique(tt.FIELD_ID.data.compute()).astype(int)
         ncorrs = tt.FLAG.corr.data
 
-        # convert field ids to strings
-        valid_fids = []
-        if field_ids is None:
-            valid_fids = [str(f) for f in fields.tolist()]
-        else:
-            for f in field_ids:
-                if f.isdigit():
-                    new_f = int(f)
-                else:
-                    new_f = name_2id(mytab, f)
-
-                if new_f in fields:
-                    valid_fids.append(new_f)
-                else:
-                    logger.info('Field {} not found in {}.'.format(f, mytab))
-                    continue
-
-        freqs = (vu.get_frequencies(mytab, spwid=ddid) / GHZ).data.compute()
+        freqs = (vu.get_frequencies(
+            mytab, spwid=slice(0, None)) / GHZ).data.compute()
 
         # setting up colors for the antenna plots
-        cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
+        cNorm = colors.Normalize(vmin=0, vmax=plotants.size - 1)
         mymap = cm = cmx.get_cmap(mycmap)
         scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
-
-        if plotants[0] != -1:
-            # creating a list for the antennas to be plotted
-            plotants = plotants.split(',')
-
-            for ant in plotants:
-                if int(ant) not in ants:
-                    plotants.remove(ant)
-                    logger.info('Antenna ID {} not found.'.format(ant))
-
-            # check if plotants still has items
-            if len(plotants) == 0:
-                logger.error('Exiting: No valid antennas requested')
-                sys.exit(-1)
-            else:
-                plotants = np.array(plotants, dtype=int)
-        else:
-            plotants = ants
 
         # creating bokeh figures for plots
         # linking plots ax1 and ax2 via the x_axes because of similarities in
@@ -1629,14 +1576,12 @@ def main(**kwargs):
         sources = []
 
         # enumerating available field ids incase of large fids
-        for enum_fid, field in enumerate(valid_fids):
+        for enum_fid, field in enumerate(ufids):
 
             stats_text = stats_display(mytab, gain_type, doplot, corr,
                                        field, flag=flag_data)
             stats_ax1.append(stats_text[0])
             stats_ax2.append(stats_text[1])
-
-            newtab = get_table(mytab, fid=field)[0]
 
             # for each antenna
             for ant in plotants:
@@ -1649,7 +1594,7 @@ def main(**kwargs):
                 # creating colors for maps
                 y1col = y2col = scalarMap.to_rgba(float(ant), bytes=True)[:-1]
 
-                subtab = newtab.where(newtab.ANTENNA1 == int(ant), drop=True)
+                subtab = tt.where(tt.ANTENNA1 == int(ant), drop=True)
 
                 # depending on the status of flag_data, this may
                 # be either flagged or unflagged data
@@ -1827,13 +1772,13 @@ def main(**kwargs):
 
         try:
             field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[enum_fid]) for enum_fid, x in enumerate(fields)]
+                                                 fsyms[enum_fid]) for enum_fid, x in enumerate(ufids)]
         except UnicodeEncodeError:
             field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[enum_fid].encode('utf-8')) for enum_fid, x in enumerate(fields)]
+                                                 fsyms[enum_fid].encode('utf-8')) for enum_fid, x in enumerate(ufids)]
 
         field_selector = CheckboxGroup(labels=field_labels,
-                                       active=fields.tolist(),
+                                       active=ufids.tolist(),
                                        **w_dims)
 
         axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
@@ -1948,7 +1893,7 @@ def main(**kwargs):
                 mytab = datetime.now().strftime('%Y%m%d_%H%M%S')
             html_name = "{}_corr_{}_{}_field_{}".format(mytab, corr,
                                                         doplot,
-                                                        ''.join(valid_fids))
+                                                        "".join([str(x) for x in ufids.tolist()]))
             save_html(html_name, final_layout)
 
         logger.info("Rendered: {}.html".format(html_name))
@@ -1970,32 +1915,24 @@ def plot_table(mytabs, gain_types, fields, **kwargs):
         mytabs       : The table (list of tables) to be plotted
         gain_types   : Cal-table (list of caltypes) type to be plotted.
                       Can be either 'B'-bandpass, 'D'- D jones leakages, G'-gains, 'K'-delay or 'F'-flux (default=None)
-        fields       : Field ID / Name (list of field ids or name) to plot
-                      (default = 0)',default=0)
 
     Optional
     --------
 
-        doplot      : Plot complex values as amp and phase (ap) or real and
-                      imag (ri) (default = ap)',default='ap')
-        plotants    : Plot only this antenna, or comma-separated string of
-                      antennas',default=[-1])
         corr        : Correlation index to plot (usually just 0 or 1,
                       default = 0)',default=0)
-        t0          : Minimum time to plot (default = full range)',default=-1)
-        t1          : Maximum time to plot (default = full range)',default=-1)
-        yu0         : Minimum y-value to plot for upper panel
-                      (default = full   range)',default=-1)
-        yu1         : Maximum y-value to plot for upper panel
-                      (default = full range)',default=-1)
-        yl0         : Minimum y-value to plot for lower panel
-                      (default = full range)',default=-1)
-        yl1         : Maximum y-value to plot for lower panel
-                      (default = full range)',default=-1)
+        doplot      : Plot complex values as amp and phase (ap) or real and
+                      imag (ri) (default = ap)',default='ap')
+        fields       : Field ID / Name (list of field ids or name) to plot.
+                       Default is all
+        image_name  : Output image name. Default is of the form
+                      table_corr_doplot_fields
         mycmap      : Matplotlib colour map to use for antennas
                       (default = coolwarm)',default='coolwarm')
-        image_name  : Output image name (default = something sensible)'
-
+        plotants    : Plot only this antenna, or comma-separated string of
+                      antennas. Default is all
+        t0          : Minimum time [in seconds] to plot. Default is full range
+        t1          : Maximum time [in seconds] to plot. Default is full range
 
     Outputs
     ------
@@ -2008,14 +1945,12 @@ def plot_table(mytabs, gain_types, fields, **kwargs):
         sys.exit(-1)
     else:
         # getting the name of the gain table specified
-        if type(mytabs) is str:
+        if isinstance(mytabs, str):
             kwargs['mytabs'] = [str(mytabs)]
             kwargs['gain_types'] = [str(gain_types)]
-            kwargs['fields'] = [str(fields)]
         else:
             kwargs['mytabs'] = [x.rstrip("/") for x in mytabs]
             kwargs['gain_types'] = [str(x) for x in gain_types]
-            kwargs['fields'] = [str(x) for x in fields]
 
     main(**kwargs)
 

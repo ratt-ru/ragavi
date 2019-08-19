@@ -41,7 +41,6 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           Select, Text, Toggle, Title)
 
 from . import vis_utils as vu
-#from ipdb import set_trace
 
 
 logger = vu.logger
@@ -69,7 +68,6 @@ class DataCoreProcessor:
         self.chan = chan
         self.datacol = datacol
         self.flag = flag
-        # self.iterate = iterate
 
     def process_data(self, ydata, yaxis, wrap=True):
         """Abstraction for processing y-data passes it to the processing function.

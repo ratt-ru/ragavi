@@ -206,12 +206,15 @@ def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
     if len(spw_subtab) == 1:
         # select the desired spectral windows using slicer
         spw = spw_subtab[spwid.start]
-        freqs = spw.CHAN_FREQ[chan]
     else:
         # if multiple SPWs,concatenate all the items in the list of SPWs to
         # form a single dataset and then extract the channels
         spw = xa.concat(spw_subtab, 'row')
         spw = spw.sel(row=spwid)
+
+    if spw.CHAN_FREQ.size == 1:
+        freqs = spw.CHAN_FREQ
+    else:
         freqs = spw.CHAN_FREQ[chan]
 
     return freqs
