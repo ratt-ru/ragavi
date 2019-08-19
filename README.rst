@@ -88,8 +88,8 @@ To use ragavi gain plotter
 
     $ ragavi -t /path/to/your/table -g table_type (K / B/ F/ G/ D)
 
-Multiple tables can be plotted on the same document simply by adding them in a space separated list to the -t / --table switch. 
-They must however be accompanied by their respective gain table type in the -g switch. e.g
+Multiple tables can be plotted on the same document simply by adding them in a space separated list to the :code:`-t` / :code:`--table` switch. 
+They must however be accompanied by their respective gain table type in the :code:`-g` switch. e.g
 
 .. code-block:: bash
 
@@ -102,7 +102,7 @@ For the visibility plotter, the name-space :code:`ragavi-vis` is used. Help can 
 
     $ ragavi-vis -h
 
-To run ragavi-vis, a measurement-set name, xaxis and yaxis name is required e.g.
+To run ragavi-vis, the arguments :code:`--table`, :code:`xaxis` and :code:`yaxis` are basic requirements e.g.
 
 .. code-block:: bash
 
