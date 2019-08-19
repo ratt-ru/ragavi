@@ -40,8 +40,8 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           PrintfTickFormatter, Range1d,
                           Select, Text, Toggle, Title)
 
-import vis_utils as vu
-from ipdb import set_trace
+from . import vis_utils as vu
+#from ipdb import set_trace
 
 
 logger = vu.logger
@@ -51,7 +51,7 @@ wrapper = vu.textwrap.TextWrapper(initial_indent='',
                                   subsequent_indent=''.rjust(50),
                                   width=160)
 
-vu.welcome()
+# vu.welcome()
 
 
 class DataCoreProcessor:

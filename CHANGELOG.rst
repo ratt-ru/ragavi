@@ -1,3 +1,8 @@
+0.2.0
+-----
+- Introduced ragavi visibility plotter accessible by ragavi-vis
+
+
 0.1.0
 -----
 - Error bars now have caps
@@ -12,6 +17,7 @@
 - Plotting D-Jones tables now supported
 - Fixed bug in field_name to field_id converter
 
+
 0.0.8
 -----
 - Fixed bug due to string encoding for python2.7
@@ -20,6 +26,7 @@
 0.0.7
 -----
 - Updated version number
+
 
 0.0.6
 -----
@@ -58,7 +65,6 @@
 - Travis realease on tag
 - Now plotting Flux callibration tables
 - Extra frequency axis for bandpass plot
-
 
 
 0.0.2
