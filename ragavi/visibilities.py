@@ -575,7 +575,7 @@ def get_argparser():
                     'spw']
 
     # TODO: make this arg parser inherit from ragavi the common options
-    parser = ArgumentParser(usage='prog [options] <value>')
+    parser = ArgumentParser(usage='ragavi-vis [options] <value>')
 
     parser.add_argument('--corr', dest='corr', type=str, metavar='',
                         help="""Correlation index or subset to plot Can be specified using normal python slicing syntax i.e "0:5" for 0<=corr<5 or "::2" for every 2nd corr or "0" for corr 0  or "0,1,3". Default is all.""",
@@ -604,17 +604,17 @@ def get_argparser():
                         help="""Output png name. This requires works with phantomJS and selenium installed packages installed.""", default=None)
     parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
                         choices=iter_choices,
-                        help="""Select which variable to iterate over (defaults to none)""",
+                        help="""Select which variable to iterate over. Default is None.""",
                         default=None)
     parser.add_argument('--no-flag', dest='flag', action='store_false',
-                        help='Plot both flagged and unflagged data',
+                        help="""Plot both flagged and unflagged data. Default only plot data that is not flagged.""",
                         default=True)
     parser.add_argument('--scan', dest='scan', type=str, metavar='',
-                        help='Scan Number to select. (default is all)',
+                        help='Scan Number to select. Default is all.',
                         default=None)
     parser.add_argument('--table', dest='mytabs',
                         nargs='*', type=str, metavar='',
-                        help='Table(s) to plot (default = None)', default=[])
+                        help='Table(s) to plot. Default is None', default=[])
     parser.add_argument('--taql', dest='where', type=str, metavar='',
                         help='TAQL where', default=None)
     parser.add_argument('--xaxis', dest='xaxis', type=str, metavar='',
