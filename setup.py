@@ -37,5 +37,5 @@ setup(name='ragavi',
       license='MIT',
       packages=[pkg],
       install_requires=requirements(),
-      scripts=['ragavi/bin/ragavi', 'ragavi/bin/ragavi-vis'],
+      scripts = ["ragavi/bin/" + i for i in os.listdir("ragavi/bin/")],
       include_package_data=True)
