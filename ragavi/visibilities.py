@@ -18,8 +18,12 @@ import matplotlib.pylab as pylab
 import matplotlib.pyplot as plt
 import numpy as np
 import pyrap.quanta as qa
-import xarrayms as xm
-import xarray as xa
+import xarray as xr
+
+try:
+    import xarrayms as xm
+except:
+    import daskms as xm
 
 
 from argparse import ArgumentParser
@@ -512,16 +516,16 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     if iterate:
         title = title + " Colorise By: {}".format(iterate.capitalize())
         if iterate == 'corr' or iterate == 'chan':
-            xy = xa.merge([x, y])
+            xy = xr.merge([x, y])
         else:
             iter_data = xds_table_obj[iters[iterate]]
-            xy = xa.merge([x, y, iter_data])
+            xy = xr.merge([x, y, iter_data])
         # change value of iterate to the required data column
         iterate = iters[iterate]
         xy_df = xy.to_dask_dataframe()
         xy_df = xy_df.astype({iterate: 'category'})
     else:
-        xy = xa.merge([x, y])
+        xy = xr.merge([x, y])
         xy_df = xy.to_dask_dataframe()
 
     logger.info('Creating canvas')

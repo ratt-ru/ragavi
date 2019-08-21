@@ -7,8 +7,11 @@ import warnings
 import dask.array as da
 import numpy as np
 import pyrap.quanta as qa
-import xarray as xa
-import xarrayms as xm
+import xarray as xr
+try:
+    import xarrayms as xm
+except:
+    import daskms as xm
 
 from dask import delayed, compute
 from datetime import datetime
@@ -80,7 +83,7 @@ def calc_phase(ydata, wrap=True):
     phase: xarray DataArray
            y-axis data converted to degrees
     """
-    phase = xa.apply_ufunc(da.angle, ydata,
+    phase = xr.apply_ufunc(da.angle, ydata,
                            dask='allowed', kwargs=dict(deg=True))
     if wrap:
         # using an alternative method to avoid warnings
@@ -88,7 +91,7 @@ def calc_phase(ydata, wrap=True):
             phase = phase.reduce(np.unwrap)
         except TypeError:
             # this is for python2 compat
-            phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
+            phase = xr.apply_ufunc(np.unwrap, phase, dask='allowed')
     return phase
 
 
@@ -209,7 +212,7 @@ def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
     else:
         # if multiple SPWs,concatenate all the items in the list of SPWs to
         # form a single dataset and then extract the channels
-        spw = xa.concat(spw_subtab, 'row')
+        spw = xr.concat(spw_subtab, 'row')
         spw = spw.sel(row=spwid)
 
     if spw.CHAN_FREQ.size == 1:
@@ -555,7 +558,7 @@ def time_wrapper(func):
         ans = func(*args, **kwargs)
         end = time()
         time_taken = end - start
-        logger.info("{} executed in: {0.3f} sec.".format(
+        logger.info("{} executed in: {:.4} sec.".format(
             func.__name__, time_taken))
         return ans
     return timer

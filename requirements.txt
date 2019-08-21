@@ -1,5 +1,6 @@
 bokeh
 dask[complete]
+dask-ms[xarray]
 datashader
 future
 holoviews
@@ -15,4 +16,3 @@ pyfiglet
 python-casacore
 screeninfo
 xarray
-xarray-ms

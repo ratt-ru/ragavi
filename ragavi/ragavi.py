@@ -11,8 +11,12 @@ import warnings
 import dask.array as da
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
-import xarray as xa
-import xarrayms as xm
+import xarray as xr
+
+try:
+    import xarrayms as xm
+except:
+    import daskms as xm
 
 
 from argparse import ArgumentParser
@@ -86,11 +90,11 @@ class DataCoreProcessor:
         phase: xarray DataArray
                y-axis data converted to degrees
         """
-        phase = xa.apply_ufunc(da.angle, ydata,
+        phase = xr.apply_ufunc(da.angle, ydata,
                                dask='allowed', kwargs=dict(deg=True))
         if wrap:
             # delay dispatching of wrapped phase
-            phase = xa.apply_ufunc(np.unwrap, phase, dask='allowed')
+            phase = xr.apply_ufunc(np.unwrap, phase, dask='allowed')
         return phase
 
     def get_amplitude(self, ydata):
