@@ -12,7 +12,6 @@ import xarrayms as xm
 
 from dask import delayed, compute
 from datetime import datetime
-from colorama import Fore, Style
 from pyfiglet import Figlet
 from time import time
 
@@ -556,6 +555,7 @@ def time_wrapper(func):
         ans = func(*args, **kwargs)
         end = time()
         time_taken = end - start
-        logger.info(f'{func.__name__} executed in: {Fore.GREEN}{time_taken} sec{Style.RESET_ALL}')
+        logger.info("{} executed in: {0.3f} sec.".format(
+            func.__name__, time_taken))
         return ans
     return timer
