@@ -584,7 +584,7 @@ def get_argparser():
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar='',
                         help="""Colour or matplotlib colour map to use. Default is coolwarm.""",
                         default='coolwarm')
-    parser.add_argument('--data_column', dest='data_column', type=str,
+    parser.add_argument('--data-column', dest='data_column', type=str,
                         metavar='',
                         help="""Column from MS to use for data. Default is DATA.""", default='DATA')
     parser.add_argument('--ddid', dest='ddid', type=str,
@@ -597,7 +597,7 @@ def get_argparser():
                         default=None)
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar='',
                         help='Output HTMLfile name', default=None)
-    parser.add_argument('--image_name', dest='image_name', type=str,
+    parser.add_argument('--image-name', dest='image_name', type=str,
                         metavar='',
                         help="""Output png name. This requires works with phantomJS and selenium installed packages installed.""", default=None)
     parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
