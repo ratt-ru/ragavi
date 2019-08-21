@@ -42,9 +42,9 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
 
 from . import vis_utils as vu
 
-
 logger = vu.logger
 excepthook = vu.sys.excepthook
+time_wrapper = vu.time_wrapper
 wrapper = vu.textwrap.TextWrapper(initial_indent='',
                                   break_long_words=True,
                                   subsequent_indent=''.rjust(50),
@@ -502,11 +502,11 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     else:
         x_axis_type = 'linear'
 
-    x_min = np.nanmin(x)
-    x_max = np.nanmax(x)
+    logger.info("Calculating x and y Min and Max ranges")
+    x_min, x_max = compute(x.min().data, x.max().data)
+    y_min, y_max = compute(y.min().data, y.max().data)
 
-    y_min = np.nanmin(y) - np.nanstd(y)
-    y_max = np.nanmax(y) + np.nanstd(y)
+    logger.info("Done")
 
     if iterate:
         title = title + " Colorise By: {}".format(iterate.capitalize())
@@ -523,11 +523,14 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         xy = xa.merge([x, y])
         xy_df = xy.to_dask_dataframe()
 
+    logger.info('Creating figure')
     fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
                  x_range=(x_min, x_max), y_axis_label=ylab,
                  y_range=(y_min, y_max),
                  x_axis_type=x_axis_type, title=title,
                  plot_width=900, plot_height=700, sizing_mode='stretch_both')
+
+    logger.info("Starting datashading")
 
     im = InteractiveImage(fig, image_callback, x=x_cap,
                           y=y_cap, cat=iterate,
@@ -785,9 +788,7 @@ def main(**kwargs):
         save(fig)
 
         logger.info("Rendered plot to: {}".format(fname))
-        logger.info(wrapper.fill("With arguments:\n" + str(options.__dict__)))
-        logger.info(">" * (len(fname) + 19))
+        logger.info(wrapper.fill(",\n".join(
+            ["{}: {}".format(k, v) for k, v in options.__dict__.items() if v != None])))
 
-# for demo
-if __name__ == '__main__':
-    main()
+        logger.info(">" * (len(fname) + 19))
