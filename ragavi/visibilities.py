@@ -468,6 +468,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
              'spw': 'DATA_DESC_ID',
              None: None}
 
+    @time_wrapper
     def image_callback(xr, yr, w, h, x=None, y=None, cat=None, col=None):
         cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
         if cat:
@@ -523,7 +524,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         xy = xa.merge([x, y])
         xy_df = xy.to_dask_dataframe()
 
-    logger.info('Creating figure')
+    logger.info('Creating canvas')
     fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
                  x_range=(x_min, x_max), y_axis_label=ylab,
                  y_range=(y_min, y_max),
