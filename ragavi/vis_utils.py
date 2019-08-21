@@ -12,8 +12,9 @@ import xarrayms as xm
 
 from dask import delayed, compute
 from datetime import datetime
+from colorama import Fore, Style
 from pyfiglet import Figlet
-
+from time import time
 
 ########################################################################
 ####################### Computation Functions ##########################
@@ -536,7 +537,7 @@ sys.excepthook = _handle_uncaught_exceptions
 
 
 ########################################################################
-############################# Welcome ##################################
+########################### Some useful functions ######################
 def welcome():
     """Welcome to ragavi"""
     print('\n\n')
@@ -545,3 +546,16 @@ def welcome():
     print(Figlet(font='nvscript').renderText('ragavi'))
     #print("_*+_" * 23)
     print('\n\n')
+
+
+def time_wrapper(func):
+    """Compute the execution time of a function
+    """
+    def timer(*args, **kwargs):
+        start = time()
+        ans = func(*args, **kwargs)
+        end = time()
+        time_taken = end - start
+        logger.info(f'{func.__name__} executed in: {Fore.GREEN}{time_taken} sec{Style.RESET_ALL}')
+        return ans
+    return timer
