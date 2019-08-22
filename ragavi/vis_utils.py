@@ -160,7 +160,7 @@ def get_antennas(ms_name):
 
     """
     subname = "::".join((ms_name, 'ANTENNA'))
-    ant_subtab = list(xm.xds_from_table(subname, ack=False))
+    ant_subtab = list(xm.xds_from_table(subname))
     ant_subtab = ant_subtab[0]
     ant_names = ant_subtab.NAME
     # ant_subtab('close')
@@ -180,7 +180,7 @@ def get_fields(ms_name):
                  String names for the available data in the table
     """
     subname = "::".join((ms_name, 'FIELD'))
-    field_subtab = list(xm.xds_from_table(subname, ack=False))
+    field_subtab = list(xm.xds_from_table(subname))
     field_subtab = field_subtab[0]
     field_names = field_subtab.NAME
     return field_names
@@ -203,8 +203,7 @@ def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
            Channel centre frequencies for specified spectral window.
     """
     subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
-    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__',
-                                        ack=False))
+    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
 
     if len(spw_subtab) == 1:
         # select the desired spectral windows using slicer
@@ -245,7 +244,7 @@ def get_polarizations(ms_name):
                     'Pangle']
 
     subname = "::".join((ms_name, 'POLARIZATION'))
-    pol_subtable = list(xm.xds_from_table(subname, ack=False))[0]
+    pol_subtable = list(xm.xds_from_table(subname))[0]
 
     # offset the acquired corr type by 1 to match correctly the stokes type
     corr_types = pol_subtable.CORR_TYPE.sel(row=0).data.compute() - 1

@@ -20,11 +20,6 @@ import numpy as np
 import pyrap.quanta as qa
 import xarray as xr
 
-try:
-    import xarrayms as xm
-except:
-    import daskms as xm
-
 
 from argparse import ArgumentParser
 from collections import namedtuple
@@ -32,7 +27,6 @@ from datetime import datetime
 from dask import compute, delayed
 from datashader.bokeh_ext import InteractiveImage
 from itertools import cycle
-from xarrayms.known_table_schemas import MS_SCHEMA, ColumnSchema
 
 
 from bokeh.plotting import figure
@@ -45,6 +39,11 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           Select, Text, Toggle, Title)
 
 from . import vis_utils as vu
+
+try:
+    import xarrayms as xm
+except:
+    import daskms as xm
 
 logger = vu.logger
 excepthook = vu.sys.excepthook
@@ -659,7 +658,7 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None)
 
     # defining part of the gain table schema
     if data_col != 'DATA':
-        ms_schema[data_col] = ColumnSchema(dims=('chan', 'corr'))
+        ms_schema[data_col] = ms_schema['DATA']
 
     # always ensure that where stores something
     if where == None:

@@ -16,3 +16,4 @@ pyfiglet
 python-casacore
 screeninfo
 xarray
+xarray-ms
