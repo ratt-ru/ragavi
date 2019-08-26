@@ -36,11 +36,13 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           CustomJS, Div, HoverTool, LinearAxis, Legend,
                           PrintfTickFormatter, Range1d,
                           Select, Text, Toggle, Title)
+from dask.diagnostics import ProgressBar
 
 from . import vis_utils as vu
 
 try:
     import xarrayms as xm
+    from xarrayms.known_table_schemas import MS_SCHEMA
 except:
     import daskms as xm
 
@@ -496,12 +498,17 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     @time_wrapper
     def image_callback(xr, yr, w, h, x=None, y=None, cat=None, col=None):
         cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
+        logger.info("Datashader aggregation starting")
         if cat:
-            agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
+
+            with ProgressBar():
+                agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
             img = tf.shade(agg, color_key=col)
         else:
-            agg = cvs.points(xy_df, x, y, ds.count())
+            with ProgressBar():
+                agg = cvs.points(xy_df, x, y, ds.count())
             img = tf.shade(agg, cmap=col)
+        logger.info("Aggregation done")
         return img
 
     # change xaxis name to frequency if xaxis is channel. For df purpose
@@ -529,8 +536,9 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         x_axis_type = 'linear'
 
     logger.info("Calculating x and y Min and Max ranges")
-    x_min, x_max = compute(x.min().data, x.max().data)
-    y_min, y_max = compute(y.min().data, y.max().data)
+    with ProgressBar():
+        x_min, x_max = compute(x.min().data, x.max().data)
+        y_min, y_max = compute(y.min().data, y.max().data)
 
     logger.info("Done")
 
@@ -639,15 +647,15 @@ def get_argparser():
                         choices=iter_choices,
                         help="""Select which variable to iterate over. Default is None.""",
                         default=None)
+    parser.add_argument('--ms', dest='mytabs',
+                        nargs='*', type=str, metavar='',
+                        help='Table(s) to plot. Default is None', default=[])
     parser.add_argument('--no-flag', dest='flag', action='store_false',
                         help="""Plot both flagged and unflagged data. Default only plot data that is not flagged.""",
                         default=True)
     parser.add_argument('--scan', dest='scan', type=str, metavar='',
                         help='Scan Number to select. Default is all.',
                         default=None)
-    parser.add_argument('--table', dest='mytabs',
-                        nargs='*', type=str, metavar='',
-                        help='Table(s) to plot. Default is None', default=[])
     parser.add_argument('--taql', dest='where', type=str, metavar='',
                         help='TAQL where', default=None)
     parser.add_argument('--xaxis', dest='xaxis', type=str, metavar='',
