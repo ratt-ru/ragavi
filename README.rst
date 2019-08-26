@@ -1,3 +1,4 @@
+
 ======
 ragavi
 ======
@@ -22,7 +23,7 @@ This library mainly requires
 
 **- Install build dependencies:**
 
-..note:: `Python casacore`_ comes as a dependency of `Daskms`_ 
+** `Python casacore`_ comes as a dependency of `Daskms`_ **
 Nodejs is a requirement for ``Bokeh`` and can be installed using the commands
 
 .. code-block:: bash
