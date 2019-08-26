@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 from __future__ import division
 
 import logging
@@ -53,14 +52,37 @@ wrapper = vu.textwrap.TextWrapper(initial_indent='',
                                   subsequent_indent=''.rjust(50),
                                   width=160)
 
-# vu.welcome()
+# vu.__welcome()
 
 
 class DataCoreProcessor:
+    """Process Measurement Set data into forms desirable for visualisation.
+
+    Parameters
+    ----------
+    chan : :obj:`slice`
+        Channels that will be selected. Defaults to all
+    corr : :obj:`int`
+        Correlation indices to be selected. Defaults to all
+    datacol : :obj:`str`
+        Data column to be selected. Defaults to 'DATA'
+    ddid : :obj:`slice`
+        Spectral windows to be selected. Defaults to all
+    flag : :obj:`bool`
+        To flag or not. Defaults to True
+    ms_name : :obj:`str`
+        Name / path to the Measurement Set
+    xds_table_obj : :obj:`xarray.Dataset`
+        Table object from which data will be extracted
+    xaxis : :obj:`str`
+        x-axis to be selected for plotting
+    yaxis : :obj:`str`
+        y-axis to be selected for plotting
+    """
 
     def __init__(self, xds_table_obj, ms_name, xaxis, yaxis,
-                 chan=slice(0, None), corr=0, ddid=0, datacol='DATA',
-                 flag=True):
+                 chan=slice(0, None), corr=slice(0, None),
+                 ddid=slice(0, None), datacol='DATA', flag=True):
 
         self.xds_table_obj = xds_table_obj
         self.ms_name = ms_name
@@ -74,17 +96,18 @@ class DataCoreProcessor:
 
     def process_data(self, ydata, yaxis, wrap=True):
         """Abstraction for processing y-data passes it to the processing function.
-        Inputs
-        ------
-        ydata: xarray DataArray
-               y-data to process
-        yaxis: str
-               Selected yaxis
 
-        Outputs
+        Parameters
+        ----------
+        ydata: :obj:`xarray.DataArray`
+            y-data to process
+        yaxis: :obj:`str`
+            Selected yaxis
+
+        Returns
         -------
-        y: xarray DataArray
-           Processed y-data
+        y : :obj:`xarray.DataArray`
+           Processed :obj:`ydata`
         """
         if yaxis == 'amplitude':
             y = vu.calc_amplitude(ydata)
@@ -97,25 +120,24 @@ class DataCoreProcessor:
         return y
 
     def get_xaxis_data(self, xds_table_obj, ms_name, xaxis, datacol='DATA'):
-        """
-            Function to get x-axis data. It is dependent on the gaintype.
-            This function also returns the relevant x-axis labels for both pairs of plots.
+        """Get x-axis data. It is dependent on the gaintype.
+        This function also returns the relevant x-axis labels for both pairs of plots.
 
-            Inputs
-            ------
-            xds_table_obj: xarray Dataset
-                           MS as xarray dataset from xarrayms
-            ms_name: str
-                     Name of measurement set
-            xaxis: str
-                   Name of xaxis
+        Parameters
+        ----------
+        ms_name : :obj:`str`
+            Name of Measurement Set
+        xaxis : :obj:`str`
+            Name of xaxis
+        xds_table_obj: :obj:`xarray.Dataset`
+            MS as xarray dataset from xarrayms
 
-            Outputs
-            -------
-            xdata: xarray DataArray
-                   X-axis data depending  x-axis selected.
-            x_label: str
-                         Label to appear on the x-axis of the plots.
+        Returns
+        -------
+        xdata : :obj:`xarray.DataArray`
+            X-axis data depending  x-axis selected.
+        x_label : :obj:`str`
+            Label to appear on the x-axis of the plots.
         """
 
         if xaxis == 'antenna1':
@@ -155,28 +177,25 @@ class DataCoreProcessor:
         return xdata, x_label
 
     def get_yaxis_data(self, xds_table_obj, ms_name, yaxis, datacol='DATA'):
-        """
-            Extract the required column for the y-axis data.
+        """Extract the required column for the y-axis data.
 
+        Parameters
+        ----------
+        datacol: :obj:`str`
+            Data column to be selected. Defaults to DATA
+        ms_name: :obj:`str`
+            Name of measurement set.
+        xds_table_obj: :obj:`xarray.Dataset`
+            MS as xarray dataset from xarrayms
+        yaxis: :obj:`str`
+            yaxis to plot.
 
-            Inputs
-            -----
-            xds_table_obj: xarray Dataset
-                           MS as xarray dataset from xarrayms
-            ms_name: str
-                     Name of measurement set.
-            yaxis: str
-                   yaxis to plot.
-            datacol: str
-                     Data column to be selected.
-
-            Outputs
-            -------
-            ydata: xarray DataArray
-                   y-axis data depending  y-axis selected.
-            y_label: str
-                     Label to appear on the y-axis of the plots.
-
+        Returns
+        -------
+        ydata: :obj:`xarray.DataArray`
+            y-axis data depending  y-axis selected.
+        y_label: :obj:`str`
+            Label to appear on the y-axis of the plots.
         """
         if yaxis == 'amplitude':
             y_label = 'Amplitude'
@@ -197,24 +216,25 @@ class DataCoreProcessor:
 
     def prep_xaxis_data(self, xdata, chan=slice(0, None), freq=None,
                         xaxis='time'):
-        """
-            Prepare the x-axis data for plotting.
+        """Prepare the x-axis data for plotting.
 
-            Inputs
-            ------
-            xdata: xarray DataArray
-                   X-axis data depending  x-axis selected.
-            xaxis: str
-                   xaxis to plot.
+        Parameters
+        ----------
+        xdata: :obj:`xarray.DataArray`
+            x-axis data depending  x-axis selected
+        xaxis: :obj:`str`
+            xaxis to plot
 
-            freq: xarray DataArray or float
-                  Frequency(ies) from which corresponding wavelength will be obtained.
-                  REQUIRED ONLY when xaxis specified is 'uvwave'.
+        freq: :obj:`xarray.DataArray` or :obj:`float`
+            Frequency(ies) from which corresponding wavelength will be obtained.
+            Note
+            ----
+                Only required when xaxis specified is 'uvwave'
 
-            Outputs
-            -------
-            prepdx: xarray DataArray
-                    Prepared data for the x-axis.
+        Returns
+        -------
+        prepdx: :obj:`xarray.DataArray`
+            Prepared :attr:`xdata`
         """
         if xaxis == 'channel' or xaxis == 'frequency':
             prepdx = xdata.sel(chan=chan) / 1e9
@@ -233,32 +253,34 @@ class DataCoreProcessor:
     def prep_yaxis_data(self, xds_table_obj, ms_name, ydata,
                         chan=slice(0, None), corr=0, flag=True,
                         yaxis='amplitude'):
-        """
-            Process data for the y-axis which includes:
-                - Correlation selection
-                - Flagging
-                - Conversion form complex to the required form
-            Data selection and flagging are done by this function itself, however ap and ri conversion are done by specified functions.
+        """Process data for the y-axis.
+        This includes:
 
-            Inputs
-            ------
-            xds_table_obj: xarray Dataset
-                           MS as xarray dataset from xarrayms
-            ms_name: str
-                     Name of measurement set.
-            ydata: xarray DataArray
-                   y-axis data to be processed
-            yaxis: str
-                   selected y-axis
-            corr: int
-                  Correlation number to select
-            flag: bool
-                  Option on whether to flag the data or not
+            * Correlation selection
+            * Flagging
+            * Conversion form complex to the required form
 
-            Outputs
-            -------
-            y: xarray DataArray
-               Processed yaxis data.
+        Data selection and flagging are done by this function itself, however ap and ri conversion are handled by :meth:`ragavi.ragavi.DataCoreProcessor.compute_ydata`
+
+        Parameters
+        ----------
+        corr: :obj:`int`
+            Correlation number to select
+        flag: :obj:`bool`
+            Option on whether to flag the data or not. Defaults to True
+        ms_name: :obj:`str`
+            Name of measurement set.
+        xds_table_obj: :obj:`xarray.Dataset`
+            MS as xarray dataset from xarrayms
+        yaxis: :obj:`str`
+            selected y-axis
+        ydata: :obj:`xarray.DataArray`
+            y-axis data to be processed
+
+        Returns
+        -------
+        y: :obj:`xarray.DataArray`
+           Processed :attr:`ydata` data.
         """
         ydata = ydata.sel(dict(corr=corr, chan=chan))
         flags = vu.get_flags(xds_table_obj).sel(dict(corr=corr, chan=chan))
@@ -276,35 +298,19 @@ class DataCoreProcessor:
     def blackbox(self, xds_table_obj, ms_name, xaxis, yaxis,
                  chan=slice(0, None), corr=0, datacol='DATA', ddid=None,
                  flag=True):
-        """
-            Takes in raw input and gives out a holomap.
+        """Get raw input data and churn out processed data. 
 
-            Inputs
-            ------
+        This function incorporates all function in the class to get the desired result. Takes in all inputs from the instance initialising object. It performs:
 
-            chan: slice / numpy array
-                  For the selection of the channels. Defaults to all
-            corr: int
-                  Correlation index to select
-            ddid:
-                  spectral window(s) to be selected
-            datacol: str
-                     Column from which data is pulled. Default is 'DATA'
-            flag: bool
-                         Switch flags on or off.
-            ms_name: str
-                     Measurement set name
-            xaxis: str
-                   Selected x-axis
-            xds_table_obj: xarray Dataset
-                           MS as xarray dataset from xarrayms
-            yaxis: str
-                   Selected y-axis
+            - xaxis data and error data acquisition
+            - xaxis data and error preparation and processing
+            - yaxis data and error data acquisition
+            - yaxis data and error preparation and processing
 
-            Outputs
-            -------
-            data:
-                  Processed data for x and y
+        Returns
+        -------
+        d : :obj:`collections.namedtuple`
+            A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
         """
 
         Data = namedtuple('Data', "x xlabel y ylabel")
@@ -339,6 +345,8 @@ class DataCoreProcessor:
         return d
 
     def act(self):
+        """Activate the :meth:`ragavi.ragavi.DataCoreProcessor.blackbox`
+        """
         return self.blackbox(self.xds_table_obj, self.ms_name, self.xaxis,
                              self.yaxis, chan=self.chan, corr=self.corr,
                              datacol=self.datacol, ddid=self.ddid,
@@ -346,7 +354,12 @@ class DataCoreProcessor:
 
     def x_only(self, xds_table_obj, ms_name, xaxis, flag=True, corr=0,
                chan=slice(0, None), ddid=None, datacol='DATA'):
-        """Only return xaxis data and label
+        """Return only x-axis data and label
+
+        Returns
+        -------
+        d : :obj:`collections.namedtuple`
+            Named tuple containing x-axis data and x-axis label. Items in the tuple can be accessed by using the dot notation.
         """
         Data = namedtuple('Data', 'x xlabel')
         x_data, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, xaxis,
@@ -369,7 +382,12 @@ class DataCoreProcessor:
 
     def y_only(self, xds_table_obj, ms_name, yaxis, chan=slice(0, None),
                corr=0, datacol='DATA', flag=True):
-        """Only return yaxis data and label
+        """Return only y-axis data and label
+
+        Returns
+        -------
+        d : :obj:`collections.namedtuple`
+            Named tuple containing x-axis data and x-axis label. Items in the tuple can be accessed by using the dot notation.
         """
 
         Data = namedtuple('Data', 'y ylabel')
@@ -382,10 +400,17 @@ class DataCoreProcessor:
 
 
 def save_png_image(name, disp_layout):
-    """To save plots as png
+    """Save plots in PNG format
+    Note
+    ----
+    One image will emerge for each figure in `disp_layout`. To save png images, the python package selenium, node package phantomjs are required. More information `Exporting bokeh plots <https://bokeh.pydata.org/en/latest/docs/user_guide/export.html>`_
 
-    Note: One image will emerge
-
+    Parameters
+    ----------
+    disp_layout : :obj:`bokeh.layouts`
+        Layout object containing the renderers
+    name : :obj:`str`
+        Name of output image
     """
     export_png(disp_layout, filename=name)
 
@@ -393,17 +418,18 @@ def save_png_image(name, disp_layout):
 def add_axis(fig, axis_range, ax_label):
     """Add an extra axis to the current figure
 
-    Input
-    ------
-    fig: Bokeh figure
-         The figure onto which to add extra axis
+    Parameters
+    ----------
+    fig: :obj:`bokeh.plotting.figure`
+        The figure onto which to add extra axis
 
-    axis_range: ordered iterable
-                A range of sorted values or a tuple with 2 values containing or the order (min, max)
+    axis_range: :obj:`list`, :obj:`tuple`
+        A range of sorted values or a tuple with 2 values containing or the order (min, max). This can be any ordered iteraable that can be indexed.
 
-    Output
-    ------
-    fig
+    Returns
+    -------
+    fig : :obj:`bokeh.plotting.figure`
+        Bokeh gigure with an extra axis added
     """
     fig.extra_x_ranges = {"fxtra": Range1d(
         start=axis_range[0], end=axis_range[-1])}
@@ -415,50 +441,46 @@ def add_axis(fig, axis_range, ax_label):
     return fig
 
 
-def get_errors(xds_table_obj, corr=None):
-    # CoONFIRM IF ITWORKS ACTUALLY
-    #-------------------------------------------
-    """Function to get error data from PARAMERR column.
-    Inputs
-    ------
-    table_obj: pyrap table object.
-
-    Outputs
-    errors: ndarray
-            Error data.
-    """
-    errors = xds_table_obj.PARAMERR
-    return errors
-
-
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                color='blue', xds_table_obj=None, ms_name=None, iterate=None):
-    """
-        Plotting with holoviews
-    Input
-    -----
-        x:      xarray.DataArray
-                x to plot
-        y:      xarray.DataArray
-                y to plot
-        xaxis:  str
-                xaxis to be plotted
-        xlab:   str
-                Label to appear on xaxis
-        yaxis:  str
-                yaxis to be plotted
-        ylab:   str
-                Label to appear i  yaxis
-        iterate: str
-                Iteration over axis
-        ititle: str
-                title to appear incasea of iteration
-        color:  str, colormap, cycler object
+    """Responsible for plotting in this script.
 
-        xds_table_obj: xarray.Dataset object
-        ms_nmae: str
-                 Path to measurement set
+    This is responsible for:
 
+    - Selection of the iteration column. ie. Setting it to a categorical column
+    - Creating the image callback to Datashader
+    - Creating Bokeh canvas onto which image will be placed
+    - Calculation of maximums and minimums for the plot
+    - Formatting fonts, axes and titles
+
+    Parameters
+    ----------
+    x : :obj:`xarray.DataArray`
+        x data to plot
+    y:  :obj:`xarray.DataArray`
+        y data to plot
+    xaxis : :obj:`str`
+        xaxis selected for plotting
+    xlab : :obj:`str`
+        Label to appear on x-axis
+    yaxis : :obj:`str`
+        yaxis selected for plotting
+    ylab : :obj:`str`
+        Label to appear on y-axis
+    iterate : :obj:`str`
+        Column in the dataset over which to iterate. It should be noted that currently iteration is done using colors to denote the different parts of the iteration axis. These colors are explicitly selected in the code and are cycled through. i.e repetitive. This option is akin to the colorise_by function in CASA.
+    ititle : :obj:`str`
+        Title to appear incasea of iteration
+    color :  :obj:`str`, :obj:`colormap`, :obj:`itertools.cycler`
+        Color scheme to be used in the plot. It could be a string containing a color, a matplotlib or bokeh or colorcet colormap of a cycler containing specified colors.
+    xds_table_obj : :obj:`xarray.Dataset`
+        Dataset object containing the columns of the MS. This is passed on in case there are items required from the actual dataset.
+    ms_nmae : :obj:`str`
+        Name or [can include path] to Measurement Set
+
+    Returns
+    -------
+    fig: :obj:`bokeh.plotting.figure`
     """
 
     # iteration key word: data column name
@@ -567,8 +589,14 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
 
 
 def get_argparser():
-    """Get argument parser"""
+    """Create command line arguments for ragavi-gains
 
+    Returns
+    -------
+    parser : :obj:`ArgumentParser()`
+        Argument parser object that contains command line argument's values
+
+    """
     x_choices = ['antenna1', 'antenna2',
                  'channel', 'frequency', 'phase',
                  'real', 'scan', 'time',
@@ -633,25 +661,27 @@ def get_argparser():
 
 
 def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None):
-    """
-        Inputs
-        ------
-        ms_name: str
-                 name of your MS or path including its name
-        data_col: str
-                  data column to be used
-        ddid: int
-              DATA_DESC_ID or spectral window to choose
-        fid: int
-             field id to select
-        scan: int
-              SCAN_NUMBER to select
-        where: str
-                TAQL where clause to be used with the MS.
-        Outputs
-        -------
-        tab_objs: list
-                  A list containing the specified table objects in xarray
+    """Get xarray Dataset objects containing Measurement Set columns of the selected data
+
+    Parameters
+    ----------
+    ms_name: :obj:`str`
+        Name of your MS or path including its name
+    data_col: :obj:`str`
+        Data column to be used. Defaults to 'DATA'
+    ddid: :obj:`int`
+        DATA_DESC_ID or spectral window to choose. Defaults to all
+    fid: :obj:`int`
+        Field id to select. Defaults to all
+    scan: :obj:`int`
+        SCAN_NUMBER to select. Defaults to all
+    where: :obj:`str`
+        TAQL where clause to be used with the MS.
+
+    Returns
+    -------
+    tab_objs: :obj:`list`
+        A list containing the specified table objects as  :obj:`xarray.Dataset`
     """
 
     ms_schema = MS_SCHEMA.copy()
@@ -686,6 +716,7 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None)
 
 
 def main(**kwargs):
+    """Main function"""
 
     if len(kwargs) == 0:
         NB_RENDER = False
