@@ -23,16 +23,17 @@ from time import time
 
 
 def calc_amplitude(ydata):
-    """Convert complex data to amplitude (abs value)
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
+    """Convert complex data to amplitude (absolute value)
 
-    Outputs
+    Parameters
+    ----------
+    ydata : :obj:`xarray.DataArray`
+        y axis data to be processed
+
+    Returns
     -------
-    amplitude: xarray DataArray
-           y-axis data converted to amplitude
+    amplitude : :obj:`xarray.DataArray`
+        :attr:`ydata` converted to an amplitude
     """
     amplitude = da.absolute(ydata)
     return amplitude
@@ -40,15 +41,16 @@ def calc_amplitude(ydata):
 
 def calc_imaginary(ydata):
     """Extract imaginary part from complex data
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
 
-    Outputs
+    Parameters
+    ----------
+    ydata : :obj:`xarray.DataArray`
+        y-axis data to be processed
+
+    Returns
     -------
-    imag: xarray DataArray
-           Imaginary part of the y-axis data
+    imag : :obj:`xarray.DataArray`
+        Imaginary part of :attr:`ydata`
     """
     imag = ydata.imag
     return imag
@@ -56,15 +58,16 @@ def calc_imaginary(ydata):
 
 def calc_real(ydata):
     """Extract real part from complex data
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
 
-    Outputs
+    Parameters
+    ----------
+    ydata : :obj:`xarray.DataArray`
+        y-axis data to be processed
+
+    Returns
     -------
-    real: xarray DataArray
-           Real part of the y-axis data
+    real : :obj:`xarray.DataArray`
+        Real part of :attr:`ydata`
     """
     real = ydata.real
     return real
@@ -72,16 +75,18 @@ def calc_real(ydata):
 
 def calc_phase(ydata, wrap=True):
     """Convert complex data to angle in degrees
-    Inputs
-    ------
-    ydata: xarray DataArray
-           y-axis data to be processed
-    wrap: bool
-          whether to wrap angles between 0 and 2pi
-    Outputs
+
+    Parameters
+    ----------
+    wrap : :obj:`bool`
+        whether to wrap angles between 0 and 2pi
+    ydata : :obj:`xarray.DataArray`
+        y-axis data to be processed
+
+    Returns
     -------
-    phase: xarray DataArray
-           y-axis data converted to degrees
+    phase: `xarray.DataArray`
+        :attr:`ydata` data converted to degrees
     """
     phase = xr.apply_ufunc(da.angle, ydata,
                            dask='allowed', kwargs=dict(deg=True))
@@ -97,15 +102,16 @@ def calc_phase(ydata, wrap=True):
 
 def calc_uvdist(uvw):
     """ Calculate uv distance in metres
-    Inputs
-    ------
-    uvw: xarray DataArray
-         UVW column from measurement set
 
-    Outputs
+    Parameters
+    ----------
+    uvw : :obj:`xarray.DataArray`
+        UVW column from measurement set
+
+    Returns
     -------
-    uvdist: xarray DataArray
-            uv distance in meters
+    uvdist : :obj:`xarray.DataArray`
+        uv distance in meters
     """
     u = uvw.isel(uvw=0)
     v = uvw.isel(uvw=1)
@@ -114,21 +120,19 @@ def calc_uvdist(uvw):
 
 
 def calc_uvwave(uvw, freq):
-    """
-        Calculate uv distance in wavelength for availed frequency.
-        This function also calculates the corresponding wavelength. Uses output from *calc_uvdist*
+    """Calculate uv distance in wavelength for availed frequency. This function also calculates the corresponding wavelength. Uses output from :func:`ragavi.vis_utils.calc_uvdist`
 
-    Inputs
-    ------
-    uvw: xarray DataArray
-         UVW column from the MS dataset
-    freq: xarray DataArray or float
-          Frequency(ies) from which corresponding wavelength will be obtained.
+    Parameters
+    ----------
+    freq : :obj:`xarray.DataArray or :obj:`float`
+        Frequency(ies) from which corresponding wavelength will be obtained.
+    uvw : :obj:`xarray.DataArray`
+        UVW column from the MS dataset
 
-    Outputs
+    Returns
     -------
-    uvwave: xarray DataArray
-            uv distance in wavelength for specific frequency
+    uvwave : :obj:`xarray.DataArray`
+        uv distance in wavelength for specific frequency
     """
 
     # speed of light
@@ -148,15 +152,16 @@ def calc_uvwave(uvw, freq):
 
 def get_antennas(ms_name):
     """Function to get antennae names from the ANTENNA subtable.
-    Inputs
-    ------
-    ms_name: str
-             Name of measurement set
 
-    Outputs
+    Parameters
+    ----------
+    ms_name : :obj:`str`
+        Name of MS or table
+
+    Returns
     -------
-    ant_names: xarray DataArray
-               An xarray Data array containing names for all the antennas available.
+    ant_names : :obj:`xarray.DataArray`
+        A :obj:`xarray.DataArray` containing names for all the antennas available.
 
     """
     subname = "::".join((ms_name, 'ANTENNA'))
@@ -169,15 +174,16 @@ def get_antennas(ms_name):
 
 def get_fields(ms_name):
     """Get field names from the FIELD subtable.
-    Inputs
-    ------
-    ms_name: str
-             Name of measurement set
 
-    Outputs
+    Parameters
+    ----------
+    ms_name : :obj:`str`
+        Name of MS or table
+
+    Returns
     -------
-    field_names: xarray DataArray
-                 String names for the available data in the table
+    field_names : :obj:`xarray.DataArray`
+        String names for the available fields
     """
     subname = "::".join((ms_name, 'FIELD'))
     field_subtab = list(xm.xds_from_table(subname))
@@ -187,20 +193,21 @@ def get_fields(ms_name):
 
 
 def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
-    """Function to get channel frequencies from the SPECTRAL_WINDOW subtable.
-    Inputs
-    ------
-    ms_name: str
-             Name of measurement set
-    spwid: int
-           Spectral window id number. Defaults to 0
-    chan: slice / numpy array
-          A slice object or numpy array to select some or all of the channels
-          Default is all the channels
-    Outputs
+    """Function to get channel frequencies from the SPECTRAL_WINDOW subtable
+
+    Parameters
+    ----------
+    chan : :obj:`slice` or :obj:`numpy.ndarray`
+        A slice object or numpy array to select some or all of the channels. Default is all the channels
+    ms_name : :obj:`str`
+        Name of MS or table
+    spwid : :obj:`int`
+        Spectral window id number. Defaults to 0
+
+    Returns
     -------
-    freqs: xarray DataArray
-           Channel centre frequencies for specified spectral window.
+    freqs : :obj:`xarray.DataArray`
+        Channel centre frequencies for specified spectral window.
     """
     subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
     spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
@@ -223,17 +230,16 @@ def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
 
 
 def get_polarizations(ms_name):
-    """
-        Get the type of correlation in the measurement set
+    """Get the type of polarizations available in the measurement set
 
-    Inputs
-    ------
-    ms_name: str
-             Name of MS containing its path
+    Parameters
+    ----------
+    ms_name: :obj:`str`
+             Name of MS / table
 
-    Outputs
+    Returns
     -------
-    cor2stokes: list
+    cor2stokes: :obj:`list`
                 Returns a list containing the types of correlation
     """
     # Stokes types in this case are 1 based and NOT 0 based.
@@ -256,37 +262,20 @@ def get_polarizations(ms_name):
     return cor2stokes
 
 
-# some common rows
-
-
-def get_errors(xds_table_obj, corr=0, chan=slice(0, None)):
-    """Function to get error data from PARAMERR column.
-    Inputs
-    ------
-    table_obj: pyrap table object.
-
-    Outputs
-    errors: ndarray
-            Error data.
-    """
-    errors = xds_table_obj.PARAMERR.sel(dict(corr=corr, chan=chan))
-    return errors
-
-
 def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
-    """ Get Flag values from the FLAG column
-        Allow for selections in the channel dimension or the correlation dimension
-    Inputs
-    ------
-    xds_table_obj: xarray Dataset
-                   MS as xarray dataset from xarrayms
-    corr: int
-          Correlation number to select.
+    """ Get Flag values from the FLAG column. Allow for selections in the channel dimension or the correlation dimension
 
-    Outputs
+    Parameters
+    ----------
+    corr : :obj:`int`
+        Correlation number to select.
+    xds_table_obj : :obj:`xarray.Dataset`
+        MS as xarray dataset from xarrayms
+
+    Returns
     -------
-    flags: xarray DataArray
-           Data array containing values from FLAG column selected by correlation if index is available.
+    flags : :obj:`xarray.DataArray`
+        Data array containing values from FLAG column selected by correlation if index is available.
 
     """
     flags = xds_table_obj.FLAG
@@ -302,16 +291,18 @@ def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
 
 def name_2id(tab_name, field_name):
     """Translate field name to field id
-    Inputs
-    -----
-    tab_name: str
-              Table name
-    field_name: string
-         Field ID name to convert
-    Outputs
+
+    Parameters
+    ---------
+    tab_name : :obj:str`
+        MS or Table name
+    field_name : :obj:`str`
+        Field name to convert to field ID
+
+    Returns
     -------
-    field_id: int
-              Integer field id
+    field_id : :obj:`int`
+        Integer field id
     """
     field_names = get_fields(tab_name).data.compute()
 
@@ -327,18 +318,16 @@ def name_2id(tab_name, field_name):
 
 def resolve_ranges(inp):
     """Create a TAQL string that can be parsed given a range of values
-    Inputs
-    ------
-    inp: str
-         A range of values to be constructed. Can be in the form of:
-         "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range),
-         "5:" (from 5 to last)
 
-    Outputs
+    Parameters
+    ----------
+    inp : :obj:`str`
+        A range of values to be constructed. Can be in the form of: "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range), "5:" (from 5 to last)
+
+    Returns
     -------
-    res: str
-         Interval string conforming to TAQL sets and intervals as shown in
-        https://casa.nrao.edu/aips2_docs/notes/199/node5.html#TAQL:EXPRESSIONS
+    res : :obj:`str`
+        Interval string conforming to TAQL sets and intervals as shown in `Casa TAQL Notes <https://casa.nrao.edu/aips2_docs/notes/199/node5.html#TAQL:EXPRESSIONS>`_
     """
 
     if '~' in inp:
@@ -353,17 +342,17 @@ def resolve_ranges(inp):
 
 
 def slice_data(inp):
-    """Creates a slicer for an array. To be used to get a data subset.
+    """Creates a slicer for an array. To be used to get a data subset such as correlation or channel subsets.
 
-    Inputs
-    ------
-    inp: str
-         This can be of the form "5", "10~20" (10 to 20 inclusive), "10:21" (same), "10:" (from 10 to end), ":10:2" (0 to 9 inclusive, stepped by 2), "~9:2" (same)
+    Parameters
+    ----------
+    inp : :obj:`str`
+        This can be of the form "5", "10~20" (10 to 20 inclusive), "10:21" (same), "10:" (from 10 to end), ":10:2" (0 to 9 inclusive, stepped by 2), "~9:2" (same)
 
-    Outputs
+    Returns
     -------
-    sl : slice object
-         slicer for an iterable object
+    sl : :obj:`slice`
+        slicer for an iterable object
 
     """
     if inp is None:
@@ -415,15 +404,16 @@ def slice_data(inp):
 
 def time_convert(xdata):
     """ Convert time from MJD to UTC time
-    Inputs
-    ------
-    xdata: xarray DataArray
-           TIME column from the MS xarray dataset in MJD format.
 
-    Outputs
+    Parameters
+    ----------
+    xdata : :obj:`xarray.DataArray`
+        TIME column from the MS or table xarray dataset in MJD format.
+
+    Returns
     -------
-    newtime: xarray DataArray
-             TIME column in a more human readable UTC format. Stored as np.datetime type.
+    newtime : :obj:`xarray.DataArray`
+        TIME column in a more human readable UTC format. Stored as :obj:`numpy.datetime` type.
 
     """
 
@@ -469,9 +459,8 @@ def wrap_warning_text(message, category, filename, lineno, file=None,
 warnings.formatwarning = wrap_warning_text
 
 
-def config_logger():
-    """This function is used to configure the logger for ragavi and catch
-        all warnings output by sys.stdout.
+def __config_logger():
+    """Configure the logger for ragavi and catch all warnings output by sys.stdout.
     """
     logfile_name = 'ragavi.log'
 
@@ -520,26 +509,25 @@ def config_logger():
     return logger
 
 
-def _handle_uncaught_exceptions(extype, exval, extraceback):
+def __handle_uncaught_exceptions(extype, exval, extraceback):
     """Function to Capture all uncaught exceptions into the log file
 
-       Inputs to this function are acquired from sys.excepthook. This
-       is because this function overrides sys.excepthook
-
-       https://docs.python.org/3/library/sys.html#sys.excepthook
+       Parameters to this function are acquired from sys.excepthook. This
+       is because this function overrides :obj:`sys.excepthook`
+      `Sys module excepthook <https://docs.python.org/3/library/sys.html#sys.excepthook>`_
 
     """
     message = "Oops ... !"
     logger.error(message, exc_info=(extype, exval, extraceback))
 
 
-logger = config_logger()
-sys.excepthook = _handle_uncaught_exceptions
+logger = __config_logger()
+sys.excepthook = __handle_uncaught_exceptions
 
 
 ########################################################################
 ########################### Some useful functions ######################
-def welcome():
+def __welcome():
     """Welcome to ragavi"""
     print('\n\n')
     #print("_*+_" * 23)
@@ -550,7 +538,7 @@ def welcome():
 
 
 def time_wrapper(func):
-    """Compute the execution time of a function
+    """A decorator function to compute the execution time of a function
     """
     def timer(*args, **kwargs):
         start = time()
