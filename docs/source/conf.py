@@ -96,3 +96,5 @@ latex_elements = {
 latex_show_urls = 'footnote'
 
 autoclass_content = "class"
+
+master_doc = 'index'
