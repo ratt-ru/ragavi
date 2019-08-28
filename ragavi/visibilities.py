@@ -615,8 +615,19 @@ def get_argparser():
     iter_choices = ['antenna1', 'antenna2', 'chan', 'corr', 'field', 'scan',
                     'spw']
 
-    # TODO: make this arg parser inherit from ragavi the common options
     parser = ArgumentParser(usage='ragavi-vis [options] <value>')
+
+    required = parser.add_argument_group('Required arguments')
+    required.add_argument('--ms', dest='mytabs',
+                          nargs='*', type=str, metavar='',
+                          help='Table(s) to plot. Default is None',
+                          default=[])
+    required.add_argument('--xaxis', dest='xaxis', type=str, metavar='',
+                          choices=x_choices, help='x-axis to plot',
+                          default=None)
+    required.add_argument('--yaxis', dest='yaxis', type=str, metavar='',
+                          choices=y_choices, help='Y axis variable to plot',
+                          default=None)
 
     parser.add_argument('--corr', dest='corr', type=str, metavar='',
                         help="""Correlation index or subset to plot Can be specified using normal python slicing syntax i.e "0:5" for 0<=corr<5 or "::2" for every 2nd corr or "0" for corr 0  or "0,1,3". Default is all.""",
@@ -647,9 +658,6 @@ def get_argparser():
                         choices=iter_choices,
                         help="""Select which variable to iterate over. Default is None.""",
                         default=None)
-    parser.add_argument('--ms', dest='mytabs',
-                        nargs='*', type=str, metavar='',
-                        help='Table(s) to plot. Default is None', default=[])
     parser.add_argument('--no-flag', dest='flag', action='store_false',
                         help="""Plot both flagged and unflagged data. Default only plot data that is not flagged.""",
                         default=True)
@@ -658,12 +666,6 @@ def get_argparser():
                         default=None)
     parser.add_argument('--taql', dest='where', type=str, metavar='',
                         help='TAQL where', default=None)
-    parser.add_argument('--xaxis', dest='xaxis', type=str, metavar='',
-                        choices=x_choices, help='x-axis to plot',
-                        default='time')
-    parser.add_argument('--yaxis', dest='yaxis', type=str, metavar='',
-                        choices=y_choices, help='Y axis variable to plot',
-                        default='amplitude')
 
     return parser
 
@@ -724,14 +726,11 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None)
 
 
 def main(**kwargs):
-    """Main function"""
+    """Main function that launches the visibilities plotter"""
 
-    if len(kwargs) == 0:
+    if 'options' in kwargs:
         NB_RENDER = False
-
-        parser = get_argparser()
-        options = parser.parse_args()
-
+        options = kwargs.get('options', None)
         chan = options.chan
         corr = options.corr
         data_column = options.data_column

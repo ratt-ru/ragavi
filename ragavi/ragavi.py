@@ -7,7 +7,6 @@ import numpy as np
 import re
 import sys
 import warnings
-
 import dask.array as da
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
@@ -37,7 +36,6 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
 
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
-
 from . import vis_utils as vu
 
 # defining some constants
@@ -1393,6 +1391,16 @@ def get_argparser():
     """
     parser = ArgumentParser(usage='%(prog)s [options] <value>',
                             description='A RadioAstronomy Visibility and Gains Inspector')
+    required = parser.add_argument_group('Required arguments')
+    required.add_argument('-g', '--gaintype', nargs='+', type=str,
+                          metavar=' ', dest='gain_types',
+                          choices=['B', 'D', 'G', 'K', 'F'],
+                          help='Type of table(s) to be plotted: B, D, G, K, F',
+                          default=[])
+    required.add_argument('-t', '--table', dest='mytabs',
+                          nargs='+', type=str, metavar=(' '),
+                          help='Table(s) to plot (default = None)', default=[])
+
     parser.add_argument('-a', '--ant', dest='plotants', type=str, metavar=' ',
                         help="""Plot only this antenna, or comma-separated list of antennas. Default is all.""",
                         default=None)
@@ -1411,10 +1419,6 @@ def get_argparser():
                         metavar='',
                         help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Default is all""",
                         default=None)
-    parser.add_argument('-g', '--gaintype', nargs='+', type=str, metavar=' ',
-                        dest='gain_types', choices=['B', 'D', 'G', 'K', 'F'],
-                        help='Type of table(s) to be plotted: B, D, G, K, F',
-                        default=[])
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar=' ',
                         help='Output HTMLfile name', default='')
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
@@ -1423,9 +1427,6 @@ def get_argparser():
     parser.add_argument('--ddid', dest='ddid', type=int, metavar=' ',
                         help='SPECTRAL_WINDOW_ID or ddid number. Default all',
                         default=None)
-    parser.add_argument('-t', '--table', dest='mytabs',
-                        nargs='+', type=str, metavar=(' '),
-                        help='Table(s) to plot (default = None)', default=[])
     parser.add_argument('--t0', dest='t0', type=float, metavar=' ',
                         help='Minimum time to plot [in seconds]. Default is full range]',
                         default=0)
@@ -1499,13 +1500,10 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker='circle_x'):
 
 
 def main(**kwargs):
-    """Main function that launches the visibility plotter"""
-    if len(kwargs) == 0:
+    """Main function that launches the gains plotter"""
+    if 'options' in kwargs:
         NB_RENDER = False
-
-        parser = get_argparser()
-        options = parser.parse_args()
-
+        options = kwargs.get('options', None)
         corr = int(options.corr)
         ddid = options.ddid
         doplot = options.doplot
