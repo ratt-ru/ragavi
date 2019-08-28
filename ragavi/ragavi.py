@@ -1390,7 +1390,7 @@ def get_argparser():
 
     """
     parser = ArgumentParser(usage='%(prog)s [options] <value>',
-                            description='A RadioAstronomy Visibility and Gains Inspector')
+                            description='A Radio Astronomy Gains and Visibility Inspector')
     required = parser.add_argument_group('Required arguments')
     required.add_argument('-g', '--gaintype', nargs='+', type=str,
                           metavar=' ', dest='gain_types',
