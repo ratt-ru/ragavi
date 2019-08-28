@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-from ragavi.ragavi import main
-
+from ragavi.ragavi import get_argparser, main
 
 if __name__ == "__main__":
-    main()
+    parser = get_argparser()
+    options = parser.parse_args()
+    main(options=options)
