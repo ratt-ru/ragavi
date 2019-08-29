@@ -3,8 +3,10 @@
 - Introduced ragavi visibility plotter accessible by ragavi-vis
 - Improved documentation
 - Added progress bar for ragavi-vis
-- Changed gain plotter name to ragavi-gains. Deprecating ragavi.
-
+- Changed gain plotter name to ragavi-gains. Deprecating ragavi
+- Added ``--xmin``, ``--xmax``, ``--ymin``, ``--ymax`` options for selection of x and y data ranges
+- Added ``-chunks`` command line option for user specified chunking strategies
+- Migrate from ``xarray-ms`` to ``dask-ms`` for table functions
 
 
 0.1.0
@@ -36,9 +38,9 @@
 -----
 - Now supporting python3
 - All fields plotted by default on the same plot
-- --field command line switch is now optional
+- ``--field`` command line switch is now optional
 - Different fields now plotted with different markers
-- Migrated to xarray-ms from python-casacore
+- Migrated to ``xarray-ms`` from ``python-casacore``
 - Added glyph alpha selector, glyph size selector, and field selector
 - Reorganise selector panel
 - Added title and axis label size selectors
