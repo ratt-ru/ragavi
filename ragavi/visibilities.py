@@ -8,6 +8,7 @@ import sys
 import warnings
 
 import dask.array as da
+import daskms as xm
 import datashader as ds
 import datashader.transfer_functions as tf
 
@@ -24,6 +25,7 @@ from argparse import ArgumentParser
 from collections import namedtuple
 from datetime import datetime
 from dask import compute, delayed
+from daskms.table_schemas import MS_SCHEMA
 from datashader.bokeh_ext import InteractiveImage
 from itertools import cycle
 
@@ -38,13 +40,7 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           Select, Text, Toggle, Title)
 from dask.diagnostics import ProgressBar
 
-from . import vis_utils as vu
-
-try:
-    import xarrayms as xm
-    from xarrayms.known_table_schemas import MS_SCHEMA
-except:
-    import daskms as xm
+from . import utils as vu
 
 logger = vu.logger
 excepthook = vu.sys.excepthook
@@ -444,7 +440,8 @@ def add_axis(fig, axis_range, ax_label):
 
 
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
-               color='blue', xds_table_obj=None, ms_name=None, iterate=None):
+               color='blue', xds_table_obj=None, ms_name=None, iterate=None,
+               x_min=None, x_max=None, y_min=None, y_max=None):
     """Responsible for plotting in this script.
 
     This is responsible for:
@@ -479,6 +476,18 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         Dataset object containing the columns of the MS. This is passed on in case there are items required from the actual dataset.
     ms_nmae : :obj:`str`
         Name or [can include path] to Measurement Set
+    xmin: :obj:`float`
+        Minimum x value to be plotted
+
+        Note
+        ----
+        This may be difficult to achieve in the case where :obj:`xaxis` is time because time in ``ragavi-vis`` is converted into milliseconds from epoch for ease of plotting by ``bokeh``.
+    xmax: :obj:`float`
+        Maximum x value to be plotted
+    ymin: :obj:`float`
+        Minimum y value to be plotted
+    ymax: :obj:`float`
+        Maximum y value to be plotted
 
     Returns
     -------
@@ -525,6 +534,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     title = "{} vs {}".format(y_cap, x_cap)
 
     if xaxis == 'time':
+        # bounds for x
         bds = np.array([np.nanmin(x), np.nanmax(x)]).astype(datetime)
         # creating the x-xaxis label
         txaxis = "Time {} to {}".format(bds[0].strftime("%Y-%m-%d %H:%M:%S"),
@@ -535,11 +545,30 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     else:
         x_axis_type = 'linear'
 
+    # setting maximum and minimums if they are not user defined
+    if x_min == None:
+        x_min = x.min().data
+    else:
+        x = x.where(x >= x_min)
+
+    if x_max == None:
+        x_max = x.max().data
+    else:
+        x = x.where(x <= x_max)
+
+    if y_min == None:
+        y_min = y.min().data
+    else:
+        y = y.where(y >= y_min)
+
+    if y_max == None:
+        y_max = y.max().data
+    else:
+        y = y.where(y <= y_max)
+
     logger.info("Calculating x and y Min and Max ranges")
     with ProgressBar():
-        x_min, x_max = compute(x.min().data, x.max().data)
-        y_min, y_max = compute(y.min().data, y.max().data)
-
+        x_min, x_max, y_min, y_max = compute(x_min, x_max, y_min, y_max)
     logger.info("Done")
 
     if iterate:
@@ -635,6 +664,9 @@ def get_argparser():
     parser.add_argument('--chan', dest='chan', type=str, metavar='',
                         help="""Channels to select. Can be specified using syntax i.e "0:5" (exclusive range) or "20" for channel 20 or "10~20" (inclusive range) (same as 10:21) "::10" for every 10th channel or "0,1,3" etc. Default is all.""",
                         default=None)
+    parser.add_argument('--chunks', dest='chunks', type=str, metavar='',
+                        help="""Chunk sizes to be applied to the dataset. Can be an integer e.g "1000", or a comma separated string e.g "1000,100,2" for multiple dimensions. The available dimensions are (row, chan, corr) respectively. If an integer, the specified chunk size will be applied to all dimensions. If comma separated string, these chunk sizes will be applied to each dimension respectively. Default is 100000""",
+                        default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar='',
                         help="""Colour or matplotlib colour map to use. Default is coolwarm.""",
                         default='coolwarm')
@@ -666,17 +698,27 @@ def get_argparser():
                         default=None)
     parser.add_argument('--taql', dest='where', type=str, metavar='',
                         help='TAQL where', default=None)
+    parser.add_argument('--xmin', dest='xmin', type=float, metavar='',
+                        help='Minimum x value to plot', default=None)
+    parser.add_argument('--xmax', dest='xmax', type=float, metavar='',
+                        help='Maximum x value to plot', default=None)
+    parser.add_argument('--ymin', dest='ymin', type=float, metavar='',
+                        help='Minimum y value to plot', default=None)
+    parser.add_argument('--ymax', dest='ymax', type=float, metavar='',
+                        help='Maximum y value to plot', default=None)
 
     return parser
 
 
-def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None):
+def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None, scan=None, where=None):
     """Get xarray Dataset objects containing Measurement Set columns of the selected data
 
     Parameters
     ----------
     ms_name: :obj:`str`
         Name of your MS or path including its name
+    chunks: :obj:`str`
+        Chunk sizes for the resulting dataset.
     data_col: :obj:`str`
         Data column to be used. Defaults to 'DATA'
     ddid: :obj:`int`
@@ -699,6 +741,11 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None)
     # defining part of the gain table schema
     if data_col != 'DATA':
         ms_schema[data_col] = ms_schema['DATA']
+    if chunks is None:
+        chunks = {'row': 100000}
+    else:
+        dims = ['row', 'chan', 'corr']
+        chunks = {k: int(v) for k, v in zip(dims, chunks.split(','))}
 
     # always ensure that where stores something
     if where == None:
@@ -716,8 +763,9 @@ def get_ms(ms_name, data_col='DATA', ddid=None, fid=None, scan=None, where=None)
     # combine the strings to form the where clause
     where = " && ".join(where)
     try:
-        tab_objs = xm.xds_from_table(ms_name, taql_where=where,
-                                     table_schema=ms_schema, group_cols=None)
+        tab_objs = xm.xds_from_ms(ms_name, taql_where=where,
+                                  table_schema=ms_schema, group_cols=[],
+                                  chunks=chunks)
         return tab_objs
     except:
         logger.exception(
@@ -733,6 +781,7 @@ def main(**kwargs):
         options = kwargs.get('options', None)
         chan = options.chan
         corr = options.corr
+        chunks = options.chunks
         data_column = options.data_column
         ddid = options.ddid
         fields = options.fields
@@ -745,6 +794,10 @@ def main(**kwargs):
         scan = options.scan
         where = options.where
         xaxis = options.xaxis
+        xmin = options.xmin
+        xmax = options.xmax
+        ymin = options.ymin
+        ymax = options.ymax
         yaxis = options.yaxis
         # timebin = options.timebin
         # chanbin = options.chanbin
@@ -787,7 +840,7 @@ def main(**kwargs):
         corr = vu.slice_data(corr)
 
         partitions = get_ms(mytab, data_col=data_column, ddid=ddid,
-                            fid=fields, scan=scan, where=where)
+                            fid=fields, scan=scan, where=where, chunks=chunks)
 
         mymap = cmx.get_cmap(mycmap)
         oup_a = []
@@ -807,9 +860,11 @@ def main(**kwargs):
 
             logger.info("Starting plotting function.")
 
-            fig = hv_plotter(ready.x, ready.y, xaxis=xaxis, xlab=ready.xlabel,             yaxis=yaxis, ylab=ready.ylabel, color=mymap,
-                             iterate=iterate, xds_table_obj=chunk,
-                             ms_name=mytab)
+            fig = hv_plotter(x=ready.x, y=ready.y, xaxis=xaxis,
+                             xlab=ready.xlabel, yaxis=yaxis,
+                             ylab=ready.ylabel, color=mymap, iterate=iterate,
+                             xds_table_obj=chunk, ms_name=mytab, x_min=xmin,
+                             x_max=xmax, y_min=ymin, y_max=ymax)
 
             logger.info("Plotting complete.")
 
