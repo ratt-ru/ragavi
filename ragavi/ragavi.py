@@ -32,7 +32,6 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
 from . import utils as vu
-from ipdb import set_trace
 
 # defining some constants
 # default plot dimensions
