@@ -12,7 +12,7 @@
 #
 import os
 import sys
-from ragavi import ragavi, visibilities, vis_utils
+from ragavi import ragavi, visibilities, utils
 
 sys.path.insert(0, os.path.abspath('../..'))
 
