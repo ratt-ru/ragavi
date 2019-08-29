@@ -32,6 +32,7 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
 from . import utils as vu
+from ipdb import set_trace
 
 # defining some constants
 # default plot dimensions
@@ -505,11 +506,11 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None):
     """
 
     # defining part of the gain table schema
-    tab_schema = {'CPARAM': ('chan', 'corr'),
-                  'FLAG': ('chan', 'corr'),
-                  'FPARAM': ('chan', 'corr'),
-                  'PARAMERR': ('chan', 'corr'),
-                  'SNR': ('chan', 'corr'),
+    tab_schema = {'CPARAM': {'dims': ('chan', 'corr')},
+                  'FLAG': {'dims': ('chan', 'corr')},
+                  'FPARAM': {'dims': ('chan', 'corr')},
+                  'PARAMERR': {'dims': ('chan', 'corr')},
+                  'SNR': {'dims': ('chan', 'corr')},
                   }
 
     if where == None:
@@ -532,7 +533,7 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None):
                                      group_cols=None)
         return tab_objs
     except:
-        logging.exception("Invalid ANTENNA id, FIELD_ID or TAQL clause")
+        logger.exception("Invalid ANTENNA id, FIELD_ID or TAQL clause")
         sys.exit(-1)
 
 
@@ -1390,46 +1391,46 @@ def get_argparser():
     required.add_argument('-g', '--gaintype', nargs='+', type=str,
                           metavar=' ', dest='gain_types',
                           choices=['B', 'D', 'G', 'K', 'F'],
-                          help='Type of table(s) to be plotted: B, D, G, K, F',
+                          help="""Type of table(s) to be plotted. Can be specified as a single character e.g. "B" if a single table has been provided or space separated list e.g B D G if multiple tables have been specified. Valid choices are  B D G K & F""",
                           default=[])
     required.add_argument('-t', '--table', dest='mytabs',
                           nargs='+', type=str, metavar=(' '),
-                          help='Table(s) to plot (default = None)', default=[])
+                          help="""Table(s) to plot. Multiple tables can be specified as a space separated list""",
+                          default=[])
 
     parser.add_argument('-a', '--ant', dest='plotants', type=str, metavar=' ',
-                        help="""Plot only this antenna, or comma-separated list of antennas. Default is all.""",
+                        help="""Plot only a specific antenna, or comma-separated list of antennas. Defaults to all.""",
                         default=None)
     parser.add_argument('-c', '--corr', dest='corr', type=int, metavar=' ',
-                        help="""Correlation index to plot Default is 0.""",
+                        help="""Correlation index to plot Defaults to 0.""",
                         default=0)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
-                        help='Matplotlib colour map to use for antennas\
-                             (default=coolwarm)',
+                        help="""Matplotlib colour map to use for antennas. Defaults to coolwarm""",
                         default='coolwarm')
     parser.add_argument('-d', '--doplot', dest='doplot', type=str,
                         metavar=' ',
-                        help="""Plot complex values as amp and phase (ap) or real and imag (ri). Default is ap.""",
+                        help="""Plot complex values as amplitude & phase (ap) or real and imaginary (ri). Defaults to ap.""",
                         default='ap')
     parser.add_argument('--field', dest='fields', type=str,
                         metavar='',
-                        help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Default is all""",
+                        help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Defaults to all""",
                         default=None)
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar=' ',
                         help='Output HTMLfile name', default='')
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
-                        metavar=' ', help='Output png/svg image name',
+                        metavar=' ', help='Output PNG or SVG image name',
                         default='')
     parser.add_argument('--ddid', dest='ddid', type=int, metavar=' ',
-                        help='SPECTRAL_WINDOW_ID or ddid number. Default all',
+                        help="""SPECTRAL_WINDOW_ID or ddid number. Defaults to all""",
                         default=None)
     parser.add_argument('--t0', dest='t0', type=float, metavar=' ',
-                        help='Minimum time to plot [in seconds]. Default is full range]',
+                        help="""Minimum time to plot [in seconds]. Defaults to full range]""",
                         default=0)
     parser.add_argument('--t1', dest='t1', type=float, metavar=' ',
-                        help='Maximum time to plot [in seconds].Default is full range.',
+                        help="""Maximum time to plot [in seconds]. Defaults to full range""",
                         default=None)
     parser.add_argument('--taql', dest='where', type=str, metavar=' ',
-                        help='TAQL where caluse',
+                        help='TAQL where clause',
                         default=None)
 
     return parser
@@ -1582,6 +1583,7 @@ def main(**kwargs):
         if plotants is not None:
             plotants = vu.resolve_ranges(plotants)
 
+        logger.info('Acquiring table: {}'.format(mytab.split('/')[-1]))
         tt = get_table(mytab, spwid=ddid, where=where, fid=fields,
                        antenna=plotants)[0]
 
@@ -1616,6 +1618,9 @@ def main(**kwargs):
         # range
         TOOLS = dict(tools='box_select, box_zoom, reset, pan, save,\
                             wheel_zoom, lasso_select')
+
+        logger.info('Setting up plotting canvas')
+
         ax1 = figure(**TOOLS)
         ax2 = figure(x_range=ax1.x_range, **TOOLS)
 
@@ -1642,6 +1647,7 @@ def main(**kwargs):
             stats_ax1.append(stats_text[0])
             stats_ax2.append(stats_text[1])
 
+            logger.info('Plotting field: {}'.format(field))
             # for each antenna
             for ant in plotants:
 
@@ -1658,7 +1664,7 @@ def main(**kwargs):
                 # depending on the status of flag_data, this may
                 # be either flagged or unflagged data
                 data_obj = DataCoreProcessor(subtab, mytab, gain_type,
-                                             fid=field, antenna=ant,
+                                             fid=field,
                                              doplot=doplot, corr=corr,
                                              flag=flag_data)
                 ready_data = data_obj.act()
@@ -1675,8 +1681,8 @@ def main(**kwargs):
 
                 # inverse data object
                 infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
-                                                  fid=field, antenna=ant,
-                                                  doplot=doplot, corr=corr,
+                                                  fid=field, doplot=doplot,
+                                                  corr=corr,
                                                   flag=not flag_data).act()
 
                 # for tooltips
