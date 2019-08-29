@@ -11,6 +11,7 @@ Welcome to ragavi's documentation!
    vis
    utilities
    appendix
+   changelog
 
 Indices and tables
 ==================
