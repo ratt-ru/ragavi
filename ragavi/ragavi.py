@@ -8,15 +8,10 @@ import re
 import sys
 import warnings
 import dask.array as da
+import daskms as xm
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
 import xarray as xr
-
-try:
-    import xarrayms as xm
-except:
-    import daskms as xm
-
 
 from argparse import ArgumentParser
 from builtins import map
@@ -36,7 +31,7 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
 
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
-from . import vis_utils as vu
+from . import utils as vu
 
 # defining some constants
 # default plot dimensions
