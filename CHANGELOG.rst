@@ -1,6 +1,10 @@
 0.2.0
 -----
 - Introduced ragavi visibility plotter accessible by ragavi-vis
+- Improved documentation
+- Added progress bar for ragavi-vis
+- Changed gain plotter name to ragavi-gains. Deprecating ragavi.
+
 
 
 0.1.0
