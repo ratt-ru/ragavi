@@ -3,7 +3,6 @@ dask[complete]
 dask-ms[xarray]
 datashader
 future
-holoviews
 hvplot
 ipykernel>=4.8.2,<5.0; python_version <= '2.7'
 ipykernel>=5; python_version >= '3'
@@ -16,4 +15,3 @@ pyfiglet
 python-casacore
 screeninfo
 xarray
-xarray-ms
