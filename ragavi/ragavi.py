@@ -720,8 +720,6 @@ def make_plots(source, ax1, ax2, fid=0, color='red', y1err=None, y2err=None):
     p2.js_link('visible', p1, 'visible')
 
     if p1_err:
-        p1.glyph.js_link('size', p1_err, 'line_width')
-        p2.glyph.js_link('size', p2_err, 'line_width')
         p1.glyph.js_link('fill_alpha', p1_err, 'line_alpha')
         p2.glyph.js_link('fill_alpha', p2_err, 'line_alpha')
 
@@ -971,18 +969,15 @@ def field_selector_callback():
     code : :obj:`str`
     """
     code = """
-            //nants: number of antennas in each field
-            // nfields: number of fields
-
-            let nants = ants.length;
-            let nfields = p1.length / nants;
+            // ants: number of antennas in each field. Takes value of plotants
+            // nfields: number of fields. From ufids.size            
             //to keep track of the last antenna number visibilities because
             //p1 and p2 is are single lists containing all the elements in
             //all fields
             let ant_count = 0;
 
             for(f=0; f<nfields; f++){
-                for(a=0; a<nants; a++){
+                for(a=0; a<ants; a++){
                     if (this.active.includes(f)){
                         p1[a+ant_count].visible = true;
                         p2[a+ant_count].visible = true;
@@ -992,10 +987,9 @@ def field_selector_callback():
                         p2[a+ant_count].visible = false;
                     }
                 }
-                ant_count+=nants;
+                //add total number of antennas for transitioning to each field
+                ant_count+=ants;
             }
-
-
 
            """
     return code
@@ -1586,7 +1580,8 @@ def main(**kwargs):
         tt = get_table(mytab, spwid=ddid, where=where, fid=fields,
                        antenna=plotants)[0]
 
-        if t1 != None or t1 != None:
+        # constrain the plots to a certain time period if specified
+        if t0 != None or t1 != None:
             # selection of specified times
             time_s = tt.TIME - tt.TIME[0]
             if t0 != None:
@@ -1596,16 +1591,15 @@ def main(**kwargs):
                 tt = tt.where((time_s <= t1), drop=True)
                 time_s = time_s.where(time_s <= t1, drop=True)
 
-        antnames = vu.get_antennas(mytab).data.compute()
+        antnames = vu.get_antennas(mytab).values
 
-        plotants = np.unique(tt.ANTENNA1.data.compute()).astype(int)
+        plotants = np.unique(tt.ANTENNA1.values).astype(int)
 
-        # unique field ids
-        ufids = np.unique(tt.FIELD_ID.data.compute()).astype(int)
+        # get all unique field ids in the data
+        ufids = np.unique(tt.FIELD_ID.values).astype(int)
         ncorrs = tt.FLAG.corr.data
 
-        freqs = (vu.get_frequencies(
-            mytab, spwid=slice(0, None)) / GHZ).data.compute()
+        freqs = (vu.get_frequencies(mytab, spwid=slice(0, None)) / GHZ).values
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=plotants.size - 1)
@@ -1658,7 +1652,9 @@ def main(**kwargs):
                 # creating colors for maps
                 y1col = y2col = scalarMap.to_rgba(float(ant), bytes=True)[:-1]
 
-                subtab = tt.where(tt.ANTENNA1 == int(ant), drop=True)
+                # filter for antenna and field
+                subtab = tt.where((tt.ANTENNA1 == int(ant)) &
+                                  (tt.FIELD_ID == int(field)), drop=True)
 
                 # depending on the status of flag_data, this may
                 # be either flagged or unflagged data
@@ -1757,7 +1753,6 @@ def main(**kwargs):
                 ebars_ax2.append(p2_err)
 
                 subtab.close()
-
         tt.close()
 
         # configuring titles for the plots
@@ -1896,7 +1891,8 @@ def main(**kwargs):
         field_selector.callback = CustomJS(args={'fselect': field_selector,
                                                  'p1': ax1_plots,
                                                  'p2': ax2_plots,
-                                                 'ants': plotants},
+                                                 'ants': plotants.size,
+                                                 'nfields': ufids.size},
                                            code=field_selector_callback())
         axis_fontslider.js_on_change('value',
                                      CustomJS(args=dict(ax1=ax1.axis,
