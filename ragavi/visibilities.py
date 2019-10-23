@@ -329,10 +329,13 @@ class DataCoreProcessor:
             else:
                 y_prepd = y_prepd.T
 
+            # selected channel numbers
+            chan_nos = xds_table_obj[datacol].chan.values[chan]
+
             # assign chan coordinates to both x and y
             # these coordinates should correspond to the selected channels
-            y_prepd = y_prepd.assign_coords(chan=y_prepd.chan.values[chan])
-            x_prepd = x_prepd.assign_coords(chan=y_prepd.chan.values[chan])
+            y_prepd = y_prepd.assign_coords(chan=chan_nos)
+            x_prepd = x_prepd.assign_coords(chan=chan_nos)
 
             # delete table row coordinates for channel data because of
             # incompatibility
@@ -548,23 +551,15 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     # setting maximum and minimums if they are not user defined
     if x_min == None:
         x_min = x.min().data
-    else:
-        x = x.where(x >= x_min)
 
     if x_max == None:
         x_max = x.max().data
-    else:
-        x = x.where(x <= x_max)
 
     if y_min == None:
         y_min = y.min().data
-    else:
-        y = y.where(y >= y_min)
 
     if y_max == None:
         y_max = y.max().data
-    else:
-        y = y.where(y <= y_max)
 
     logger.info("Calculating x and y Min and Max ranges")
     with ProgressBar():
@@ -576,22 +571,25 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         if iterate == 'corr' or iterate == 'chan':
             xy = xr.merge([x, y])
         else:
+            # get the data array over which to iterate and merge it to x and y
             iter_data = xds_table_obj[iters[iterate]]
             xy = xr.merge([x, y, iter_data])
+
         # change value of iterate to the required data column
         iterate = iters[iterate]
-        xy_df = xy.to_dask_dataframe()
+        xy_df = xy.to_dask_dataframe()[[x_cap, y_cap, iterate]]
         xy_df = xy_df.astype({iterate: 'category'})
     else:
         xy = xr.merge([x, y])
-        xy_df = xy.to_dask_dataframe()
+        xy_df = xy.to_dask_dataframe()[[x_cap, y_cap]]
 
     logger.info('Creating canvas')
     fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
                  x_range=(x_min, x_max), y_axis_label=ylab,
                  y_range=(y_min, y_max),
                  x_axis_type=x_axis_type, title=title,
-                 plot_width=900, plot_height=700, sizing_mode='stretch_both')
+                 plot_width=1920, plot_height=1080,
+                 sizing_mode='stretch_both')
 
     logger.info("Starting datashading")
 
@@ -737,9 +735,9 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None, scan=None
     """
 
     ms_schema = MS_SCHEMA.copy()
-
+    ms_schema['WEIGHT_SPECTRUM'] = ms_schema['DATA']
     # defining part of the gain table schema
-    if data_col != 'DATA':
+    if data_col not in ['DATA', 'CORRECTED_DATA']:
         ms_schema[data_col] = ms_schema['DATA']
     if chunks is None:
         chunks = {'row': 100000}
