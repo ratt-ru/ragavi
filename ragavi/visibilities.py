@@ -2,22 +2,16 @@
 from __future__ import division
 
 import logging
-import glob
-import re
 import sys
 import warnings
 
+import colorcet as cc
 import dask.array as da
 import daskms as xm
 import datashader as ds
 import datashader.transfer_functions as tf
 
-import matplotlib.colors as colors
-import matplotlib.cm as cmx
-import matplotlib.pylab as pylab
-import matplotlib.pyplot as plt
 import numpy as np
-import pyrap.quanta as qa
 import xarray as xr
 
 
@@ -32,12 +26,12 @@ from itertools import cycle
 
 from bokeh.plotting import figure
 from bokeh.layouts import column, gridplot, row, widgetbox
-from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
+from bokeh.io import (export_png, output_file, output_notebook,
                       show, save)
-from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
-                          CustomJS, Div, HoverTool, LinearAxis, Legend,
-                          PrintfTickFormatter, Range1d,
-                          Select, Text, Toggle, Title)
+from bokeh.models import (BasicTicker, ColumnDataSource,
+                          ColorBar, Div, HoverTool, LinearAxis,
+                          LinearColorMapper, PrintfTickFormatter, Range1d,
+                          Title)
 from dask.diagnostics import ProgressBar
 
 from . import utils as vu
@@ -442,6 +436,40 @@ def add_axis(fig, axis_range, ax_label):
     return fig
 
 
+def make_cbar(cats, category, cmap=None):
+    """Initiate a colorbar for categorical data
+    Parameters
+    ----------
+    cats: :obj:`np.ndarray`
+        Available category ids e.g scan_number, field id etc
+    category: :obj:`str`
+        Name of the categorizing axis
+    cmap: :obj:`matplotlib.cmap`
+        Matplotlib colormap
+
+    Returns
+    -------
+    cbar: :obj:`bokeh.models`
+        Colorbar instance 
+    """
+    lo = np.min(cats)
+    hi = np.max(cats)
+    cats = cats.astype(str)
+    category = category.capitalize()
+    ncats = cats.size
+
+    # not using categorical because we'll need to define our own colors
+    cmapper = LinearColorMapper(palette=cmap[:ncats], low=lo, high=hi)
+    b_ticker = BasicTicker(desired_num_ticks=ncats)
+
+    cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
+                    border_line_color=None, ticker=b_ticker,
+                    location=(0, 0), title=category, title_standoff=5,
+                    title_text_font_size='15pt')
+
+    return cbar
+
+
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                color='blue', xds_table_obj=None, ms_name=None, iterate=None,
                x_min=None, x_max=None, y_min=None, y_max=None):
@@ -508,14 +536,13 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
              None: None}
 
     @time_wrapper
-    def image_callback(xr, yr, w, h, x=None, y=None, cat=None, col=None):
+    def image_callback(xr, yr, w, h, x=None, y=None, cat=None, cat_ids=None, col=None):
         cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
         logger.info("Datashader aggregation starting")
         if cat:
-
             with ProgressBar():
                 agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
-            img = tf.shade(agg, color_key=col)
+            img = tf.shade(agg, color_key=col[:cat_ids.size])
         else:
             with ProgressBar():
                 agg = cvs.points(xy_df, x, y, ds.count())
@@ -568,17 +595,25 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
 
     if iterate:
         title = title + " Colorise By: {}".format(iterate.capitalize())
-        if iterate == 'corr' or iterate == 'chan':
+        if iterate in ['corr', 'chan']:
             xy = xr.merge([x, y])
+            if iterate == 'corr':
+                cats = y.corr.values
+            else:
+                cats = y.chan.values
         else:
             # get the data array over which to iterate and merge it to x and y
             iter_data = xds_table_obj[iters[iterate]]
             xy = xr.merge([x, y, iter_data])
+            cats = np.unique(iter_data.values)
 
         # change value of iterate to the required data column
         iterate = iters[iterate]
         xy_df = xy.to_dask_dataframe()[[x_cap, y_cap, iterate]]
         xy_df = xy_df.astype({iterate: 'category'})
+
+        # initialise bokeh colorbar
+        cbar = make_cbar(cats, iterate, cmap=color)
     else:
         xy = xr.merge([x, y])
         xy_df = xy.to_dask_dataframe()[[x_cap, y_cap]]
@@ -595,7 +630,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
 
     im = InteractiveImage(fig, image_callback, x=x_cap,
                           y=y_cap, cat=iterate,
-                          col=color)
+                          col=color, cat_ids=cats)
 
     h_tool = HoverTool(tooltips=[(x_cap, '$x'),
                                  (y_cap, '$y')])
@@ -606,6 +641,9 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     x_axis = fig.xaxis[0]
     x_axis.major_label_orientation = 45
     x_axis.ticker.desired_num_ticks = 30
+
+    if cbar:
+        fig.add_layout(cbar, 'right')
 
     if xaxis == 'channel' or xaxis == 'frequency':
         fig = add_axis(fig=fig,
@@ -666,8 +704,11 @@ def get_argparser():
                         help="""Chunk sizes to be applied to the dataset. Can be an integer e.g "1000", or a comma separated string e.g "1000,100,2" for multiple dimensions. The available dimensions are (row, chan, corr) respectively. If an integer, the specified chunk size will be applied to all dimensions. If comma separated string, these chunk sizes will be applied to each dimension respectively. Default is 100000""",
                         default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar='',
-                        help="""Colour or matplotlib colour map to use. Default is coolwarm.""",
-                        default='coolwarm')
+                        help="""Colour or colour map to use. Default is blue. A list of valid cmap arguments can be found at: 
+                        https://colorcet.pyviz.org/user_guide/index.html
+                        Note that if the argument "colorize" is supplied, 
+                        a categorical colour scheme will be adopted.""",
+                        default=None)
     parser.add_argument('--data-column', dest='data_column', type=str,
                         metavar='',
                         help="""Column from MS to use for data. Default is DATA.""", default='DATA')
@@ -684,10 +725,11 @@ def get_argparser():
     parser.add_argument('--image-name', dest='image_name', type=str,
                         metavar='',
                         help="""Output png name. This requires works with phantomJS and selenium installed packages installed.""", default=None)
-    parser.add_argument('--iterate', dest='iterate', type=str, metavar='',
+    parser.add_argument('--colorize', dest='iterate', type=str, metavar='',
                         choices=iter_choices,
-                        help="""Select which variable to iterate over. Default is None.""",
+                        help="""Select which columnt to colorize by. Default is None.""",
                         default=None)
+    # To Do: Changed iterate argument to colorize. Iteration to be added later
     parser.add_argument('--no-flag', dest='flag', action='store_false',
                         help="""Plot both flagged and unflagged data. Default only plot data that is not flagged.""",
                         default=True)
@@ -833,6 +875,7 @@ def main(**kwargs):
             # set data selection to all unless ddid is specified
             n_ddid = slice(0, None)
 
+        # capture channels or correlations to be selected
         chan = vu.slice_data(chan)
 
         corr = vu.slice_data(corr)
@@ -840,14 +883,22 @@ def main(**kwargs):
         partitions = get_ms(mytab, data_col=data_column, ddid=ddid,
                             fid=fields, scan=scan, where=where, chunks=chunks)
 
-        mymap = cmx.get_cmap(mycmap)
+        if mycmap == None:
+            mycmap = cc.palette['blues']
+        else:
+            if mycmap in cc.palette:
+                mycmap = cc.palette[mycmap]
+            else:
+                pass
+
         oup_a = []
 
         for count, chunk in enumerate(partitions):
 
             # black box returns an plottable element / composite element
             if iterate != None:
-                mymap = cycle(['red', 'blue', 'green', 'purple'])
+                logger.info('Setting categorical colors')
+                mycmap = cc.palette['glasbey_bw']
 
             logger.info("Starting data processing.")
 
@@ -860,7 +911,7 @@ def main(**kwargs):
 
             fig = hv_plotter(x=ready.x, y=ready.y, xaxis=xaxis,
                              xlab=ready.xlabel, yaxis=yaxis,
-                             ylab=ready.ylabel, color=mymap, iterate=iterate,
+                             ylab=ready.ylabel, color=mycmap, iterate=iterate,
                              xds_table_obj=chunk, ms_name=mytab, x_min=xmin,
                              x_max=xmax, y_min=ymin, y_max=ymax)
 
