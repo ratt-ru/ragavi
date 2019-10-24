@@ -617,6 +617,8 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     else:
         xy = xr.merge([x, y])
         xy_df = xy.to_dask_dataframe()[[x_cap, y_cap]]
+        cats = None
+        cbar = None
 
     logger.info('Creating canvas')
     fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
