@@ -15,7 +15,7 @@ except:
 
 from dask import delayed, compute
 from datetime import datetime
-from pyfiglet import Figlet
+#from pyfiglet import Figlet
 from time import time
 
 ########################################################################
@@ -141,8 +141,9 @@ def calc_uvwave(uvw, freq):
     # wavelength = velocity / frequency
     wavelength = (C / freq)
     uvdist = calc_uvdist(uvw)
+    uvdist = uvdist.expand_dims({'chan': 1})
 
-    uvwave = uvdist / wavelength
+    uvwave = uvdist / wavelength.T.values
     return uvwave
 
 
@@ -532,7 +533,7 @@ def __welcome():
     print('\n\n')
     #print("_*+_" * 23)
     #print("Welcome to ")
-    print(Figlet(font='nvscript').renderText('ragavi'))
+    # print(Figlet(font='nvscript').renderText('ragavi'))
     #print("_*+_" * 23)
     print('\n\n')
 
