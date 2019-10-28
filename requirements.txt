@@ -1,5 +1,4 @@
 bokeh
-colorcet
 dask[complete]
 dask-ms[xarray]
 datashader
