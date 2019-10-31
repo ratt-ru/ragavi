@@ -744,8 +744,8 @@ def ant_select_callback():
 
 
                     for(i=0; i<glyph1.length; i++){
-                        glyph1[i][1][0].visible = false;
-                        glyph2[i][1][0].visible = false;
+                        glyph1[i].visible = false;
+                        glyph2[i].visible = false;
                     }
 
                     batchsel.active = []
@@ -753,11 +753,11 @@ def ant_select_callback():
             else{
                     this.label='Deselect all Antennas';
                     for(i=0; i<glyph1.length; i++){
-                        glyph1[i][1][0].visible = true;
-                        glyph2[i][1][0].visible = true;
+                        glyph1[i].visible = true;
+                        glyph2[i].visible = true;
 
                     }
-
+                    //check all the checkboxes whose antennas are active
                     batchsel.active = [...Array(num_groups).keys()]
                 }
             """
@@ -814,14 +814,15 @@ def batch_select_callback():
     code : :obj:`str`
     """
     code = """
-            // bax[i][k][l][m]
+            /* bax[i][k][l][m]
 
-            // k: item number in batch
-            // i: batch number
-            // l: 1 legend item number, must be 1 coz of legend specs
-            // m: item number 0 which is the glyph
-            // nfields: number of fields to be plotted by the script. We shall get this from the number of glyph renderers attached to the same legend label
-            // f: field number represented
+               k: item number in batch
+               i: batch number
+               l: 1 legend item number, must be 1 coz of legend specs
+               m: item number 0 which is the glyph
+               nfields: number of fields to be plotted by the script. We shall get this from the number of glyph renderers attached to the same legend label
+               f: field number represented
+            */
 
             let num_of_batches = bax1.length;
 
@@ -947,8 +948,6 @@ def alpha_slider_callback():
     code = """
 
             var pos, i, numplots;
-
-            //debugger;
             numplots = p1.length;
             pos = alpha.value;
 
@@ -969,11 +968,12 @@ def field_selector_callback():
     code : :obj:`str`
     """
     code = """
-            // ants: number of antennas in each field. Takes value of plotants
-            // nfields: number of fields. From ufids.size            
-            //to keep track of the last antenna number visibilities because
-            //p1 and p2 is are single lists containing all the elements in
-            //all fields
+            /* ants: number of antennas in each field. Takes value of plotants
+               nfields: number of fields. From ufids.size            
+               to keep track of the last antenna number visibilities because
+               p1 and p2 is are single lists containing all the elements in
+               all fields
+            */
             let ant_count = 0;
 
             for(f=0; f<nfields; f++){
@@ -1069,6 +1069,41 @@ def flag_callback():
 
             }
            """
+    return code
+
+
+def corr_select_callback():
+    code = """
+        /*p1: all the 1 plots for all fields and correlations
+          p2: all the 2 plots for all fields and correlations
+          ncorrs: no of correlations
+          nfields: no of fields
+          cselect: this button
+          nants: number of antennas
+          fselect: the field selector
+        */
+
+        //end_of_fields in current correlation
+        let eof = 0;
+
+        for(c=0; c<ncorrs; c++){
+            for(f=0; f<nfields; f++){
+                for(a=0; a<nants; a++){
+                    if (cb_obj.active.includes(c) && fselect.active.includes(f)){
+                        p1[eof].visible = true;
+                        p2[eof].visible = true;
+                        }
+                    else{
+                        p1[eof].visible = false;
+                        p2[eof].visible = false;
+                    }
+                    eof +=1;
+                }
+            }
+        }
+
+
+       """
     return code
 
 
@@ -1396,7 +1431,7 @@ def get_argparser():
                         default=None)
     parser.add_argument('-c', '--corr', dest='corr', type=int, metavar=' ',
                         help="""Correlation index to plot Defaults to 0.""",
-                        default=0)
+                        default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
                         help="""Matplotlib colour map to use for antennas. Defaults to coolwarm""",
                         default='coolwarm')
@@ -1404,7 +1439,7 @@ def get_argparser():
                         metavar=' ',
                         help="""Plot complex values as amplitude & phase (ap) or real and imaginary (ri). Defaults to ap.""",
                         default='ap')
-    parser.add_argument('--field', dest='fields', type=str,
+    parser.add_argument('-f', '--field', dest='fields', type=str,
                         metavar='',
                         help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Defaults to all""",
                         default=None)
@@ -1492,8 +1527,10 @@ def main(**kwargs):
     """Main function that launches the gains plotter"""
     if 'options' in kwargs:
         NB_RENDER = False
+        # capture the parser options
         options = kwargs.get('options', None)
-        corr = int(options.corr)
+
+        corrs = options.corr
         ddid = options.ddid
         doplot = options.doplot
         fields = options.fields
@@ -1510,7 +1547,7 @@ def main(**kwargs):
     else:
         NB_RENDER = True
 
-        corr = int(kwargs.get('corr', 0))
+        corrs = kwargs.get('corr', None)
         ddid = kwargs.get('ddid', None)
         doplot = kwargs.get('doplot', 'ap')
         fields = kwargs.get('fields', None)
@@ -1597,7 +1634,11 @@ def main(**kwargs):
 
         # get all unique field ids in the data
         ufids = np.unique(tt.FIELD_ID.values).astype(int)
-        ncorrs = tt.FLAG.corr.data
+
+        if corrs != None:
+            corrs = np.array([int(corrs)])
+        else:
+            corrs = tt.FLAG.corr.values
 
         freqs = (vu.get_frequencies(mytab, spwid=slice(0, None)) / GHZ).values
 
@@ -1627,132 +1668,136 @@ def main(**kwargs):
         ebars_ax1 = []
         ebars_ax2 = []
 
+        # Statistical info holder
         stats_ax1 = []
         stats_ax2 = []
 
+        # for storing flagged and unflagged data sources
         sources = []
 
-        # enumerating available field ids incase of large fids
-        for enum_fid, field in enumerate(ufids):
+        for corr in corrs:
+            # enumerating available field ids incase of large fids
+            for enum_fid, field in enumerate(ufids):
 
-            stats_text = stats_display(mytab, gain_type, doplot, corr,
-                                       field, flag=flag_data)
-            stats_ax1.append(stats_text[0])
-            stats_ax2.append(stats_text[1])
+                stats_text = stats_display(mytab, gain_type, doplot, corr,
+                                           field, flag=flag_data)
+                stats_ax1.append(stats_text[0])
+                stats_ax2.append(stats_text[1])
 
-            logger.info('Plotting field: {}'.format(field))
-            # for each antenna
-            for ant in plotants:
+                logger.info('Plotting field: {} corr: {}'.format(field, corr))
+                # for each antenna
+                for ant in plotants:
 
-                # creating legend labels
-                antlabel = antnames[ant]
-                legend = antnames[ant]
-                legend_err = "E" + antnames[ant]
+                    # creating legend labels
+                    antlabel = antnames[ant]
+                    legend = antnames[ant]
+                    legend_err = "E" + antnames[ant]
 
-                # creating colors for maps
-                y1col = y2col = scalarMap.to_rgba(float(ant), bytes=True)[:-1]
+                    # creating colors for maps
+                    y1col = y2col = scalarMap.to_rgba(
+                        float(ant), bytes=True)[:-1]
 
-                # filter for antenna and field
-                subtab = tt.where((tt.ANTENNA1 == int(ant)) &
-                                  (tt.FIELD_ID == int(field)), drop=True)
+                    # filter for antenna and field
+                    subtab = tt.where((tt.ANTENNA1 == int(ant)) &
+                                      (tt.FIELD_ID == int(field)), drop=True)
 
-                # depending on the status of flag_data, this may
-                # be either flagged or unflagged data
-                data_obj = DataCoreProcessor(subtab, mytab, gain_type,
-                                             fid=field,
-                                             doplot=doplot, corr=corr,
-                                             flag=flag_data)
-                ready_data = data_obj.act()
+                    # depending on the status of flag_data, this may
+                    # be either flagged or unflagged data
+                    data_obj = DataCoreProcessor(subtab, mytab, gain_type,
+                                                 fid=field,
+                                                 doplot=doplot, corr=corr,
+                                                 flag=flag_data)
+                    ready_data = data_obj.act()
 
-                prepd_x = ready_data.x
-                xlabel = ready_data.x_label
+                    prepd_x = ready_data.x
+                    xlabel = ready_data.x_label
 
-                y1 = ready_data.y1
-                y1_err = ready_data.y1_err
-                y1label = ready_data.y1_label
-                y2 = ready_data.y2
-                y2_err = ready_data.y2_err
-                y2label = ready_data.y2_label
+                    y1 = ready_data.y1
+                    y1_err = ready_data.y1_err
+                    y1label = ready_data.y1_label
+                    y2 = ready_data.y2
+                    y2_err = ready_data.y2_err
+                    y2label = ready_data.y2_label
 
-                # inverse data object
-                infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
-                                                  fid=field, doplot=doplot,
-                                                  corr=corr,
-                                                  flag=not flag_data).act()
+                    # inverse data object
+                    infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
+                                                      fid=field, doplot=doplot,
+                                                      corr=corr,
+                                                      flag=not flag_data).act()
 
-                # for tooltips
-                spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
-                                                                  gain_type,
-                                                                  antnames,
-                                                                  freqs)
+                    # for tooltips
+                    spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
+                                                                      gain_type,
+                                                                      antnames,
+                                                                      freqs)
 
-                tab_tooltips = [("(x, y)", "($x, $y)"),
-                                ("spw", "@spw"),
-                                ("scan_id", "@scanid"),
-                                ("antenna", "@antname")]
+                    tab_tooltips = [("(x, y)", "($x, $y)"),
+                                    ("spw", "@spw"),
+                                    ("scan_id", "@scanid"),
+                                    ("antenna", "@antname")]
 
-                hover = HoverTool(tooltips=tab_tooltips,
-                                  mode='mouse', point_policy='snap_to_data')
-                hover2 = HoverTool(tooltips=tab_tooltips,
-                                   mode='mouse', point_policy='snap_to_data')
+                    hover = HoverTool(tooltips=tab_tooltips,
+                                      mode='mouse', point_policy='snap_to_data')
+                    hover2 = HoverTool(tooltips=tab_tooltips,
+                                       mode='mouse', point_policy='snap_to_data')
 
-                ax1.xaxis.axis_label = ax1_xlabel = xlabel
-                ax2.xaxis.axis_label = ax2_xlabel = xlabel
-                ax1.yaxis.axis_label = ax1_ylabel = y1label
-                ax2.yaxis.axis_label = ax2_ylabel = y2label
+                    ax1.xaxis.axis_label = ax1_xlabel = xlabel
+                    ax2.xaxis.axis_label = ax2_xlabel = xlabel
+                    ax1.yaxis.axis_label = ax1_ylabel = y1label
+                    ax2.yaxis.axis_label = ax2_ylabel = y2label
 
-                ax1.axis.axis_label_text_font_style = 'normal'
-                ax2.axis.axis_label_text_font_style = 'normal'
+                    ax1.axis.axis_label_text_font_style = 'normal'
+                    ax2.axis.axis_label_text_font_style = 'normal'
 
-                if doplot == 'ap':
-                    ax2.yaxis[0].formatter = PrintfTickFormatter(
-                        format=u"%f\u00b0")
+                    if doplot == 'ap':
+                        ax2.yaxis[0].formatter = PrintfTickFormatter(
+                            format=u"%f\u00b0")
 
-                if gain_type == 'B' or gain_type == 'D':
-                    if ant == plotants[-1]:
-                        ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
-                                       ax_label='Frequency [GHz]')
-                        ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
-                                       ax_label='Frequency [GHz]')
+                    if gain_type == 'B' or gain_type == 'D':
+                        if ant == plotants[-1]:
+                            ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
+                                           ax_label='Frequency [GHz]')
+                            ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
+                                           ax_label='Frequency [GHz]')
 
-                if gain_type == 'K':
-                    ax1_ylabel = y1label.replace('[ns]', '')
-                    ax2_ylabel = y2label.replace('[ns]', '')
+                    if gain_type == 'K':
+                        ax1_ylabel = y1label.replace('[ns]', '')
+                        ax2_ylabel = y2label.replace('[ns]', '')
 
-                source = ColumnDataSource(data={'x': prepd_x,
-                                                'y1': y1,
-                                                'y2': y2,
-                                                'spw': spw_id,
-                                                'scanid': scan_no,
-                                                'antname': ttip_antnames})
-
-                inv_source = ColumnDataSource(data={'y1': y1,
+                    source = ColumnDataSource(data={'x': prepd_x,
+                                                    'y1': y1,
                                                     'y2': y2,
-                                                    'iy1': infl_data_obj.y1,
-                                                    'iy2': infl_data_obj.y2})
+                                                    'spw': spw_id,
+                                                    'scanid': scan_no,
+                                                    'antname': ttip_antnames})
 
-                sources.append([source, inv_source])
+                    inv_source = ColumnDataSource(data={'y1': y1,
+                                                        'y2': y2,
+                                                        'iy1': infl_data_obj.y1,
+                                                        'iy2': infl_data_obj.y2})
 
-                p1, p1_err, p2, p2_err = make_plots(
-                    source=source, color=y1col, ax1=ax1, ax2=ax2,
-                    fid=enum_fid, y1err=y1_err, y2err=y2_err)
+                    sources.append([source, inv_source])
 
-                # hide all the other plots until legend is clicked
-                if ant > 0:
-                    p1.visible = p2.visible = False
+                    p1, p1_err, p2, p2_err = make_plots(
+                        source=source, color=y1col, ax1=ax1, ax2=ax2,
+                        fid=enum_fid, y1err=y1_err, y2err=y2_err)
 
-                # collecting plot states for each iterations
-                ax1_plots.append(p1)
-                ax2_plots.append(p2)
+                    # hide all the other plots until legend is clicked
+                    if ant > 0:
+                        p1.visible = p2.visible = False
 
-                # forming legend object items
-                legend_items_ax1.append((legend, [p1]))
-                legend_items_ax2.append((legend, [p2]))
-                # for the errors
-                ebars_ax1.append(p1_err)
-                ebars_ax2.append(p2_err)
+                    # collecting plot states for each iterations
+                    ax1_plots.append(p1)
+                    ax2_plots.append(p2)
 
-                subtab.close()
+                    # forming legend object items
+                    legend_items_ax1.append((legend, [p1]))
+                    legend_items_ax2.append((legend, [p2]))
+                    # for the errors
+                    ebars_ax1.append(p1_err)
+                    ebars_ax2.append(p2_err)
+
+                    subtab.close()
         tt.close()
 
         # configuring titles for the plots
@@ -1850,12 +1895,16 @@ def main(**kwargs):
         toggle_flag = CheckboxGroup(labels=['Show Flagged-out Data'],
                                     active=[], **w_dims)
 
+        corr_labs = ["Corr {}".format(str(_)) for _ in corrs]
+        corr_select = CheckboxGroup(labels=corr_labs, active=corrs.tolist(),
+                                    width=150)
+
         ######################################################################
         ############## Defining widget Callbacks ############################
         ######################################################################
 
-        ant_select.callback = CustomJS(args=dict(glyph1=legend_items_ax1,
-                                                 glyph2=legend_items_ax2,
+        ant_select.callback = CustomJS(args=dict(glyph1=ax1_plots,
+                                                 glyph2=ax2_plots,
                                                  batchsel=batch_select,
                                                  num_groups=num_legend_objs),
                                        code=ant_select_callback())
@@ -1879,20 +1928,21 @@ def main(**kwargs):
             code=legend_toggle_callback())
 
         size_slider.js_on_change('value',
-                                 CustomJS(args={'slide': size_slider,
-                                                'p1': ax1_plots,
-                                                'p2': ax2_plots},
+                                 CustomJS(args=dict(slide=size_slider,
+                                                    p1=ax1_plots,
+                                                    p2=ax2_plots),
                                           code=size_slider_callback()))
         alpha_slider.js_on_change('value',
-                                  CustomJS(args={'alpha': alpha_slider,
-                                                 'p1': ax1_plots,
-                                                 'p2': ax2_plots},
+                                  CustomJS(args=dict(alpha=alpha_slider,
+                                                     p1=ax1_plots,
+                                                     p2=ax2_plots),
                                            code=alpha_slider_callback()))
-        field_selector.callback = CustomJS(args={'fselect': field_selector,
-                                                 'p1': ax1_plots,
-                                                 'p2': ax2_plots,
-                                                 'ants': plotants.size,
-                                                 'nfields': ufids.size},
+        field_selector.callback = CustomJS(args=dict(fselect=field_selector,
+                                                     p1=ax1_plots,
+                                                     p2=ax2_plots,
+                                                     ants=plotants.size,
+                                                     nfields=ufids.size,
+                                                     ncorrs=corrs.size),
                                            code=field_selector_callback())
         axis_fontslider.js_on_change('value',
                                      CustomJS(args=dict(ax1=ax1.axis,
@@ -1907,6 +1957,13 @@ def main(**kwargs):
                                                   nants=plotants,
                                                   flagging=flag_data),
                                         code=flag_callback())
+        corr_select.callback = CustomJS(args=dict(fselect=field_selector,
+                                                  p1=ax1_plots,
+                                                  p2=ax2_plots,
+                                                  ncorrs=corrs.size,
+                                                  nfields=ufids.size,
+                                                  nants=plotants.size),
+                                        code=corr_select_callback())
 
         #################################################################
         ########## Define widget layouts #################################
@@ -1916,8 +1973,9 @@ def main(**kwargs):
                  alpha_slider])
         b = row([toggle_flag, batch_select, field_selector, axis_fontslider,
                  title_fontslider])
+        c = row([corr_select])
 
-        plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
+        plot_widgets = widgetbox([a, b, c], sizing_mode='scale_both')
 
         # setting the gridspecs
         # gridplot while maintaining the set aspect ratio
