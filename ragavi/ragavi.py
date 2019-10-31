@@ -1330,7 +1330,7 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
     if gtype == 'K':
         y1 = dobj.y_only('delay').y.compute()
         med_y1 = np.nanmedian(y1)
-        text = "Field {}: Median Delay: {:.4f}".format(field, med_y1)
+        text = "Field {}: Med Delay: {:.4f}".format(field, med_y1)
         text2 = ' '
         return text, text2
 
@@ -1340,15 +1340,15 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
         med_y1 = np.nanmedian(y1)
         med_y2 = np.nanmedian(y2)
 
-        text = "Field {} Median: {:.4f}".format(field, med_y1)
+        text = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y1)
 
         try:
-            text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
-                                                       u"\u00b0")
+            text2 = "Field {} C{} Med: {:.4f}{}".format(field, str(corr),
+                                                        med_y2, u"\u00b0")
         except UnicodeEncodeError:
             # for python2
-            text2 = "Field {} Median: {:.4f}{}".format(field, med_y2,
-                                                       u"\u00b0".encode('utf-8'))
+            text2 = "Field {} C{} Med: {:.4f}{}".format(field, str(corr),
+                                                        med_y2, u"\u00b0".encode('utf-8'))
 
     else:
         y1 = dobj.y_only('real').y.compute()
@@ -1356,8 +1356,8 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
 
         med_y1 = np.nanmedian(y1)
         med_y2 = np.nanmedian(y2)
-        text = "Field {} Median: {:.4f}".format(field, med_y1)
-        text2 = "Field {} Median: {:.4f}".format(field, med_y2)
+        text = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y1)
+        text2 = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y2)
 
     return text, text2
 
@@ -1789,11 +1789,11 @@ def main(**kwargs):
         # configuring titles for the plots
         ax1_title = Title(text="{} vs {} ({})".format(ax1_ylabel,
                                                       ax1_xlabel,
-                                                      " ".join(stats_ax1)),
+                                                      ", ".join(stats_ax1)),
                           align='center', text_font_size='15px')
         ax2_title = Title(text="{} vs {} ({})".format(ax2_ylabel,
                                                       ax2_xlabel,
-                                                      " ".join(stats_ax2)),
+                                                      ", ".join(stats_ax2)),
                           align='center', text_font_size='15px')
 
         ax1.add_tools(hover)
