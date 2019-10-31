@@ -735,30 +735,30 @@ def ant_select_callback():
     """
 
     code = """
-            var i;
-             //if toggle button active
-             //num_groups: number of chunks available
-            if (this.active==false)
+            /*p1 and p2: both lists containing the plot models
+              bsel: batch selection group button
+              nbatches: Number of batches available
+            */
+            let nplots = p1.length;
+            if (cb_obj.active==false)
                 {
-                    this.label='Select all Antennas';
-
-
-                    for(i=0; i<glyph1.length; i++){
-                        glyph1[i].visible = false;
-                        glyph2[i].visible = false;
+                    cb_obj.label='Select all Antennas';
+                    for(i=0; i<nplots; i++){
+                        p1[i].visible = false;
+                        p2[i].visible = false;
                     }
 
-                    batchsel.active = []
+                    bsel.active = []
                 }
             else{
-                    this.label='Deselect all Antennas';
-                    for(i=0; i<glyph1.length; i++){
-                        glyph1[i].visible = true;
-                        glyph2[i].visible = true;
+                    cb_obj.label='Deselect all Antennas';
+                    for(i=0; i<nplots; i++){
+                       p1[i].visible = true;
+                       p2[i].visible = true;
 
                     }
                     //check all the checkboxes whose antennas are active
-                    batchsel.active = [...Array(num_groups).keys()]
+                    bsel.active = [...Array(nbatches).keys()]
                 }
             """
 
@@ -814,66 +814,46 @@ def batch_select_callback():
     code : :obj:`str`
     """
     code = """
-            /* bax[i][k][l][m]
+        /* antsel: Select or deselect all antennas button
+           bsize: total number of items in a batch
+           cselect: the corr selector array
+           fselect: the field selector button
+           ncorrs: number of available correlations
+           nfields: number of available fields
+           nbatches: total number of available batches
+           p1 and p2: List containing plots for all antennas, fields and correlations
+           count: keeping a cumulative sum of the traverse number
+        */
 
-               k: item number in batch
-               i: batch number
-               l: 1 legend item number, must be 1 coz of legend specs
-               m: item number 0 which is the glyph
-               nfields: number of fields to be plotted by the script. We shall get this from the number of glyph renderers attached to the same legend label
-               f: field number represented
-            */
-
-            let num_of_batches = bax1.length;
-
-            //sampling a single item for the length of fields
-            let nfields = bax1[0][0][1].length;
-
-
-
-
-            //for each batch in total number of batches
-            for(i=0; i<num_of_batches; i++){
-                //check whether batch number is included in the active list
-                if (this.active.includes(i)){
-                    k=0;
-                    while (k < batch_size){
-                        //show all items in the active batch
-
-                        for (f=0; f<nfields; f++){
-                            if (bax1[i][k]){
-                                bax1[i][k][1][f].visible = true;
-                                bax2[i][k][1][f].visible = true;
-                                }
+        let count = 0;
+        for (c=0; c<ncorrs; c++){
+            for (f=0; f<nfields; f++){
+                for(n=0; n<nbatches; n++){
+                    for(b=0; b<bsize; b++){
+                        if (cb_obj.active.includes(n)){
+                            p1[count].visible = true;
+                            p2[count].visible = true;
+                            }
+                        else{
+                            p1[count].visible = false;
+                            p2[count].visible = false;
                         }
-                        k++;
-
-                    }
-                }
-
-                else{
-                    k=0;
-                    while (k < batch_size){
-                        for (f=0; f<nfields; f++){
-                            if (bax1[i][k]){
-                                bax1[i][k][1][f].visible = false;
-                                bax2[i][k][1][f].visible = false;
-                                }
-                        }
-                        k++;
+                        count = count + 1;
                     }
                 }
             }
+        }
 
-            if (this.active.length == num_of_batches){
-                antsel.active = true;
-                antsel.label =  "Deselect all Antennas";
-            }
-            else if(this.active.length == 0){
-                antsel.active = false;
-                antsel.label = "Select all Antennas";
-            }
-           """
+
+        if (cb_obj.active.length == nbatches){
+            antsel.active = true;
+            antsel.label = "Deselect all Antennas";
+        }
+        else if (cb_obj.active.length==0){
+            antsel.active = false;
+            antsel.label = "Select all Antennas";
+        }
+       """
     return code
 
 
@@ -968,30 +948,36 @@ def field_selector_callback():
     code : :obj:`str`
     """
     code = """
-            /* ants: number of antennas in each field. Takes value of plotants
-               nfields: number of fields. From ufids.size            
-               to keep track of the last antenna number visibilities because
-               p1 and p2 is are single lists containing all the elements in
-               all fields
-            */
-            let ant_count = 0;
+        /*bsize: total number of items in a batch
+         bsel: the batch selector group buttons
+         csel: corr selector group buttons
+         ncorrs: number of available correlations
+         nfields: number of available fields
+         nbatches: total number of available batches
+         p1 and p2: List containing plots for all antennas, fields and  correlations
+         count: keeping a cumulative sum of the traverse number
+        */
 
-            for(f=0; f<nfields; f++){
-                for(a=0; a<ants; a++){
-                    if (this.active.includes(f)){
-                        p1[a+ant_count].visible = true;
-                        p2[a+ant_count].visible = true;
-                    }
-                    else{
-                        p1[a+ant_count].visible = false;
-                        p2[a+ant_count].visible = false;
+        let count = 0;
+        for (c=0; c<ncorrs; c++){
+            for (f=0; f<nfields; f++){
+                for(n=0; n<nbatches; n++){
+                    for(b=0; b<bsize; b++){
+                        if (cb_obj.active.includes(f) && bsel.active.includes(n) && csel.active.includes(c)){
+                            p1[count].visible = true;
+                            p2[count].visible = true;
+                            }
+                        else{
+                            p1[count].visible = false;
+                            p2[count].visible = false;
+                        }
+                        count = count + 1;
                     }
                 }
-                //add total number of antennas for transitioning to each field
-                ant_count+=ants;
             }
+        }
 
-           """
+       """
     return code
 
 
@@ -1074,34 +1060,34 @@ def flag_callback():
 
 def corr_select_callback():
     code = """
-        /*p1: all the 1 plots for all fields and correlations
-          p2: all the 2 plots for all fields and correlations
-          ncorrs: no of correlations
-          nfields: no of fields
-          cselect: this button
-          nants: number of antennas
-          fselect: the field selector
+         /*bsize: total number of items in a batch
+           bsel: the batch selector group buttons
+           fsel: field selector group buttons
+           ncorrs: number of available correlations
+           nfields: number of available fields
+           nbatches: total number of available batches
+           p1 and p2: List containing plots for all antennas, fields and correlations
+           count: keeping a cumulative sum of the traverse number
         */
 
-        //end_of_fields in current correlation
-        let eof = 0;
-
-        for(c=0; c<ncorrs; c++){
-            for(f=0; f<nfields; f++){
-                for(a=0; a<nants; a++){
-                    if (cb_obj.active.includes(c) && fselect.active.includes(f)){
-                        p1[eof].visible = true;
-                        p2[eof].visible = true;
+        let count = 0;
+        for (c=0; c<ncorrs; c++){
+            for (f=0; f<nfields; f++){
+                for(n=0; n<nbatches; n++){
+                    for(b=0; b<bsize; b++){
+                        if (cb_obj.active.includes(c) && bsel.active.includes(n) && fsel.active.includes(f)){
+                            p1[count].visible = true;
+                            p2[count].visible = true;
+                            }
+                        else{
+                            p1[count].visible = false;
+                            p2[count].visible = false;
                         }
-                    else{
-                        p1[eof].visible = false;
-                        p2[eof].visible = false;
+                        count = count + 1;
                     }
-                    eof +=1;
                 }
             }
         }
-
 
        """
     return code
@@ -1895,7 +1881,7 @@ def main(**kwargs):
         toggle_flag = CheckboxGroup(labels=['Show Flagged-out Data'],
                                     active=[], **w_dims)
 
-        corr_labs = ["Corr {}".format(str(_)) for _ in corrs]
+        corr_labs = ["Correlation {}".format(str(_)) for _ in corrs]
         corr_select = CheckboxGroup(labels=corr_labs, active=corrs.tolist(),
                                     width=150)
 
@@ -1903,10 +1889,10 @@ def main(**kwargs):
         ############## Defining widget Callbacks ############################
         ######################################################################
 
-        ant_select.callback = CustomJS(args=dict(glyph1=ax1_plots,
-                                                 glyph2=ax2_plots,
-                                                 batchsel=batch_select,
-                                                 num_groups=num_legend_objs),
+        ant_select.callback = CustomJS(args=dict(p1=ax1_plots,
+                                                 p2=ax2_plots,
+                                                 bsel=batch_select,
+                                                 nbatches=num_legend_objs),
                                        code=ant_select_callback())
 
         toggle_err.js_on_click(CustomJS(args=dict(ax1s=ax1_plots,
@@ -1916,9 +1902,14 @@ def main(**kwargs):
 
         # BATCH SELECTION
         batch_select.callback = CustomJS(
-            args=dict(bax1=batches_ax1,
-                      bax2=batches_ax2,
-                      batch_size=BATCH_SIZE,
+            args=dict(p1=ax1_plots,
+                      p2=ax2_plots,
+                      bsize=BATCH_SIZE,
+                      nbatches=num_legend_objs,
+                      nfields=ufids.size,
+                      ncorrs=corrs.size,
+                      fselect=field_selector,
+                      cselect=corr_select,
                       antsel=ant_select),
             code=batch_select_callback())
 
@@ -1937,12 +1928,14 @@ def main(**kwargs):
                                                      p1=ax1_plots,
                                                      p2=ax2_plots),
                                            code=alpha_slider_callback()))
-        field_selector.callback = CustomJS(args=dict(fselect=field_selector,
-                                                     p1=ax1_plots,
-                                                     p2=ax2_plots,
-                                                     ants=plotants.size,
+        field_selector.callback = CustomJS(args=dict(bsize=BATCH_SIZE,
+                                                     bsel=batch_select,
+                                                     csel=corr_select,
                                                      nfields=ufids.size,
-                                                     ncorrs=corrs.size),
+                                                     ncorrs=corrs.size,
+                                                     nbatches=num_legend_objs,
+                                                     p1=ax1_plots,
+                                                     p2=ax2_plots),
                                            code=field_selector_callback())
         axis_fontslider.js_on_change('value',
                                      CustomJS(args=dict(ax1=ax1.axis,
@@ -1957,12 +1950,14 @@ def main(**kwargs):
                                                   nants=plotants,
                                                   flagging=flag_data),
                                         code=flag_callback())
-        corr_select.callback = CustomJS(args=dict(fselect=field_selector,
-                                                  p1=ax1_plots,
-                                                  p2=ax2_plots,
+        corr_select.callback = CustomJS(args=dict(bsel=batch_select,
+                                                  bsize=BATCH_SIZE,
+                                                  fsel=field_selector,
                                                   ncorrs=corrs.size,
                                                   nfields=ufids.size,
-                                                  nants=plotants.size),
+                                                  nbatches=num_legend_objs,
+                                                  p1=ax1_plots,
+                                                  p2=ax2_plots),
                                         code=corr_select_callback())
 
         #################################################################
@@ -1970,12 +1965,11 @@ def main(**kwargs):
         ##################################################################
 
         a = row([ant_select, toggle_err, legend_toggle, size_slider,
-                 alpha_slider])
-        b = row([toggle_flag, batch_select, field_selector, axis_fontslider,
-                 title_fontslider])
-        c = row([corr_select])
+                 alpha_slider, title_fontslider])
+        b = row([toggle_flag, batch_select, field_selector, corr_select,
+                 axis_fontslider])
 
-        plot_widgets = widgetbox([a, b, c], sizing_mode='scale_both')
+        plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
 
         # setting the gridspecs
         # gridplot while maintaining the set aspect ratio
