@@ -1743,11 +1743,11 @@ def main(**kwargs):
                             format=u"%f\u00b0")
 
                     if gain_type == 'B' or gain_type == 'D':
-                        # on the very last iteration
+                        # on the very last iterations
                         if corr == corrs.max() and ant == plotants.max():
-                            ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
+                            ax1 = add_axis(ax1, [freqs[0][0], freqs[0][-1]],
                                            ax_label='Frequency [GHz]')
-                            ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
+                            ax2 = add_axis(ax2, [freqs[0][0], freqs[0][-1]],
                                            ax_label='Frequency [GHz]')
 
                     if gain_type == 'K':
