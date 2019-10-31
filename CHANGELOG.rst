@@ -2,11 +2,17 @@
 -----
 - Introduced ragavi visibility plotter accessible by ragavi-vis
 - Improved documentation
-- Added progress bar for ragavi-vis
-- Changed gain plotter name to ragavi-gains. Deprecating ragavi
-- Added ``--xmin``, ``--xmax``, ``--ymin``, ``--ymax`` options for selection of x and y data ranges
-- Added ``-chunks`` command line option for user specified chunking strategies
+- Added progress bar for ``ragavi-vis``
+- Changed gain plotter name to ``ragavi-gains``. Deprecating ``ragavi``
+- Added ``--xmin``, ``--xmax``, ``--ymin``, ``--ymax`` options in `ragavi-vis` for selection of x and y data ranges
+- Added ``--chunks`` command line option for user specified chunking strategies in ``ragavi-vis``
 - Migrate from ``xarray-ms`` to ``dask-ms`` for table functions
+- Added correlation selector on gain plots. All correlations plotted by default
+- Removed ``--yu0, --yu1, --yl0, --yl1`` from `ragavi-gains`
+- Fixed field selection and errorbar size bugs
+- ``--field`` arguments in ``ragavi-gains`` **MUST** now be comma separated rather than space separated.
+
+
 
 
 0.1.0
