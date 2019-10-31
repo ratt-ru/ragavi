@@ -1516,7 +1516,7 @@ def main(**kwargs):
         # capture the parser options
         options = kwargs.get('options', None)
 
-        corrs = options.corr
+        _corr = options.corr
         ddid = options.ddid
         doplot = options.doplot
         fields = options.fields
@@ -1533,7 +1533,7 @@ def main(**kwargs):
     else:
         NB_RENDER = True
 
-        corrs = kwargs.get('corr', None)
+        _corr = kwargs.get('corr', None)
         ddid = kwargs.get('ddid', None)
         doplot = kwargs.get('doplot', 'ap')
         fields = kwargs.get('fields', None)
@@ -1596,6 +1596,7 @@ def main(**kwargs):
                 fields = str(vu.name_2id(mytab, fields))
                 fields = vu.resolve_ranges(fields)
 
+        # select desired antennas as MS is opening
         if plotants is not None:
             plotants = vu.resolve_ranges(plotants)
 
@@ -1616,13 +1617,15 @@ def main(**kwargs):
 
         antnames = vu.get_antennas(mytab).values
 
+        # get all the ant ids present in a subtable
         plotants = np.unique(tt.ANTENNA1.values).astype(int)
 
         # get all unique field ids in the data
         ufids = np.unique(tt.FIELD_ID.values).astype(int)
 
-        if corrs != None:
-            corrs = np.array([int(corrs)])
+        if _corr is not None:
+            # because of iteration _corr and corrs must'nt be the same
+            corrs = np.array([int(_corr)])
         else:
             corrs = tt.FLAG.corr.values
 
@@ -1740,7 +1743,8 @@ def main(**kwargs):
                             format=u"%f\u00b0")
 
                     if gain_type == 'B' or gain_type == 'D':
-                        if ant == plotants[-1]:
+                        # on the very last iteration
+                        if corr == corrs.max() and ant == plotants.max():
                             ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
                                            ax_label='Frequency [GHz]')
                             ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
