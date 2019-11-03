@@ -1,0 +1,8 @@
+#!/usr/bin/env python
+
+from ragavi.visibilities import get_argparser, main
+
+if __name__ == "__main__":
+    parser = get_argparser()
+    options = parser.parse_args()
+    main(options=options)

@@ -1,3 +1,20 @@
+0.2.0
+-----
+- Introduced ragavi visibility plotter accessible by ragavi-vis
+- Improved documentation
+- Added progress bar for ``ragavi-vis``
+- Changed gain plotter name to ``ragavi-gains``. Deprecating ``ragavi``
+- Added ``--xmin``, ``--xmax``, ``--ymin``, ``--ymax`` options in `ragavi-vis` for selection of x and y data ranges
+- Added ``--chunks`` command line option for user specified chunking strategies in ``ragavi-vis``
+- Migrate from ``xarray-ms`` to ``dask-ms`` for table functions
+- Added correlation selector on gain plots. All correlations plotted by default
+- Removed ``--yu0, --yu1, --yl0, --yl1`` from `ragavi-gains`
+- Fixed field selection and errorbar size bugs
+- ``--field`` arguments in ``ragavi-gains`` **MUST** now be comma separated rather than space separated.
+
+
+
+
 0.1.0
 -----
 - Error bars now have caps
@@ -12,6 +29,7 @@
 - Plotting D-Jones tables now supported
 - Fixed bug in field_name to field_id converter
 
+
 0.0.8
 -----
 - Fixed bug due to string encoding for python2.7
@@ -21,13 +39,14 @@
 -----
 - Updated version number
 
+
 0.0.6
 -----
 - Now supporting python3
 - All fields plotted by default on the same plot
-- --field command line switch is now optional
+- ``--field`` command line switch is now optional
 - Different fields now plotted with different markers
-- Migrated to xarray-ms from python-casacore
+- Migrated to ``xarray-ms`` from ``python-casacore``
 - Added glyph alpha selector, glyph size selector, and field selector
 - Reorganise selector panel
 - Added title and axis label size selectors
@@ -58,7 +77,6 @@
 - Travis realease on tag
 - Now plotting Flux callibration tables
 - Extra frequency axis for bandpass plot
-
 
 
 0.0.2

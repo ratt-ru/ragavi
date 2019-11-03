@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 
 from ragavi.ragavi import get_argparser, main
-from ragavi.utils import logger
 
 if __name__ == "__main__":
-    logger.warn(
-        "Use of 'ragavi' will be deprecated in future; Use 'ragavi-gains' instead to access the gains plotter.")
     parser = get_argparser()
     options = parser.parse_args()
     main(options=options)
