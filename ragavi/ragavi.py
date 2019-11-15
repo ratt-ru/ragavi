@@ -1415,8 +1415,8 @@ def get_argparser():
     parser.add_argument('-a', '--ant', dest='plotants', type=str, metavar=' ',
                         help="""Plot only a specific antenna, or comma-separated list of antennas. Defaults to all.""",
                         default=None)
-    parser.add_argument('-c', '--corr', dest='corr', type=int, metavar=' ',
-                        help="""Correlation index to plot. Defaults to 0.""",
+    parser.add_argument('-c', '--corr', dest='corr', type=str, metavar=' ',
+                        help="""Correlation index to plot. Can be a single integer or comma separated integers e.g '0,2'. Defaults to all.""",
                         default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
                         help="""Matplotlib colour map to use for antennas. Defaults to coolwarm""",
@@ -1625,7 +1625,11 @@ def main(**kwargs):
 
         if _corr is not None:
             # because of iteration _corr and corrs must'nt be the same
-            corrs = np.array([int(_corr)])
+            if ',' in _corr:
+                _corr = [int(_) for _ in _corr.split(',')]
+            else:
+                _corr = [int(_corr)]
+            corrs = np.array(_corr)
         else:
             corrs = tt.FLAG.corr.values
 
@@ -2026,7 +2030,7 @@ def plot_table(mytabs, gain_types, **kwargs):
     Parameters
     ----------
     corr : :obj:`int, optional`
-        Correlation index to plot. Defaults to 0
+        Correlation index to plot. Can be a single integer or comma separated integers e.g '0,2'. Defaults to all.
     doplot : :obj:`str, optional`
         Plot complex values as amp and phase (ap) or real and imag (ri). Default is 'ap'.
     ddid : :obj:`int`
