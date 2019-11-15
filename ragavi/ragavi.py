@@ -1595,7 +1595,6 @@ def main(**kwargs):
             else:
                 fields = str(vu.name_2id(mytab, fields))
                 fields = vu.resolve_ranges(fields)
-
         # select desired antennas as MS is opening
         if plotants is not None:
             plotants = vu.resolve_ranges(plotants)
@@ -1603,6 +1602,14 @@ def main(**kwargs):
         logger.info('Acquiring table: {}'.format(mytab.split('/')[-1]))
         tt = get_table(mytab, spwid=ddid, where=where, fid=fields,
                        antenna=plotants)[0]
+
+        # confirm a populous table is selected
+        try:
+            assert tt.FLAG.size != 0
+        except AssertionError:
+            logger.info(
+                "Table contains no data. Check selected field or Scan. Skipping.")
+            continue
 
         # constrain the plots to a certain time period if specified
         if t0 != None or t1 != None:
@@ -1669,9 +1676,12 @@ def main(**kwargs):
         sources = []
 
         for corr in corrs:
+            # check if selected corr is avail
+            if corr not in tt.FLAG.corr.values:
+                logger.info("Corr {} not found. Skipping.".format(corr))
+                continue
             # enumerating available field ids incase of large fids
             for enum_fid, field in enumerate(ufids):
-
                 stats_text = stats_display(mytab, gain_type, doplot, corr,
                                            field, flag=flag_data)
                 stats_ax1.append(stats_text[0])
@@ -1749,9 +1759,11 @@ def main(**kwargs):
                     if gain_type == 'B' or gain_type == 'D':
                         # on the very last iterations
                         if corr == corrs.max() and ant == plotants.max():
-                            ax1 = add_axis(ax1, [freqs[0][0], freqs[0][-1]],
+                            if freqs.ndim == 2:
+                                freqs = freqs[0, :]
+                            ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
                                            ax_label='Frequency [GHz]')
-                            ax2 = add_axis(ax2, [freqs[0][0], freqs[0][-1]],
+                            ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
                                            ax_label='Frequency [GHz]')
 
                     if gain_type == 'K':
@@ -2029,7 +2041,7 @@ def plot_table(mytabs, gain_types, **kwargs):
 
     Parameters
     ----------
-    corr : :obj:`int, optional`
+    _corr : :obj:`int, optional`
         Correlation index to plot. Can be a single integer or comma separated integers e.g '0,2'. Defaults to all.
     doplot : :obj:`str, optional`
         Plot complex values as amp and phase (ap) or real and imag (ri). Default is 'ap'.
