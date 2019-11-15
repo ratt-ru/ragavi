@@ -31,7 +31,7 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
 
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
-from . import utils as vu
+from ragavi import utils as vu
 
 # defining some constants
 # default plot dimensions
@@ -1415,8 +1415,8 @@ def get_argparser():
     parser.add_argument('-a', '--ant', dest='plotants', type=str, metavar=' ',
                         help="""Plot only a specific antenna, or comma-separated list of antennas. Defaults to all.""",
                         default=None)
-    parser.add_argument('-c', '--corr', dest='corr', type=int, metavar=' ',
-                        help="""Correlation index to plot Defaults to 0.""",
+    parser.add_argument('-c', '--corr', dest='corr', type=str, metavar=' ',
+                        help="""Correlation index to plot. Can be a single integer or comma separated integers e.g '0,2'. Defaults to all.""",
                         default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
                         help="""Matplotlib colour map to use for antennas. Defaults to coolwarm""",
@@ -1595,7 +1595,6 @@ def main(**kwargs):
             else:
                 fields = str(vu.name_2id(mytab, fields))
                 fields = vu.resolve_ranges(fields)
-
         # select desired antennas as MS is opening
         if plotants is not None:
             plotants = vu.resolve_ranges(plotants)
@@ -1603,6 +1602,14 @@ def main(**kwargs):
         logger.info('Acquiring table: {}'.format(mytab.split('/')[-1]))
         tt = get_table(mytab, spwid=ddid, where=where, fid=fields,
                        antenna=plotants)[0]
+
+        # confirm a populous table is selected
+        try:
+            assert tt.FLAG.size != 0
+        except AssertionError:
+            logger.info(
+                "Table contains no data. Check selected field or Scan. Skipping.")
+            continue
 
         # constrain the plots to a certain time period if specified
         if t0 != None or t1 != None:
@@ -1625,7 +1632,11 @@ def main(**kwargs):
 
         if _corr is not None:
             # because of iteration _corr and corrs must'nt be the same
-            corrs = np.array([int(_corr)])
+            if ',' in _corr:
+                _corr = [int(_) for _ in _corr.split(',')]
+            else:
+                _corr = [int(_corr)]
+            corrs = np.array(_corr)
         else:
             corrs = tt.FLAG.corr.values
 
@@ -1665,9 +1676,12 @@ def main(**kwargs):
         sources = []
 
         for corr in corrs:
+            # check if selected corr is avail
+            if corr not in tt.FLAG.corr.values:
+                logger.info("Corr {} not found. Skipping.".format(corr))
+                continue
             # enumerating available field ids incase of large fids
             for enum_fid, field in enumerate(ufids):
-
                 stats_text = stats_display(mytab, gain_type, doplot, corr,
                                            field, flag=flag_data)
                 stats_ax1.append(stats_text[0])
@@ -1745,9 +1759,11 @@ def main(**kwargs):
                     if gain_type == 'B' or gain_type == 'D':
                         # on the very last iterations
                         if corr == corrs.max() and ant == plotants.max():
-                            ax1 = add_axis(ax1, [freqs[0][0], freqs[0][-1]],
+                            if freqs.ndim == 2:
+                                freqs = freqs[0, :]
+                            ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
                                            ax_label='Frequency [GHz]')
-                            ax2 = add_axis(ax2, [freqs[0][0], freqs[0][-1]],
+                            ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
                                            ax_label='Frequency [GHz]')
 
                     if gain_type == 'K':
@@ -2020,27 +2036,31 @@ def main(**kwargs):
             show(lays)
 
 
-def plot_table(mytabs, gain_types, fields, **kwargs):
+def plot_table(mytabs, gain_types, **kwargs):
     """Plot gain tables within Jupyter notebooks.
 
     Parameters
     ----------
-    corr : :obj:`int, optional`
-        Correlation index to plot (usually just 0 or 1, default = 0)',default=0)
+    _corr : :obj:`int, optional`
+        Correlation index to plot. Can be a single integer or comma separated integers e.g '0,2'. Defaults to all.
     doplot : :obj:`str, optional`
         Plot complex values as amp and phase (ap) or real and imag (ri). Default is 'ap'.
+    ddid : :obj:`int`
+        SPECTRAL_WINDOW_ID or ddid number. Defaults to all
     fields : :obj:`str, optional`
-        Field ID / Name (list of field ids or name) to plot. Default is all.
+        Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Defaults to all.
     gain_types : :obj:`str`, :obj:`list`
         Cal-table (list of caltypes) type to be plotted. Can be either 'B'-bandpass, 'D'- D jones leakages, G'-gains, 'K'-delay or 'F'-flux. Default is none
     image_name : :obj:`str, optional`
-        Output image name. Default is of the form table_corr_doplot_fields
+        Output image name. Default is of the form: table_corr_doplot_fields
     mycmap : `str, optional`
         Matplotlib colour map to use for antennas. Default is coolwarm
     mytabs : :obj:`str` or :obj:`list` required
         The table (list of tables) to be plotted.
     plotants : :obj:`str, optional`
         Plot only this antenna, or comma-separated string of antennas. Default is all
+    taql: :obj:`str, optional`
+        TAQL where clause
     t0  : :obj:`int, optional`
         Minimum time [in seconds] to plot. Default is full range
     t1 : :obj:`int, optional`

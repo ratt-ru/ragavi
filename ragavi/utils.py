@@ -142,12 +142,26 @@ def calc_uvwave(uvw, freq):
     wavelength = (C / freq)
 
     # add extra dimension
-    wavelength = wavelength.expand_dims({'new': 1})
+    wavelength = wavelength
     uvdist = calc_uvdist(uvw)
-    uvdist = uvdist.expand_dims({'chan': 1})
-    uvwave = uvdist / wavelength.T.values
+    uvdist = uvdist.expand_dims({'chan': 1}, axis=1)
+    uvwave = uvdist / wavelength.values
     return uvwave
 
+
+def calc_unique_bls(n_ants=None):
+    """Calculate number of unique baselines
+    Parameters
+    ----------
+    n_ants : :obj:`int`
+        Available antennas
+    Returns
+    -------
+    Number of unique baselines
+
+    """
+
+    return int(0.5 * n_ants * (n_ants - 1))
 
 ########################################################################
 ####################### Get subtables ##################################

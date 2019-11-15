@@ -3,7 +3,6 @@ dist: xenial
 sudo: required
 matrix:
   include:
-    - env: PYTHON=py2
     - env: PYTHON=py3
 services: 
  - docker

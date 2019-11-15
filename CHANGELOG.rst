@@ -1,3 +1,8 @@
+0.2.1
+-----
+- Fix some bugs with missing fields and correlations
+- Only supporting python3 now
+
 0.2.0
 -----
 - Introduced ragavi visibility plotter accessible by ragavi-vis
