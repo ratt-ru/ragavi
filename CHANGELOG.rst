@@ -1,3 +1,10 @@
+0.2.2
+-----
+- Introduced MS averaging
+- ``--cbin`` and ``--tbin`` added for channel and time averaging
+- ``--mem-limit`` and ``--num-cores`` for specifying memory limit per core and number of cores dask should use
+- Remove ``--image-name`` argument
+
 0.2.1
 -----
 - Fix some bugs with missing fields and correlations
