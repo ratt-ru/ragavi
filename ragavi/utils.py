@@ -6,16 +6,15 @@ import warnings
 
 import dask.array as da
 import numpy as np
-import pyrap.quanta as qa
+
 import xarray as xr
 try:
     import xarrayms as xm
 except:
     import daskms as xm
 
-from dask import delayed, compute
 from datetime import datetime
-#from pyfiglet import Figlet
+
 from time import time
 
 ########################################################################
@@ -163,6 +162,7 @@ def calc_unique_bls(n_ants=None):
 
     return int(0.5 * n_ants * (n_ants - 1))
 
+
 ########################################################################
 ####################### Get subtables ##################################
 
@@ -209,17 +209,19 @@ def get_fields(ms_name):
     return field_names
 
 
-def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
+def get_frequencies(ms_name, spwid=0, chan=slice(0, None), cbin=None):
     """Function to get channel frequencies from the SPECTRAL_WINDOW subtable
 
     Parameters
     ----------
     chan : :obj:`slice` or :obj:`numpy.ndarray`
         A slice object or numpy array to select some or all of the channels. Default is all the channels
+    cbin: :obj:`int`
+        Number of channels to be binned together. If a value is provided, averaging is assumed to be turned on
     ms_name : :obj:`str`
         Name of MS or table
-    spwid : :obj:`int`
-        Spectral window id number. Defaults to 0
+    spwid : :obj:`int` of :obj:`slice`
+        Spectral window id number. Defaults to 0. If slicer is specified, frequencies from a range of spectral windows will be returned.
 
     Returns
     -------
@@ -227,21 +229,33 @@ def get_frequencies(ms_name, spwid=slice(0, None), chan=slice(0, None)):
         Channel centre frequencies for specified spectral window.
     """
     subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
-    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
+    if cbin is None:
+        spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
+    else:
+        spw_subtab = average_spws(subname, cbin)
 
+    # if averaging is true, it shall be done before selection
     if len(spw_subtab) == 1:
-        # select the desired spectral windows using slicer
-        spw = spw_subtab[spwid.start]
+        # select the only available spectral window
+        spw = spw_subtab[0]
     else:
-        # if multiple SPWs,concatenate all the items in the list of SPWs to
-        # form a single dataset and then extract the channels
-        spw = xr.concat(spw_subtab, 'row')
-        spw = spw.sel(row=spwid)
+        # if multiple SPWs due to slicer, select the desired one(S)
+        spw = spw_subtab[spwid]
 
-    if spw.CHAN_FREQ.size == 1:
-        freqs = spw.CHAN_FREQ
+    if isinstance(spw, list):
+        freqs = []
+        for s in spw:
+            if s.CHAN_FREQ.size == 1:
+                freqs.append(spw.CHAN_FREQ)
+            else:
+                # select a range of frequencies
+                freqs.append(spw.CHAN_FREQ.sel(chan=chan))
     else:
-        freqs = spw.CHAN_FREQ[chan]
+        if spw.CHAN_FREQ.size == 1:
+            freqs = spw.CHAN_FREQ
+        else:
+            # select a range of frequencies
+            freqs = spw.CHAN_FREQ.sel(chan=chan)
 
     return freqs
 
@@ -433,6 +447,7 @@ def time_convert(xdata):
         TIME column in a more human readable UTC format. Stored as :obj:`numpy.datetime` type.
 
     """
+    import pyrap.quanta as qa
 
     # difference between MJD and unix time i.e. munix = MJD - unix_time
     # so unix_time = MJD - munix
@@ -544,8 +559,11 @@ sys.excepthook = __handle_uncaught_exceptions
 
 ########################################################################
 ########################### Some useful functions ######################
+
 def __welcome():
     """Welcome to ragavi"""
+    from pyfiglet import Figlet
+
     print('\n\n')
     #print("_*+_" * 23)
     #print("Welcome to ")
@@ -566,3 +584,51 @@ def time_wrapper(func):
             func.__name__, time_taken))
         return ans
     return timer
+
+
+#####################################################################
+#################### Averaging functions ############################
+
+def average_spws(ms_name, cbin):
+    """ Average spectral windows
+
+    Parameters
+    ----------
+    ms_name : :obj:`str`
+        Path or name of MS Spectral window Subtable
+    cbin : :obj:`int`
+        Number of channels to be binned together
+
+    Returns
+    -------
+    x_datasets : :obj:`list`
+        List containing averaged spectral windows as :obj:`xarray.Dataset`
+    """
+    import collections
+    from xova.apps.xova import averaging as av
+
+    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
+
+    logger.info("Averaging SPECTRAL_WINDOW subtable")
+
+    av_spw = av.average_spw(spw_subtab, cbin)
+
+    x_datasets = []
+
+    # convert from daskms datasets to xarray datasets
+    for ds in av_spw:
+        data_vars = collections.OrderedDict()
+        coords = collections.OrderedDict()
+
+        for k, v in sorted(ds.data_vars.items()):
+            data_vars[k] = xr.DataArray(
+                v.data.compute_chunk_sizes(), dims=v.dims, attrs=v.attrs)
+
+        for k, v in sorted(ds.coords.items()):
+            coords[k] = xr.DataArray(
+                v.data.compute_chunk_sizes(), dims=v.dims, attrs=v.attrs)
+
+        x_datasets.append(xr.Dataset(data_vars,
+                                     attrs=dict(ds.attrs),
+                                     coords=coords))
+    return x_datasets
