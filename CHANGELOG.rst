@@ -1,3 +1,9 @@
+0.2.2
+-----
+- Add name of gain table plotted to the plot
+- Delay (K) now plotted over time (Fixing #45)
+- Fix bug with relative times (Fixing $46)
+
 0.2.1
 -----
 - Fix some bugs with missing fields and correlations
