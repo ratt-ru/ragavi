@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import logging
 import os
 import sys
@@ -8,10 +9,7 @@ import dask.array as da
 import numpy as np
 
 import xarray as xr
-try:
-    import xarrayms as xm
-except:
-    import daskms as xm
+import daskms as xm
 
 from datetime import datetime
 
@@ -209,7 +207,7 @@ def get_fields(ms_name):
     return field_names
 
 
-def get_frequencies(ms_name, spwid=0, chan=slice(0, None), cbin=None):
+def get_frequencies(ms_name, spwid=0, chan=None, cbin=None):
     """Function to get channel frequencies from the SPECTRAL_WINDOW subtable
 
     Parameters
@@ -229,10 +227,13 @@ def get_frequencies(ms_name, spwid=0, chan=slice(0, None), cbin=None):
         Channel centre frequencies for specified spectral window.
     """
     subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
+
     if cbin is None:
         spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
+        if chan is not None:
+            spw_subtab = [_.sel(chan=chan) for _ in spw_subtab]
     else:
-        spw_subtab = average_spws(subname, cbin)
+        spw_subtab = average_spws(subname, cbin, chan_select=chan)
 
     # if averaging is true, it shall be done before selection
     if len(spw_subtab) == 1:
@@ -245,17 +246,10 @@ def get_frequencies(ms_name, spwid=0, chan=slice(0, None), cbin=None):
     if isinstance(spw, list):
         freqs = []
         for s in spw:
-            if s.CHAN_FREQ.size == 1:
-                freqs.append(spw.CHAN_FREQ)
-            else:
-                # select a range of frequencies
-                freqs.append(spw.CHAN_FREQ.sel(chan=chan))
+            freqs.append(spw.CHAN_FREQ)
+
     else:
-        if spw.CHAN_FREQ.size == 1:
-            freqs = spw.CHAN_FREQ
-        else:
-            # select a range of frequencies
-            freqs = spw.CHAN_FREQ.sel(chan=chan)
+        freqs = spw.CHAN_FREQ
 
     return freqs
 
@@ -387,9 +381,10 @@ def slice_data(inp):
 
     """
     if inp is None:
-        start = 0
-        stop = None
-        sl = slice(start, stop)
+        # start = 0
+        # stop = None
+        # sl = slice(start, stop)
+        sl = None
         return sl
 
     if inp.isdigit():
@@ -589,7 +584,7 @@ def time_wrapper(func):
 #####################################################################
 #################### Averaging functions ############################
 
-def average_spws(ms_name, cbin):
+def average_spws(ms_name, cbin, chan_select=None):
     """ Average spectral windows
 
     Parameters
@@ -607,7 +602,10 @@ def average_spws(ms_name, cbin):
     import collections
     from xova.apps.xova import averaging as av
 
-    spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
+    spw_subtab = list(xm.xds_from_table(ms_name, group_cols='__row__'))
+
+    if chan_select is not None:
+        spw_subtab = [_.sel(chan=chan_select) for _ in spw_subtab]
 
     logger.info("Averaging SPECTRAL_WINDOW subtable")
 
@@ -631,4 +629,5 @@ def average_spws(ms_name, cbin):
         x_datasets.append(xr.Dataset(data_vars,
                                      attrs=dict(ds.attrs),
                                      coords=coords))
+    logger.info("Done")
     return x_datasets
