@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
-from ragavi.ragavi import get_argparser, main
+from ragavi.arguments import gains_argparser
+
+parser = gains_argparser()
+options = parser.parse_args()
 
 if __name__ == "__main__":
-    parser = get_argparser()
-    options = parser.parse_args()
+    from ragavi.ragavi import main
     main(options=options)
