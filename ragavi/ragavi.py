@@ -1,26 +1,22 @@
 from __future__ import division
 
-import argparse
-import logging
 import glob
 import numpy as np
 import re
 import sys
-import warnings
+
+from builtins import map
+from collections import OrderedDict, namedtuple
+from datetime import datetime
+from future.utils import listitems, listvalues
+
 import dask.array as da
 import daskms as xm
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
 import xarray as xr
 
-from argparse import ArgumentParser
-from builtins import map
-from collections import OrderedDict, namedtuple
 from dask import delayed, compute
-from datetime import datetime
-from future.utils import listitems, listvalues
-
-from bokeh.events import PlotEvent
 from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
                       save, show)
 from bokeh.layouts import row, column, gridplot, widgetbox, grid
@@ -31,6 +27,7 @@ from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
 
 from bokeh.models.widgets import Div, PreText
 from bokeh.plotting import figure
+
 from ragavi import utils as vu
 
 # defining some constants
@@ -1388,66 +1385,6 @@ def autofill_gains(t, g):
     if ltab != lgains and lgains == 1:
         g = g * ltab
     return g
-
-
-def get_argparser():
-    """Create command line arguments for ragavi-gains
-
-    Returns
-    -------
-    parser : :obj:`ArgumentParser()`
-        Argument parser object that contains command line argument's values
-
-    """
-    parser = ArgumentParser(usage='%(prog)s [options] <value>',
-                            description='A Radio Astronomy Gains and Visibility Inspector')
-    required = parser.add_argument_group('Required arguments')
-    required.add_argument('-g', '--gaintype', nargs='+', type=str,
-                          metavar=' ', dest='gain_types',
-                          choices=['B', 'D', 'G', 'K', 'F'],
-                          help="""Type of table(s) to be plotted. Can be specified as a single character e.g. "B" if a single table has been provided or space separated list e.g B D G if multiple tables have been specified. Valid choices are  B D G K & F""",
-                          default=[])
-    required.add_argument('-t', '--table', dest='mytabs',
-                          nargs='+', type=str, metavar=(' '),
-                          help="""Table(s) to plot. Multiple tables can be specified as a space separated list""",
-                          default=[])
-
-    parser.add_argument('-a', '--ant', dest='plotants', type=str, metavar=' ',
-                        help="""Plot only a specific antenna, or comma-separated list of antennas. Defaults to all.""",
-                        default=None)
-    parser.add_argument('-c', '--corr', dest='corr', type=str, metavar=' ',
-                        help="""Correlation index to plot. Can be a single integer or comma separated integers e.g '0,2'. Defaults to all.""",
-                        default=None)
-    parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
-                        help="""Matplotlib colour map to use for antennas. Defaults to coolwarm""",
-                        default='coolwarm')
-    parser.add_argument('-d', '--doplot', dest='doplot', type=str,
-                        metavar=' ',
-                        help="""Plot complex values as amplitude & phase (ap) or real and imaginary (ri). Defaults to ap.""",
-                        default='ap')
-    parser.add_argument('-f', '--field', dest='fields', type=str,
-                        metavar='',
-                        help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Defaults to all""",
-                        default=None)
-    parser.add_argument('--htmlname', dest='html_name', type=str, metavar=' ',
-                        help='Output HTMLfile name', default='')
-    parser.add_argument('-p', '--plotname', dest='image_name', type=str,
-                        metavar=' ', help='Output PNG or SVG image name',
-                        default='')
-    parser.add_argument('--ddid', dest='ddid', type=int, metavar=' ',
-                        help="""SPECTRAL_WINDOW_ID or ddid number. Defaults to all""",
-                        default=None)
-    parser.add_argument('--t0', dest='t0', type=float, metavar=' ',
-                        help="""Minimum time to plot [in seconds]. Defaults to full range]""",
-                        default=0)
-    parser.add_argument('--t1', dest='t1', type=float, metavar=' ',
-                        help="""Maximum time to plot [in seconds]. Defaults to full range""",
-                        default=None)
-    parser.add_argument('--taql', dest='where', type=str, metavar=' ',
-                        help='TAQL where clause',
-                        default=None)
-
-    return parser
 
 
 def condense_legend_items(inlist):
