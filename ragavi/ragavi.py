@@ -81,7 +81,7 @@ class DataCoreProcessor:
     """
 
     def __init__(self, xds_table_obj, ms_name, gtype, fid=None, doplot='ap',
-                 corr=0, flag=True):
+                 corr=0, flag=True, kx=None):
 
         self.xds_table_obj = xds_table_obj
         self.ms_name = ms_name
@@ -90,6 +90,7 @@ class DataCoreProcessor:
         self.doplot = doplot
         self.corr = corr
         self.flag = flag
+        self.kx = kx
 
     def compute_ydata(self, ydata, yaxis):
         """Abstraction for processing y-data passes it to the processing function.
@@ -155,9 +156,16 @@ class DataCoreProcessor:
         if gtype == 'B' or gtype == 'D':
             xdata = vu.get_frequencies(ms_name)
             x_label = 'Channel'
-        elif gtype == 'F' or gtype == 'G' or gtype == 'K':
+        elif gtype == 'F' or gtype == 'G':
             xdata = xds_table_obj.TIME
             x_label = 'Time bin'
+        elif gtype == 'K':
+            if self.kx == 'time':
+                xdata = xds_table_obj.TIME
+                x_label = 'Time bin'
+            else:
+                xdata = xds_table_obj.ANTENNA1
+                x_label = 'Antenna'
         else:
             logger.error("Invalid xaxis name")
             return
@@ -183,9 +191,14 @@ class DataCoreProcessor:
         """
         if gtype == 'B' or gtype == 'D':
             prepdx = xdata.chan
-        elif gtype == 'G' or gtype == 'F' or gtype == 'K':
+        elif gtype == 'G' or gtype == 'F':
             prepdx = xdata - get_initial_time(self.ms_name)
             # prepdx = vu.time_convert(xdata)
+        elif gtype == 'K':
+            if self.kx == "time":
+                prepdx = xdata - get_initial_time(self.ms_name)
+            else:
+                prepdx = xdata
         return prepdx
 
     def get_yaxis_data(self, xds_table_obj, ms_name, yaxis):
@@ -1424,6 +1437,12 @@ def get_argparser():
                         metavar='',
                         help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Defaults to all""",
                         default=None)
+    parser.add_argument('-kx', '--k-xaxis' dest='kx', type=str, metavar='',
+                        choices=["time", "antenna"],
+                        help="""Chose the x-xaxis for the K table. Valid 
+                                choices are: time or antenna. Defaults to
+                                time.""",
+                        default="time")
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar=' ',
                         help='Output HTMLfile name', default='')
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
@@ -1538,6 +1557,7 @@ def main(**kwargs):
         t0 = options.t0
         t1 = options.t1
         where = options.where
+        kx = options.kx
 
     else:
         NB_RENDER = True
@@ -1554,6 +1574,7 @@ def main(**kwargs):
         t0 = float(kwargs.get('t0', -1))
         t1 = float(kwargs.get('t1', -1))
         where = kwargs.get('where', None)
+        kx = kwargs.get('kx', "time")
 
     # To flag or not
     flag_data = True
@@ -1721,7 +1742,7 @@ def main(**kwargs):
                     data_obj = DataCoreProcessor(subtab, mytab, gain_type,
                                                  fid=field,
                                                  doplot=doplot, corr=corr,
-                                                 flag=flag_data)
+                                                 flag=flag_data, kx=kx)
                     ready_data = data_obj.act()
 
                     prepd_x = ready_data.x
@@ -1735,16 +1756,16 @@ def main(**kwargs):
                     y2label = ready_data.y2_label
 
                     # inverse data object
-                    infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
-                                                      fid=field, doplot=doplot,
+                    infl_data_obj = DataCoreProcessor(subtab, mytab,
+                                                      gain_type, fid=field,
+                                                      doplot=doplot,
                                                       corr=corr,
-                                                      flag=not flag_data).act()
+                                                      flag=not flag_data,
+                                                      kx=kx).act()
 
                     # for tooltips
-                    spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
-                                                                      gain_type,
-                                                                      antnames,
-                                                                      freqs)
+                    spw_id, scan_no, ttip_antnames = get_tooltip_data(
+                        subtab, gain_type, antnames, freqs)
 
                     tab_tooltips = [("(x, y)", "($x, $y)"),
                                     ("spw", "@spw"),
