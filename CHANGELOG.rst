@@ -1,3 +1,7 @@
+0.2.3
+-----
+- Add option `-kx` , `--k-xaxis` to allow selection of K table's x-axis
+- Values in `--field` can now be either comma or space separated
 0.2.2
 -----
 - Add name of gain table plotted to the plot
