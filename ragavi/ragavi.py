@@ -78,7 +78,7 @@ class DataCoreProcessor:
     """
 
     def __init__(self, xds_table_obj, ms_name, gtype, fid=None, doplot='ap',
-                 corr=0, flag=True):
+                 corr=0, flag=True, kx=None):
 
         self.xds_table_obj = xds_table_obj
         self.ms_name = ms_name
@@ -87,6 +87,7 @@ class DataCoreProcessor:
         self.doplot = doplot
         self.corr = corr
         self.flag = flag
+        self.kx = kx
 
     def compute_ydata(self, ydata, yaxis):
         """Abstraction for processing y-data passes it to the processing function.
@@ -156,8 +157,12 @@ class DataCoreProcessor:
             xdata = xds_table_obj.TIME
             x_label = 'Time bin'
         elif gtype == 'K':
-            xdata = xds_table_obj.ANTENNA1
-            x_label = 'Antenna1'
+            if self.kx == 'time':
+                xdata = xds_table_obj.TIME
+                x_label = 'Time bin'
+            else:
+                xdata = xds_table_obj.ANTENNA1
+                x_label = 'Antenna'
         else:
             logger.error("Invalid xaxis name")
             return
@@ -184,10 +189,13 @@ class DataCoreProcessor:
         if gtype == 'B' or gtype == 'D':
             prepdx = xdata.chan
         elif gtype == 'G' or gtype == 'F':
-            prepdx = xdata - xdata[0]
+            prepdx = xdata - get_initial_time(self.ms_name)
             # prepdx = vu.time_convert(xdata)
         elif gtype == 'K':
-            prepdx = xdata
+            if self.kx == "time":
+                prepdx = xdata - get_initial_time(self.ms_name)
+            else:
+                prepdx = xdata
         return prepdx
 
     def get_yaxis_data(self, xds_table_obj, ms_name, yaxis):
@@ -1446,6 +1454,20 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker='circle_x'):
     return masked_markers_arr
 
 
+def get_initial_time(tab_name):
+    """Get the first TIME column before selections"""
+    from pyrap.tables import table
+    ms = table(tab_name, ack=False)
+    i_time = ms.getcell('TIME', 0)
+    ms.close()
+    return i_time
+
+
+def make_table_name(tab_name):
+    div = Div(text="Table: {}".format(tab_name))
+    return div
+
+
 def main(**kwargs):
     """Main function that launches the gains plotter"""
     if 'options' in kwargs:
@@ -1466,6 +1488,7 @@ def main(**kwargs):
         t0 = options.t0
         t1 = options.t1
         where = options.where
+        kx = options.kx
 
     else:
         NB_RENDER = True
@@ -1482,6 +1505,11 @@ def main(**kwargs):
         t0 = float(kwargs.get('t0', -1))
         t1 = float(kwargs.get('t1', -1))
         where = kwargs.get('where', None)
+        kx = kwargs.get('kx', "time")
+
+    # make into a string if list
+    if isinstance(fields, list):
+        fields = ",".join(fields)
 
     # To flag or not
     flag_data = True
@@ -1536,6 +1564,9 @@ def main(**kwargs):
         if plotants is not None:
             plotants = vu.resolve_ranges(plotants)
 
+        # Get the very initial time available in the table
+        init_time = get_initial_time(mytab)
+
         logger.info('Acquiring table: {}'.format(mytab.split('/')[-1]))
         tt = get_table(mytab, spwid=ddid, where=where, fid=fields,
                        antenna=plotants)[0]
@@ -1545,13 +1576,13 @@ def main(**kwargs):
             assert tt.FLAG.size != 0
         except AssertionError:
             logger.info(
-                "Table contains no data. Check selected field or Scan. Skipping.")
+                """Table contains no data. Check selected field or Scan. Skipping.""")
             continue
 
         # constrain the plots to a certain time period if specified
         if t0 != None or t1 != None:
             # selection of specified times
-            time_s = tt.TIME - tt.TIME[0]
+            time_s = tt.TIME - init_time
             if t0 != None:
                 tt = tt.where((time_s >= t0), drop=True)
                 time_s = time_s.where(time_s >= t0, drop=True)
@@ -1646,7 +1677,7 @@ def main(**kwargs):
                     data_obj = DataCoreProcessor(subtab, mytab, gain_type,
                                                  fid=field,
                                                  doplot=doplot, corr=corr,
-                                                 flag=flag_data)
+                                                 flag=flag_data, kx=kx)
                     ready_data = data_obj.act()
 
                     prepd_x = ready_data.x
@@ -1660,16 +1691,16 @@ def main(**kwargs):
                     y2label = ready_data.y2_label
 
                     # inverse data object
-                    infl_data_obj = DataCoreProcessor(subtab, mytab, gain_type,
-                                                      fid=field, doplot=doplot,
+                    infl_data_obj = DataCoreProcessor(subtab, mytab,
+                                                      gain_type, fid=field,
+                                                      doplot=doplot,
                                                       corr=corr,
-                                                      flag=not flag_data).act()
+                                                      flag=not flag_data,
+                                                      kx=kx).act()
 
                     # for tooltips
-                    spw_id, scan_no, ttip_antnames = get_tooltip_data(subtab,
-                                                                      gain_type,
-                                                                      antnames,
-                                                                      freqs)
+                    spw_id, scan_no, ttip_antnames = get_tooltip_data(
+                        subtab, gain_type, antnames, freqs)
 
                     tab_tooltips = [("(x, y)", "($x, $y)"),
                                     ("spw", "@spw"),
@@ -1842,6 +1873,7 @@ def main(**kwargs):
         corr_select = CheckboxGroup(labels=corr_labs, active=corrs.tolist(),
                                     width=150)
 
+        tname_div = make_table_name(mytab)
         ######################################################################
         ############## Defining widget Callbacks ############################
         ######################################################################
@@ -1934,15 +1966,15 @@ def main(**kwargs):
                           plot_height=PLOT_HEIGHT,
                           sizing_mode='stretch_width')
         if gain_type != 'K':
-            layout = gridplot([[plot_widgets], [ax1, ax2]],
+            layout = gridplot([[tname_div], [plot_widgets], [ax1, ax2]],
                               **grid_specs)
         else:
-            layout = gridplot([[plot_widgets], [ax1]],
+            layout = gridplot([[tname_div], [plot_widgets], [ax1]],
                               **grid_specs)
 
         final_layout.append(layout)
 
-    logger.info("Table {} done.".format(mytab))
+        logger.info("Table {} done.".format(mytab))
 
     if image_name:
         save_svg_image(image_name, ax1, ax2,

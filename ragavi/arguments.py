@@ -141,10 +141,16 @@ def gains_argparser():
                         metavar=' ',
                         help="""Plot complex values as amplitude & phase (ap) or real and imaginary (ri). Defaults to ap.""",
                         default='ap')
-    parser.add_argument('-f', '--field', dest='fields', type=str,
+    parser.add_argument('-f', '--field', dest='fields', type=str, nargs='+',
                         metavar='',
                         help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Defaults to all""",
                         default=None)
+    parser.add_argument('-kx', '--k-xaxis', dest='kx', type=str, metavar='',
+                        choices=["time", "antenna"],
+                        help="""Chose the x-xaxis for the K table. Valid 
+                                choices are: time or antenna. Defaults to
+                                time.""",
+                        default="time")
     parser.add_argument('--htmlname', dest='html_name', type=str, metavar=' ',
                         help='Output HTMLfile name', default='')
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,

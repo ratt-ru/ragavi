@@ -21,7 +21,7 @@ def requirements():
         return [pname.strip() for pname in f.readlines()]
 
 setup(name='ragavi',
-      version="0.2.2",
+      version="0.2.4",
       description='Radio Astronomy Gain and Visibility Inspector',
       long_description=readme(),
       url='https://github.com/ratt-ru/ragavi',
