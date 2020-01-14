@@ -1,12 +1,9 @@
 # -*- coding: utf-8 -*-
 from __future__ import division
 
-import logging
 import sys
-import warnings
 
-from argparse import ArgumentParser
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from datetime import datetime
 from itertools import combinations
 
@@ -14,29 +11,22 @@ import colorcet as cc
 import dask.array as da
 import daskms as xm
 import datashader as ds
-import datashader.transfer_functions as tf
 import numpy as np
 import xarray as xr
 
-import dask
-from dask import compute, delayed
+from dask import compute, delayed, config as dask_config
 from dask.diagnostics import ProgressBar
 from daskms.table_schemas import MS_SCHEMA
 from datashader.bokeh_ext import InteractiveImage
-from multiprocessing import cpu_count
-from xova.apps.xova import averaging as av
 
 from bokeh.plotting import figure
 from bokeh.layouts import column, gridplot, row, widgetbox
-from bokeh.io import (export_png, output_file, output_notebook,
-                      show, save)
-from bokeh.models import (BasicTicker, ColumnDataSource,
-                          ColorBar, Div, HoverTool, LinearAxis,
+from bokeh.io import (output_file, output_notebook, show, save)
+from bokeh.models import (BasicTicker, ColorBar, HoverTool, LinearAxis,
                           LinearColorMapper, PrintfTickFormatter, Range1d,
                           Title)
 
 from ragavi import utils as vu
-
 
 logger = vu.logger
 excepthook = vu.sys.excepthook
@@ -52,11 +42,11 @@ class DataCoreProcessor:
 
     Parameters
     ----------
-    chan : :obj:`slice`
+    chan : :obj:`slice` or :obj:`int`
         Channels that will be selected. Defaults to all
     cbin : :obj:`int`
         Channel averaging bin size
-    corr : :obj:`int`
+    corr : :obj:`int` or :obj:`slice`
         Correlation indices to be selected. Defaults to all
     datacol : :obj:`str`
         Data column to be selected. Defaults to 'DATA'
@@ -75,7 +65,7 @@ class DataCoreProcessor:
     """
 
     def __init__(self, xds_table_obj, ms_name, xaxis, yaxis,
-                 chan=slice(0, None), corr=slice(0, None), cbin=None,
+                 chan=None, corr=None, cbin=None,
                  ddid=int, datacol='DATA', flag=True):
 
         self.xds_table_obj = xds_table_obj
@@ -114,7 +104,7 @@ class DataCoreProcessor:
             y = vu.calc_real(ydata)
         return y
 
-    def get_xaxis_data(self, xds_table_obj, ms_name, xaxis, datacol='DATA', ddid=0, cbin=None):
+    def get_xaxis_data(self, xds_table_obj, ms_name, xaxis, datacol='DATA', ddid=0, cbin=None, chan=None):
         """Get x-axis data. This function also returns the relevant x-axis label.
 
         Parameters
@@ -141,7 +131,8 @@ class DataCoreProcessor:
             xdata = xds_table_obj.ANTENNA2
             x_label = 'Antenna2'
         elif xaxis == 'frequency' or xaxis == 'channel':
-            xdata = vu.get_frequencies(ms_name, spwid=ddid, cbin=cbin)
+            xdata = vu.get_frequencies(ms_name, spwid=ddid, chan=chan,
+                                       cbin=cbin)
             x_label = 'Frequency GHz'
         elif xaxis == 'phase':
             xdata = xds_table_obj[datacol]
@@ -208,7 +199,7 @@ class DataCoreProcessor:
 
         return ydata, y_label
 
-    def prep_xaxis_data(self, xdata, chan=slice(0, None), freq=None,
+    def prep_xaxis_data(self, xdata, freq=None,
                         xaxis='time'):
         """Prepare the x-axis data for plotting. Selections also performed here.
 
@@ -231,7 +222,7 @@ class DataCoreProcessor:
             Prepared :attr:`xdata`
         """
         if xaxis == 'channel' or xaxis == 'frequency':
-            prepdx = xdata.sel(chan=chan) / 1e9
+            prepdx = xdata / 1e9
         elif xaxis == 'phase':
             prepdx = xdata
         elif xaxis == 'time':
@@ -245,13 +236,12 @@ class DataCoreProcessor:
         return prepdx
 
     def prep_yaxis_data(self, xds_table_obj, ms_name, ydata,
-                        chan=slice(0, None), corr=0, flag=True,
-                        yaxis='amplitude'):
+                        corr=None, flag=True, yaxis='amplitude'):
         """Process data for the y-axis.
         This includes:
 
             * Correlation selection
-            * Channel selection
+            * Channel selection is now done as during MS acquisition
             * Flagging
             * Conversion form complex to the required form
 
@@ -277,8 +267,10 @@ class DataCoreProcessor:
         y: :obj:`xarray.DataArray`
            Processed :attr:`ydata` data.
         """
-        ydata = ydata.sel(dict(corr=corr, chan=chan))
-        flags = vu.get_flags(xds_table_obj).sel(dict(corr=corr, chan=chan))
+        flags = vu.get_flags(xds_table_obj)
+        if corr is not None:
+            ydata = ydata.sel(dict(corr=corr))
+            flags = flags.sel(dict(corr=corr))
 
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
@@ -290,8 +282,8 @@ class DataCoreProcessor:
 
         return y
 
-    def blackbox(self, xds_table_obj, ms_name, xaxis, yaxis,
-                 chan=slice(0, None), corr=0, datacol='DATA', ddid=None,
+    def blackbox(self, xds_table_obj, ms_name, xaxis, yaxis, cbin=None,
+                 chan=None, corr=None, datacol='DATA', ddid=None,
                  flag=True):
         """Get raw input data and churn out processed data.
 
@@ -311,10 +303,10 @@ class DataCoreProcessor:
         Data = namedtuple('Data', "x xlabel y ylabel")
 
         xs = self.x_only(xds_table_obj, ms_name, xaxis, corr=corr, chan=chan,
-                         ddid=ddid, flag=flag, datacol=datacol)
+                         ddid=ddid, flag=flag, datacol=datacol, cbin=cbin)
 
-        ys = self.y_only(xds_table_obj, ms_name, yaxis, chan=chan, corr=corr,
-                         flag=flag, datacol=datacol)
+        ys = self.y_only(xds_table_obj, ms_name, yaxis, corr=corr, flag=flag,
+                         datacol=datacol)
 
         x_prepd = xs.x
         xlabel = xs.xlabel
@@ -327,17 +319,8 @@ class DataCoreProcessor:
             else:
                 y_prepd = y_prepd.T
 
-            # selected channel numbers
-            chan_nos = xds_table_obj[datacol].chan.values[chan]
-
-            # assign chan coordinates to both x and y
-            # these coordinates should correspond to the selected channels
-            y_prepd = y_prepd.assign_coords(chan=chan_nos)
-            x_prepd = x_prepd.assign_coords(chan=chan_nos)
-
-            # delete table row coordinates for channel data because of
-            # incompatibility
-            del x_prepd.coords['table_row']
+            # remove the row dim because of compatibility with merge issues
+            x_prepd = x_prepd.sel(row=0)
 
         d = Data(x=x_prepd, xlabel=xlabel, y=y_prepd, ylabel=ylabel)
 
@@ -349,10 +332,10 @@ class DataCoreProcessor:
         return self.blackbox(self.xds_table_obj, self.ms_name, self.xaxis,
                              self.yaxis, chan=self.chan, corr=self.corr,
                              datacol=self.datacol, ddid=self.ddid,
-                             flag=self.flag)
+                             flag=self.flag, cbin=self.cbin)
 
-    def x_only(self, xds_table_obj, ms_name, xaxis, flag=True, corr=0,
-               chan=slice(0, None), ddid=0, datacol='DATA', cbin=None):
+    def x_only(self, xds_table_obj, ms_name, xaxis, flag=True, corr=None,
+               chan=None, ddid=0, datacol='DATA', cbin=None):
         """Return only x-axis data and label
 
         Returns
@@ -361,28 +344,29 @@ class DataCoreProcessor:
             Named tuple containing x-axis data and x-axis label. Items in the tuple can be accessed by using the dot notation.
         """
         Data = namedtuple('Data', 'x xlabel')
+
         x_data, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, xaxis,
-                                             datacol=datacol)
+                                             datacol=datacol, chan=chan,
+                                             cbin=cbin)
         if xaxis == 'uvwave':
             # compute uvwave using the available selected frequencies
             freqs = vu.get_frequencies(ms_name, spwid=ddid,
                                        chan=chan, cbin=cbin).compute()
+
             x = self.prep_xaxis_data(x_data, xaxis=xaxis, freq=freqs)
 
         # if we have x-axes corresponding to ydata
         elif xaxis == 'real' or xaxis == 'phase':
             x = self.prep_yaxis_data(xds_table_obj, ms_name, x_data,
-                                     yaxis=xaxis, corr=corr, chan=chan,
-                                     flag=flag)
+                                     yaxis=xaxis, corr=corr, flag=flag)
         else:
-            x = self.prep_xaxis_data(x_data, xaxis=xaxis, chan=chan)
+            x = self.prep_xaxis_data(x_data, xaxis=xaxis)
 
         d = Data(x=x, xlabel=xlabel)
 
         return d
 
-    def y_only(self, xds_table_obj, ms_name, yaxis, chan=slice(0, None),
-               corr=0, datacol='DATA', flag=True):
+    def y_only(self, xds_table_obj, ms_name, yaxis, corr=None, datacol='DATA', flag=True):
         """Return only y-axis data and label
 
         Returns
@@ -396,7 +380,7 @@ class DataCoreProcessor:
                                              datacol=datacol)
 
         y = self.prep_yaxis_data(xds_table_obj, ms_name, y_data, yaxis=yaxis,
-                                 chan=chan, corr=corr, flag=flag)
+                                 corr=corr, flag=flag)
 
         d = Data(y=y, ylabel=ylabel)
 
@@ -529,7 +513,7 @@ def create_bl_data_array(ant1, ant2):
     return baseline
 
 
-def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql=''):
+def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=None, chan=None):
     """ Perform MS averaging
     Parameters
     ----------
@@ -550,20 +534,24 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql=''):
         List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split by Spectral windows
 
     """
-    import collections
     from xova.apps.xova import averaging as av
 
     if chunk_size is None:
-        chunk_size = dict(row=10000)
+        chunk_size = dict(row=100000)
     if tbin is None:
         tbin = 1
     if cbin is None:
         cbin = 1
 
     # must be grouped this way because of time averaging
-    ms_obj = xm.xds_from_ms(ms_name, group_cols=['DATA_DESC_ID', 'FIELD_ID',
+    ms_obj = xm.xds_from_ms(ms_name, group_cols=['DATA_DESC_ID',
+                                                 'FIELD_ID',
                                                  'SCAN_NUMBER'],
                             taql_where=taql)
+
+    # some channels have been selected
+    if chan is not None:
+        ms_obj = [_.sel(chan=chan) for _ in ms_obj]
 
     # unique ddids available
     unique_spws = np.unique([ds.DATA_DESC_ID for ds in ms_obj])
@@ -576,19 +564,22 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql=''):
     x_datasets = []
     spw_ds = []
 
+    logger.info("Creating averaged Xarray Dataset")
+
     for ams in avg_mss:
-        data_vars = collections.OrderedDict()
-        coords = collections.OrderedDict()
+        data_vars = OrderedDict()
+        coords = OrderedDict()
 
         for k, v in sorted(ams.data_vars.items()):
-            data_vars[k] = xr.DataArray(v.data.compute_chunk_sizes(),
-                                        dims=v.dims, attrs=v.attrs)
+            if k in columns:
+                data_vars[k] = xr.DataArray(v.data.compute_chunk_sizes(),
+                                            dims=v.dims, attrs=v.attrs)
 
         for k, v in sorted(ams.coords.items()):
-            if k == '[uvw]':
-                k = 'uvw'
-            coords[k] = xr.DataArray(v.data.compute_chunk_sizes(),
-                                     dims=v.dims, attrs=v.attrs)
+            if k in columns:
+                coords[k] = xr.DataArray(v.data.compute_chunk_sizes(),
+                                         dims=v.dims, attrs=v.attrs)
+
         # create datasets and rename dimension "[uvw]"" to "uvw"
         x_datasets.append(xr.Dataset(data_vars,
                                      attrs=dict(ams.attrs),
@@ -598,7 +589,7 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql=''):
     # Separate datasets in different MSs
     for di in unique_spws:
         spw_ds.append(
-            [x for x in x_datasets if x.DATA_DESC_ID[0].values == di])
+            [x for x in x_datasets if x.DATA_DESC_ID[0] == di])
 
     x_datasets = []
     # produce multiple datasets incase of multiple SPWs
@@ -610,6 +601,8 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql=''):
         # chunk the data as user wanted it
         ms_obj = ms_obj.chunk(chunk_size)
         x_datasets.append(ms_obj)
+
+    logger.info("Averaging completed.")
 
     return x_datasets
 
@@ -679,6 +672,9 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                  'spw': 'DATA_DESC_ID',
                  'baseline': 'Baseline',
                  None: None}
+
+    # shorten some names
+    tf = ds.transfer_functions
 
     @time_wrapper
     def image_callback(xr, yr, w, h, x=None, y=None, cat=None, cat_ids=None, col=None):
@@ -792,110 +788,8 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     return fig
 
 
-def get_argparser():
-    """Create command line arguments for ragavi-vis
-
-    Returns
-    -------
-    parser : :obj:`ArgumentParser()`
-        Argument parser object that contains command line argument's values
-
-    """
-    x_choices = ['antenna1', 'antenna2',
-                 'channel', 'frequency', 'phase',
-                 'real', 'scan', 'time',
-                 'uvdistance', 'uvwave']
-
-    y_choices = ['amplitude', 'imaginary', 'phase', 'real']
-
-    iter_choices = ['antenna1', 'antenna2', 'baseline', 'chan', 'corr',
-                    'field', 'scan', 'spw']
-
-    parser = ArgumentParser(usage='ragavi-vis [options] <value>')
-
-    required = parser.add_argument_group('Required arguments')
-    required.add_argument('--ms', dest='mytabs',
-                          nargs='*', type=str, metavar='',
-                          help='Table(s) to plot. Default is None',
-                          default=[])
-    required.add_argument('-x', '--xaxis', dest='xaxis', type=str, metavar='',
-                          choices=x_choices, help='x-axis to plot',
-                          default=None)
-    required.add_argument('-y', '--yaxis', dest='yaxis', type=str, metavar='',
-                          choices=y_choices, help='Y axis variable to plot',
-                          default=None)
-
-    parser.add_argument('-c', '--corr', dest='corr', type=str, metavar='',
-                        help="""Correlation index or subset to plot Can be specified using normal python slicing syntax i.e "0:5" for 0<=corr<5 or "::2" for every 2nd corr or "0" for corr 0  or "0,1,3". Default is all.""",
-                        default='0:')
-    parser.add_argument('--cbin', dest='cbin', type=int, metavar='',
-                        help="""Size of channel bins over which to average.e.g setting this to 50 will average over every 5 channels""",
-                        default=None)
-    parser.add_argument('--chan', dest='chan', type=str, metavar='',
-                        help="""Channels to select. Can be specified using syntax i.e "0:5" (exclusive range) or "20" for channel 20 or "10~20" (inclusive range) (same as 10:21) "::10" for every 10th channel or "0,1,3" etc. Default is all.""",
-                        default=None)
-    parser.add_argument('-cs', '--chunks', dest='chunks', type=str,
-                        metavar='',
-                        help="""Chunk sizes to be applied to the dataset. Can be an integer e.g "1000", or a comma separated string e.g "1000,100,2" for multiple dimensions. The available dimensions are (row, chan, corr) respectively. If an integer, the specified chunk size will be applied to all dimensions. If comma separated string, these chunk sizes will be applied to each dimension respectively. Default is 100,000 in the row axis.""",
-                        default=None)
-    parser.add_argument('--cmap', dest='mycmap', type=str, metavar='',
-                        help="""Colour or colour map to use.A list of valid cmap arguments can be found at: 
-                        https://colorcet.pyviz.org/user_guide/index.html
-                        Note that if the argument "colour-axis" is supplied, 
-                        a categorical colour scheme will be adopted. Default 
-                        is blue. """,
-                        default=None)
-    parser.add_argument('-dc', '--data-column', dest='data_column', type=str,
-                        metavar='',
-                        help="""Column from MS to use for data. Default is DATA.""", default='DATA')
-    parser.add_argument('--ddid', dest='ddid', type=str,
-                        metavar='',
-                        help="""DATA_DESC_ID(s) to select. Can be specified as e.g. "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range), 5:(from 5 to last). Default is all.""",
-                        default=None)
-    parser.add_argument('-f', '--field', dest='fields', type=str,
-                        metavar='',
-                        help="""Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to last) or using a field name or comma separated field names. Default is all""",
-                        default=None)
-    parser.add_argument('-o', '--htmlname', dest='html_name', type=str,
-                        metavar='',
-                        help='Output HTMLfile name', default=None)
-    parser.add_argument('-ca', '--colour-axis', dest='iterate', type=str,
-                        metavar='',
-                        choices=iter_choices,
-                        help="""Select column to colourise by. Default is None.""",
-                        default=None)
-    parser.add_argument('-ml', '--mem-limit', type=str, metavar='',
-                        help="""Memory limit per core e.g '1GB' or '128MB'""")
-    # NOTE: Changed iterate argument to colorize. Iteration to be added later
-    parser.add_argument('-nf', '--no-flag', dest='flag', action='store_false',
-                        help="""Plot both flagged and unflagged data. Default only plot data that is not flagged.""",
-                        default=True)
-    parser.add_argument('-nc', '--num-cores', dest='n_cores', type=int,
-                        metavar='',
-                        help="""Number of CPU cores to be used by Dask. Default is half of the available cores""",
-                        default=int(cpu_count() / 2))
-    parser.add_argument('-s', '--scan', dest='scan', type=str, metavar='',
-                        help='Scan Number to select. Default is all.',
-                        default=None)
-    parser.add_argument('--taql', dest='where', type=str, metavar='',
-                        help='TAQL where', default=None)
-    parser.add_argument('--tbin', dest='tbin', type=float, metavar='',
-                        help="""Time in seconds over which to average .e.g setting this to 120.0 will average over every 120.0 seconds""",
-                        default=None)
-    parser.add_argument('--xmin', dest='xmin', type=float, metavar='',
-                        help='Minimum x value to plot', default=None)
-    parser.add_argument('--xmax', dest='xmax', type=float, metavar='',
-                        help='Maximum x value to plot', default=None)
-    parser.add_argument('--ymin', dest='ymin', type=float, metavar='',
-                        help='Minimum y value to plot', default=None)
-    parser.add_argument('--ymax', dest='ymax', type=float, metavar='',
-                        help='Maximum y value to plot', default=None)
-
-    return parser
-
-
 def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
-           scan=None, where=None, cbin=None, tbin=None):
+           scan=None, where=None, cbin=None, tbin=None, chan_select=None):
     """Get xarray Dataset objects containing Measurement Set columns of the selected data
 
     Parameters
@@ -918,12 +812,18 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
         Time in seconds to bin for time averaging
     where: :obj:`str`
         TAQL where clause to be used with the MS.
+    chan_select: :obj:`int` or :obj:`slice`
+        Channels to be selected
 
     Returns
     -------
     tab_objs: :obj:`list`
         A list containing the specified table objects as  :obj:`xarray.Dataset`
     """
+    sel_cols = ["ANTENNA1", "ANTENNA2",
+                "UVW", "TIME", "FIELD_ID",
+                "FLAG", "SCAN_NUMBER", "DATA_DESC_ID"]
+    sel_cols.append(data_col)
 
     ms_schema = MS_SCHEMA.copy()
     ms_schema['WEIGHT_SPECTRUM'] = ms_schema['DATA']
@@ -959,14 +859,20 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
     try:
         if cbin or tbin:
             logger.info("Averaging active")
+            sel_cols.append("INTERVAL")
             # automatically groups data into spectral windows
             tab_objs = average_ms(ms_name, tbin=tbin, cbin=cbin,
-                                  chunk_size=None, taql=where)
+                                  chunk_size=None, taql=where,
+                                  columns=sel_cols, chan=chan_select)
         else:
             tab_objs = xm.xds_from_ms(ms_name, taql_where=where,
                                       table_schema=ms_schema,
                                       group_cols=['DATA_DESC_ID'],
-                                      chunks=chunks)
+                                      chunks=chunks,
+                                      columns=sel_cols)
+            # select channels
+            if chan_select is not None:
+                tab_objs = [_.sel(chan=chan_select) for _ in tab_objs]
 
         # get some info about the data
         chunk_sizes = tab_objs[0].DATA.data.chunksize
@@ -1012,7 +918,7 @@ def main(**kwargs):
         cbin = options.cbin
 
     # number of processes or threads/ cores
-    dask.config.set(num_workers=n_cores, memory_limit='1GB')
+    dask_config.set(num_workers=n_cores, memory_limit='1GB')
 
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
@@ -1055,7 +961,7 @@ def main(**kwargs):
         # open MS perform averaging and select desired fields, scans and spws
         partitions = get_ms(mytab, data_col=data_column, ddid=ddid,
                             fid=fields, scan=scan, where=where, chunks=chunks,
-                            tbin=tbin, cbin=cbin)
+                            tbin=tbin, cbin=cbin, chan_select=chan)
 
         if mycmap == None:
             mycmap = cc.palette['blues']
@@ -1076,7 +982,10 @@ def main(**kwargs):
                 mycmap = cc.palette['glasbey_bw']
 
             # We check current DATA_DESC_ID
-            c_spw = chunk.DATA_DESC_ID
+            if isinstance(chunk.DATA_DESC_ID, xr.DataArray):
+                c_spw = chunk.DATA_DESC_ID[0].values
+            else:
+                c_spw = chunk.DATA_DESC_ID
 
             logger.info("Starting data processing.")
 
