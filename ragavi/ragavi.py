@@ -78,7 +78,7 @@ class DataCoreProcessor:
     """
 
     def __init__(self, xds_table_obj, ms_name, gtype, fid=None, doplot='ap',
-                 corr=0, flag=True, kx=None):
+                 corr=0, flag=True, kx=None, ddid=None):
 
         self.xds_table_obj = xds_table_obj
         self.ms_name = ms_name
@@ -88,6 +88,7 @@ class DataCoreProcessor:
         self.corr = corr
         self.flag = flag
         self.kx = kx
+        self.ddid = ddid
 
     def compute_ydata(self, ydata, yaxis):
         """Abstraction for processing y-data passes it to the processing function.
@@ -151,8 +152,9 @@ class DataCoreProcessor:
         """
 
         if gtype == 'B' or gtype == 'D':
-            xdata = vu.get_frequencies(ms_name)
+            xdata = vu.get_frequencies(ms_name, spwid=self.ddid)
             x_label = 'Channel'
+
         elif gtype == 'F' or gtype == 'G':
             xdata = xds_table_obj.TIME
             x_label = 'Time bin'
@@ -527,6 +529,10 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None):
     if fid != None:
         where.append("FIELD_ID IN {}".format(fid))
     if spwid != None:
+        if spwid.isnumeric():
+            spwid = int(spwid)
+        else:
+            spwid = vu.resolve_ranges(spwid)
         where.append("SPECTRAL_WINDOW_ID IN {}".format(spwid))
 
     where = "&&".join(where)
@@ -537,7 +543,8 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None):
                                      group_cols=None)
         return tab_objs
     except:
-        logger.exception("Invalid ANTENNA id, FIELD_ID or TAQL clause")
+        logger.exception("""Invalid ANTENNA id, FIELD_ID, 
+                            SPECTRAL_WINDOW_ID or TAQL clause""")
         sys.exit(-1)
 
 
@@ -831,24 +838,25 @@ def batch_select_callback():
         */
 
         let count = 0;
-        for (c=0; c<ncorrs; c++){
-            for (f=0; f<nfields; f++){
-                for(n=0; n<nbatches; n++){
-                    for(b=0; b<bsize; b++){
-                        if (cb_obj.active.includes(n)){
-                            p1[count].visible = true;
-                            p2[count].visible = true;
+        for (sp=0; sp<nspws; sp++){
+            for (c=0; c<ncorrs; c++){
+                for (f=0; f<nfields; f++){
+                    for(n=0; n<nbatches; n++){
+                        for(b=0; b<bsize; b++){
+                            if (cb_obj.active.includes(n)){
+                                p1[count].visible = true;
+                                p2[count].visible = true;
+                                }
+                            else{
+                                p1[count].visible = false;
+                                p2[count].visible = false;
                             }
-                        else{
-                            p1[count].visible = false;
-                            p2[count].visible = false;
+                            count = count + 1;
                         }
-                        count = count + 1;
                     }
                 }
             }
         }
-
 
         if (cb_obj.active.length == nbatches){
             antsel.active = true;
@@ -956,32 +964,39 @@ def field_selector_callback():
         /*bsize: total number of items in a batch
          bsel: the batch selector group buttons
          csel: corr selector group buttons
+         nants: Number of antennas
          ncorrs: number of available correlations
          nfields: number of available fields
          nbatches: total number of available batches
          p1 and p2: List containing plots for all antennas, fields and  correlations
          count: keeping a cumulative sum of the traverse number
         */
+        debugger;
+        if (bsize > nants){
+            bsize = nants;
+        }
 
         let count = 0;
-        for (c=0; c<ncorrs; c++){
-            for (f=0; f<nfields; f++){
-                for(n=0; n<nbatches; n++){
-                    for(b=0; b<bsize; b++){
-                        if (cb_obj.active.includes(f) && bsel.active.includes(n) && csel.active.includes(c)){
-                            p1[count].visible = true;
-                            p2[count].visible = true;
+        for (sp=0; sp<nspws; sp++){
+            for (c=0; c<ncorrs; c++){
+                for (f=0; f<nfields; f++){
+                    for(n=0; n<nbatches; n++){
+                        for(b=0; b<bsize; b++){
+                            if (cb_obj.active.includes(f) && bsel.active.includes(n) && csel.active.includes(c)&& 
+                                ssel.active.includes(sp)){
+                                p1[count].visible = true;
+                                p2[count].visible = true;
+                                }
+                            else{
+                                p1[count].visible = false;
+                                p2[count].visible = false;
                             }
-                        else{
-                            p1[count].visible = false;
-                            p2[count].visible = false;
+                            count = count + 1;
                         }
-                        count = count + 1;
                     }
                 }
             }
         }
-
        """
     return code
 
@@ -1068,30 +1083,88 @@ def corr_select_callback():
          /*bsize: total number of items in a batch
            bsel: the batch selector group buttons
            fsel: field selector group buttons
+           ssel: spw selector group buttons
+           nspws: Number of spectral windows
            ncorrs: number of available correlations
            nfields: number of available fields
            nbatches: total number of available batches
            p1 and p2: List containing plots for all antennas, fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
+        //incase the batch size is bigger than the num of antennas
+        if (bsize > nants){
+            bsize = nants;
+        }
 
         let count = 0;
-        for (c=0; c<ncorrs; c++){
-            for (f=0; f<nfields; f++){
-                for(n=0; n<nbatches; n++){
-                    for(b=0; b<bsize; b++){
-                        if (cb_obj.active.includes(c) && bsel.active.includes(n) && fsel.active.includes(f)){
-                            p1[count].visible = true;
-                            p2[count].visible = true;
+        for (sp=0; sp<nspws; sp++){
+            for (c=0; c<ncorrs; c++){
+                for (f=0; f<nfields; f++){
+                    for(n=0; n<nbatches; n++){
+                        for(b=0; b<bsize; b++){
+                            if (cb_obj.active.includes(c) && bsel.active.includes(n) && fsel.active.includes(f) && 
+                                ssel.active.includes(sp)){
+                                p1[count].visible = true;
+                                p2[count].visible = true;
+                                }
+                            else{
+                                p1[count].visible = false;
+                                p2[count].visible = false;
                             }
-                        else{
-                            p1[count].visible = false;
-                            p2[count].visible = false;
+                            count = count + 1;
                         }
-                        count = count + 1;
                     }
                 }
             }
+        }
+
+       """
+    return code
+
+
+def spw_select_callback():
+    code = """
+         /*bsize: total number of items in a batch
+           bsel: the batch selector group buttons
+           extra_axes1 and 2: for the extra frequency ax(es). Is 0 if none.
+           fsel: field selector group buttons
+           csel: corr selector group buttons
+           nspws: Number of spectral windows
+           ncorrs: number of available correlations
+           nfields: number of available fields
+           nbatches: total number of available batches
+           p1 and p2: List containing plots for all antennas, fields and correlations
+           count: keeping a cumulative sum of the traverse number
+        */
+        if (bsize > nants){
+            bsize = nants;
+        }
+
+        let count = 0;
+        for (sp=0; sp<nspws; sp++){
+            for (c=0; c<ncorrs; c++){
+                for (f=0; f<nfields; f++){
+                    for(n=0; n<nbatches; n++){
+                        for(b=0; b<bsize; b++){
+                            if (cb_obj.active.includes(sp) && bsel.active.includes(n) && fsel.active.includes(f) && 
+                                csel.active.includes(c)){
+                                p1[count].visible = true;
+                                p2[count].visible = true;
+                                extra_axes1[sp].visible=true;
+                                extra_axes2[sp].visible=true;
+                                }
+                            else{
+                                p1[count].visible = false;
+                                p2[count].visible = false;
+                                extra_axes1[sp].visible=false;
+                                extra_axes2[sp].visible=false;
+                            }
+                            count = count + 1;
+                        }
+                    }
+                }
+            }
+
         }
 
        """
@@ -1235,7 +1308,7 @@ def save_html(hname, plot_layout):
     # show(layout)
 
 
-def add_axis(fig, axis_range, ax_label):
+def add_axis(fig, axis_range, ax_label, ax_name):
     """Add an extra axis to the current figure
 
     Parameters
@@ -1247,18 +1320,20 @@ def add_axis(fig, axis_range, ax_label):
         Starting and ending point for the range
     ax_label : :obj:`str`
         Label of the new axis
+    ax_name : :obj:`str`
+        Name of the new model for the extra axis incase of multiple spectral windows. 
 
     Returns
     ------
     fig : :obj:`bokeh.plotting.figure`
         Figure containing the extra axis
     """
-    fig.extra_x_ranges = {"fxtra": Range1d(
-        start=axis_range[0], end=axis_range[-1])}
-    linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
+    fig.extra_x_ranges[ax_name] = Range1d(
+        start=axis_range[0], end=axis_range[-1])
+    linaxis = LinearAxis(x_range_name=ax_name, axis_label=ax_label,
                          major_label_orientation='horizontal',
                          ticker=BasicTicker(desired_num_ticks=12),
-                         axis_label_text_font_style='normal')
+                         axis_label_text_font_style='normal', name=ax_name)
     fig.add_layout(linaxis, 'above')
     return fig
 
@@ -1304,7 +1379,7 @@ def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
     return spw_id, scan_no, ttip_antnames
 
 
-def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
+def stats_display(tab_name, gtype, ptype, corr, field, flag=True, spwid=None):
     """Display some statistics on the plots. 
     These statistics are derived from a specific correlation and a specified field of the data. 
 
@@ -1328,13 +1403,15 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
     pre: :obj:`bokeh.models.widgets`
         Pre-formatted text containing the medians for both model. The object returned must then be placed within the widget box for display.
     """
-    subtable = get_table(tab_name, fid=field)[0]
+    subtable = get_table(tab_name, fid=field, spwid=spwid)[0]
 
-    dobj = DataCoreProcessor(subtable, tab_name, gtype, corr=corr, flag=True)
+    dobj = DataCoreProcessor(subtable, tab_name, gtype,
+                             corr=corr, flag=True, ddid=spwid)
 
     if gtype == 'K':
         y1 = dobj.y_only('delay').y.compute()
         med_y1 = np.nanmedian(y1)
+        med_y2 = ' '
         text = "Field {}: Med Delay: {:.4f}".format(field, med_y1)
         text2 = ' '
         return text, text2
@@ -1358,13 +1435,12 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True):
     else:
         y1 = dobj.y_only('real').y.compute()
         y2 = dobj.y_only('imaginary').y.compute()
-
         med_y1 = np.nanmedian(y1)
         med_y2 = np.nanmedian(y2)
         text = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y1)
         text2 = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y2)
 
-    return text, text2
+    return [spwid, field, corr, med_y1, med_y2]
 
 
 def autofill_gains(t, g):
@@ -1468,6 +1544,30 @@ def make_table_name(tab_name):
     return div
 
 
+def create_stats_table(stats, ptype):
+    from bokeh.models.widgets import DataTable, TableColumn
+
+    if ptype == 'ap':
+        ys = "amplitude phase".split()
+    else:
+        ys = "real imaginary".split()
+
+    stats = np.array(stats)
+    d_stats = dict(spw=stats[:, 0],
+                   field=stats[:, 1],
+                   corr=stats[:, 2],
+                   )
+    d_stats[ys[0]] = stats[:, 3]
+    d_stats[ys[1]] = stats[:, 4]
+    source = ColumnDataSource(data=d_stats)
+    cols = "spw field corr".split() + ys
+    columns = [TableColumn(field=x, title=x.capitalize()) for x in cols]
+    dtab = DataTable(source=source, columns=columns, width=400, height=200)
+    t_title = Div(text="Median Statistics")
+
+    return column(t_title, dtab)
+
+
 def main(**kwargs):
     """Main function that launches the gains plotter"""
     if 'options' in kwargs:
@@ -1514,9 +1614,6 @@ def main(**kwargs):
     # To flag or not
     flag_data = True
 
-    # default spwid
-    ddid = 0
-
     if len(mytabs) == 0:
         logger.error('Exiting: No gain table specified.')
         sys.exit(-1)
@@ -1548,18 +1645,22 @@ def main(**kwargs):
             plotants = options.plotants
 
         if fields is not None:
-            if '~' in fields or ':' in fields or fields.isdigit():
+            # Not using .isalnum coz the actual field names can be provided
+            if '~' in fields or ':' in fields or fields.isnumeric():
                 fields = vu.resolve_ranges(fields)
             elif ',' in fields:
-                # check if all are digits in fields, if not convert field
-                # name to field id and join all the resulting field ids with a
-                # comma
+                """
+                 check if all are digits in fields, if not convert field
+                 name to field id and join all the resulting field ids with a
+                 comma
+                """
                 fields = ",".join(
-                    [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
+                    [str(vu.name_2id(mytab, x)) if not x.isnumeric() else x for x in fields.split(',')])
                 fields = vu.resolve_ranges(fields)
             else:
                 fields = str(vu.name_2id(mytab, fields))
                 fields = vu.resolve_ranges(fields)
+
         # select desired antennas as MS is opening
         if plotants is not None:
             plotants = vu.resolve_ranges(plotants)
@@ -1576,7 +1677,7 @@ def main(**kwargs):
             assert tt.FLAG.size != 0
         except AssertionError:
             logger.info(
-                """Table contains no data. Check selected field or Scan. Skipping.""")
+                """Table contains no data. Check selected Antenna, Field, Scan or Spectral window. Skipping.""")
             continue
 
         # constrain the plots to a certain time period if specified
@@ -1608,7 +1709,8 @@ def main(**kwargs):
         else:
             corrs = tt.FLAG.corr.values
 
-        freqs = (vu.get_frequencies(mytab, spwid=slice(0, None)) / GHZ).values
+        # freqs = (vu.get_frequencies(
+        #     mytab, spwid=vu.slice_data(ddid)) / GHZ).values
 
         # setting up colors for the antenna plots
         cNorm = colors.Normalize(vmin=0, vmax=plotants.size - 1)
@@ -1637,151 +1739,161 @@ def main(**kwargs):
         ebars_ax2 = []
 
         # Statistical info holder
-        stats_ax1 = []
-        stats_ax2 = []
+        stats_ax = []
 
         # for storing flagged and unflagged data sources
         sources = []
 
-        for corr in corrs:
-            # check if selected corr is avail
-            if corr not in tt.FLAG.corr.values:
-                logger.info("Corr {} not found. Skipping.".format(corr))
-                continue
-            # enumerating available field ids incase of large fids
-            for enum_fid, field in enumerate(ufids):
-                stats_text = stats_display(mytab, gain_type, doplot, corr,
-                                           field, flag=flag_data)
-                stats_ax1.append(stats_text[0])
-                stats_ax2.append(stats_text[1])
+        uddids = np.unique(tt.SPECTRAL_WINDOW_ID.values)
+        uddids = uddids.astype(int)
 
-                logger.info('Plotting field: {} corr: {}'.format(field, corr))
-                # for each antenna
-                for ant in plotants:
+        for win in uddids:
+            logger.info("Window {}".format(win))
+            freqs = (vu.get_frequencies(mytab, spwid=win) / GHZ).values
+            for corr in corrs:
+                # check if selected corr is avail
+                if corr not in tt.FLAG.corr.values:
+                    logger.info("Corr {} not found. Skipping.".format(corr))
+                    continue
+                # enumerating available field ids incase of large fids
+                for enum_fid, field in enumerate(ufids):
+                    stats = stats_display(mytab, gain_type, doplot, corr,
+                                          field, flag=flag_data,
+                                          spwid=str(win))
+                    stats_ax.append(stats)
 
-                    # creating legend labels
-                    antlabel = antnames[ant]
-                    legend = antnames[ant]
-                    legend_err = "E" + antnames[ant]
+                    logger.info(
+                        'Plotting field: {} corr: {}'.format(field, corr))
+                    # for each antenna
+                    for ant in plotants:
 
-                    # creating colors for maps
-                    y1col = y2col = scalarMap.to_rgba(
-                        float(ant), bytes=True)[:-1]
+                        # creating legend labels
+                        antlabel = antnames[ant]
+                        legend = antnames[ant]
+                        legend_err = "E" + antnames[ant]
 
-                    # filter for antenna and field
-                    subtab = tt.where((tt.ANTENNA1 == int(ant)) &
-                                      (tt.FIELD_ID == int(field)), drop=True)
+                        # creating colors for maps
+                        y1col = y2col = scalarMap.to_rgba(
+                            float(ant), bytes=True)[:-1]
 
-                    # depending on the status of flag_data, this may
-                    # be either flagged or unflagged data
-                    data_obj = DataCoreProcessor(subtab, mytab, gain_type,
-                                                 fid=field,
-                                                 doplot=doplot, corr=corr,
-                                                 flag=flag_data, kx=kx)
-                    ready_data = data_obj.act()
+                        # filter for antenna and field
+                        subtab = tt.where((tt.ANTENNA1 == int(ant)) &
+                                          (tt.FIELD_ID == int(field)) &
+                                          (tt.SPECTRAL_WINDOW_ID == int(win)),
+                                          drop=True)
 
-                    prepd_x = ready_data.x
-                    xlabel = ready_data.x_label
+                        # depending on the status of flag_data, this may
+                        # be either flagged or unflagged data
+                        data_obj = DataCoreProcessor(subtab, mytab, gain_type,
+                                                     fid=field,
+                                                     doplot=doplot, corr=corr,
+                                                     flag=flag_data, kx=kx,
+                                                     ddid=win)
+                        ready_data = data_obj.act()
 
-                    y1 = ready_data.y1
-                    y1_err = ready_data.y1_err
-                    y1label = ready_data.y1_label
-                    y2 = ready_data.y2
-                    y2_err = ready_data.y2_err
-                    y2label = ready_data.y2_label
+                        prepd_x = ready_data.x
+                        xlabel = ready_data.x_label
 
-                    # inverse data object
-                    infl_data_obj = DataCoreProcessor(subtab, mytab,
-                                                      gain_type, fid=field,
-                                                      doplot=doplot,
-                                                      corr=corr,
-                                                      flag=not flag_data,
-                                                      kx=kx).act()
+                        y1 = ready_data.y1
+                        y1_err = ready_data.y1_err
+                        y1label = ready_data.y1_label
+                        y2 = ready_data.y2
+                        y2_err = ready_data.y2_err
+                        y2label = ready_data.y2_label
 
-                    # for tooltips
-                    spw_id, scan_no, ttip_antnames = get_tooltip_data(
-                        subtab, gain_type, antnames, freqs)
+                        # inverse data object
+                        infl_data_obj = DataCoreProcessor(subtab, mytab,
+                                                          gain_type,
+                                                          fid=field,
+                                                          doplot=doplot,
+                                                          corr=corr,
+                                                          flag=not flag_data,
+                                                          kx=kx,
+                                                          ddid=win).act()
 
-                    tab_tooltips = [("(x, y)", "($x, $y)"),
-                                    ("spw", "@spw"),
-                                    ("scan_id", "@scanid"),
-                                    ("antenna", "@antname")]
+                        # for tooltips
+                        spw_id, scan_no, ttip_antnames = get_tooltip_data(
+                            subtab, gain_type, antnames, freqs)
 
-                    hover = HoverTool(tooltips=tab_tooltips,
-                                      mode='mouse', point_policy='snap_to_data')
-                    hover2 = HoverTool(tooltips=tab_tooltips,
-                                       mode='mouse', point_policy='snap_to_data')
+                        tab_tooltips = [("(x, y)", "($x, $y)"),
+                                        ("spw", "@spw"),
+                                        ("scan_id", "@scanid"),
+                                        ("antenna", "@antname")]
 
-                    ax1.xaxis.axis_label = ax1_xlabel = xlabel
-                    ax2.xaxis.axis_label = ax2_xlabel = xlabel
-                    ax1.yaxis.axis_label = ax1_ylabel = y1label
-                    ax2.yaxis.axis_label = ax2_ylabel = y2label
+                        hover = HoverTool(tooltips=tab_tooltips,
+                                          mode='mouse', point_policy='snap_to_data')
+                        hover2 = HoverTool(tooltips=tab_tooltips,
+                                           mode='mouse', point_policy='snap_to_data')
 
-                    ax1.axis.axis_label_text_font_style = 'normal'
-                    ax2.axis.axis_label_text_font_style = 'normal'
+                        ax1.xaxis.axis_label = ax1_xlabel = xlabel
+                        ax2.xaxis.axis_label = ax2_xlabel = xlabel
+                        ax1.yaxis.axis_label = ax1_ylabel = y1label
+                        ax2.yaxis.axis_label = ax2_ylabel = y2label
 
-                    if doplot == 'ap':
-                        ax2.yaxis[0].formatter = PrintfTickFormatter(
-                            format=u"%f\u00b0")
+                        ax1.axis.axis_label_text_font_style = 'normal'
+                        ax2.axis.axis_label_text_font_style = 'normal'
 
-                    if gain_type == 'B' or gain_type == 'D':
-                        # on the very last iterations
-                        if corr == corrs.max() and ant == plotants.max():
-                            if freqs.ndim == 2:
-                                freqs = freqs[0, :]
-                            ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
-                                           ax_label='Frequency [GHz]')
-                            ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
-                                           ax_label='Frequency [GHz]')
+                        if doplot == 'ap':
+                            ax2.yaxis[0].formatter = PrintfTickFormatter(
+                                format=u"%f\u00b0")
 
-                    if gain_type == 'K':
-                        ax1_ylabel = y1label.replace('[ns]', '')
-                        ax2_ylabel = y2label.replace('[ns]', '')
+                        if gain_type == 'B' or gain_type == 'D':
+                            # on the very last iterations
+                            if corr == corrs.max() and ant == plotants.max() and field == ufids.max():
+                                if freqs.ndim == 2:
+                                    freqs = freqs[0, :]
 
-                    source = ColumnDataSource(data={'x': prepd_x,
-                                                    'y1': y1,
-                                                    'y2': y2,
-                                                    'spw': spw_id,
-                                                    'scanid': scan_no,
-                                                    'antname': ttip_antnames})
+                                ax1 = add_axis(ax1, [freqs[0], freqs[-1]],
+                                               ax_label='Frequency [GHz]',
+                                               ax_name="spw{}".format(win))
+                                ax2 = add_axis(ax2, [freqs[0], freqs[-1]],
+                                               ax_label='Frequency [GHz]',
+                                               ax_name="spw{}".format(win))
 
-                    inv_source = ColumnDataSource(data={'y1': y1,
+                        if gain_type == 'K':
+                            ax1_ylabel = y1label.replace('[ns]', '')
+                            ax2_ylabel = y2label.replace('[ns]', '')
+
+                        source = ColumnDataSource(data={'x': prepd_x,
+                                                        'y1': y1,
                                                         'y2': y2,
-                                                        'iy1': infl_data_obj.y1,
-                                                        'iy2': infl_data_obj.y2})
+                                                        'spw': spw_id,
+                                                        'scanid': scan_no,
+                                                        'antname': ttip_antnames})
 
-                    sources.append([source, inv_source])
+                        inv_source = ColumnDataSource(data={'y1': y1,
+                                                            'y2': y2,
+                                                            'iy1': infl_data_obj.y1,
+                                                            'iy2': infl_data_obj.y2})
 
-                    p1, p1_err, p2, p2_err = make_plots(
-                        source=source, color=y1col, ax1=ax1, ax2=ax2,
-                        fid=enum_fid, y1err=y1_err, y2err=y2_err)
+                        sources.append([source, inv_source])
 
-                    # hide all the other plots until legend is clicked
-                    if ant > 0:
-                        p1.visible = p2.visible = False
+                        p1, p1_err, p2, p2_err = make_plots(
+                            source=source, color=y1col, ax1=ax1, ax2=ax2,
+                            fid=enum_fid, y1err=y1_err, y2err=y2_err)
 
-                    # collecting plot states for each iterations
-                    ax1_plots.append(p1)
-                    ax2_plots.append(p2)
+                        # hide all the other plots until legend is clicked
+                        if ant > 0:
+                            p1.visible = p2.visible = False
 
-                    # forming legend object items
-                    legend_items_ax1.append((legend, [p1]))
-                    legend_items_ax2.append((legend, [p2]))
-                    # for the errors
-                    ebars_ax1.append(p1_err)
-                    ebars_ax2.append(p2_err)
+                        # collecting plot states for each iterations
+                        ax1_plots.append(p1)
+                        ax2_plots.append(p2)
 
-                    subtab.close()
+                        # forming legend object items
+                        legend_items_ax1.append((legend, [p1]))
+                        legend_items_ax2.append((legend, [p2]))
+                        # for the errors
+                        ebars_ax1.append(p1_err)
+                        ebars_ax2.append(p2_err)
+
+                        subtab.close()
         tt.close()
 
         # configuring titles for the plots
-        ax1_title = Title(text="{} vs {} ({})".format(ax1_ylabel,
-                                                      ax1_xlabel,
-                                                      ", ".join(stats_ax1)),
+        ax1_title = Title(text="{} vs {}".format(ax1_ylabel, ax1_xlabel),
                           align='center', text_font_size='15px')
-        ax2_title = Title(text="{} vs {} ({})".format(ax2_ylabel,
-                                                      ax2_xlabel,
-                                                      ", ".join(stats_ax2)),
+        ax2_title = Title(text="{} vs {}".format(ax2_ylabel, ax2_xlabel),
                           align='center', text_font_size='15px')
 
         ax1.add_tools(hover)
@@ -1808,6 +1920,8 @@ def main(**kwargs):
         # adding plot titles
         ax2.add_layout(ax2_title, 'above')
         ax1.add_layout(ax1_title, 'above')
+
+        stats_table = create_stats_table(stats_ax, doplot)
 
         ######################################################################
         ################ Defining widgets ###################################
@@ -1856,9 +1970,8 @@ def main(**kwargs):
                                                  fsyms[enum_fid].encode('utf-8')) for enum_fid, x in enumerate(ufids)]
 
         field_selector = CheckboxGroup(labels=field_labels,
-                                       active=ufids.tolist(),
+                                       active=[e for e, f in enumerate(ufids)],
                                        **w_dims)
-
         axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
                                  title='Axis label size', **w_dims)
         title_fontslider = Slider(end=35, start=10, step=1, value=15,
@@ -1874,6 +1987,11 @@ def main(**kwargs):
                                     width=150)
 
         tname_div = make_table_name(mytab)
+
+        spw_labs = ["Spw: {}".format(str(_)) for _ in uddids]
+        spw_select = CheckboxGroup(labels=spw_labs,
+                                   active=[e for e, d in enumerate(uddids)],
+                                   width=150)
         ######################################################################
         ############## Defining widget Callbacks ############################
         ######################################################################
@@ -1894,12 +2012,15 @@ def main(**kwargs):
             args=dict(p1=ax1_plots,
                       p2=ax2_plots,
                       bsize=BATCH_SIZE,
+                      nants=plotants.size,
                       nbatches=num_legend_objs,
                       nfields=ufids.size,
                       ncorrs=corrs.size,
+                      nspws=uddids.size,
                       fselect=field_selector,
                       cselect=corr_select,
-                      antsel=ant_select),
+                      antsel=ant_select,
+                      ssel=spw_select),
             code=batch_select_callback())
 
         legend_toggle.callback = CustomJS(
@@ -1920,11 +2041,14 @@ def main(**kwargs):
         field_selector.callback = CustomJS(args=dict(bsize=BATCH_SIZE,
                                                      bsel=batch_select,
                                                      csel=corr_select,
+                                                     nants=plotants.size,
                                                      nfields=ufids.size,
                                                      ncorrs=corrs.size,
                                                      nbatches=num_legend_objs,
+                                                     nspws=uddids.size,
                                                      p1=ax1_plots,
-                                                     p2=ax2_plots),
+                                                     p2=ax2_plots,
+                                                     ssel=spw_select),
                                            code=field_selector_callback())
         axis_fontslider.js_on_change('value',
                                      CustomJS(args=dict(ax1=ax1.axis,
@@ -1942,12 +2066,48 @@ def main(**kwargs):
         corr_select.callback = CustomJS(args=dict(bsel=batch_select,
                                                   bsize=BATCH_SIZE,
                                                   fsel=field_selector,
+                                                  nants=plotants.size,
                                                   ncorrs=corrs.size,
                                                   nfields=ufids.size,
                                                   nbatches=num_legend_objs,
+                                                  nspws=uddids.size,
                                                   p1=ax1_plots,
-                                                  p2=ax2_plots),
+                                                  p2=ax2_plots,
+                                                  ssel=spw_select),
                                         code=corr_select_callback())
+
+        # for frequency axis with  spws
+        # make the additional axes accesible to spw selector for toggling
+        if len(ax1.extra_x_ranges) > 0:
+            extra_axes1 = ax1.select(layout='above', type=LinearAxis)
+            extra_axes2 = ax2.select(layout='above', type=LinearAxis)
+            # sort them
+            extra_axes1 = sorted({_.id: _ for _ in extra_axes1}.items())
+            extra_axes2 = sorted({_.id: _ for _ in extra_axes2}.items())
+            extra_axes1 = [j for i, j in extra_axes1]
+            extra_axes2 = [j for i, j in extra_axes2]
+            for a in range(len(extra_axes1)):
+                # force axis labels. They change for some reason
+                extra_axes1[a].axis_label = "Frequency [GHz]"
+                extra_axes2[a].axis_label = "Frequency [GHz]"
+        else:
+            extra_axes1 = 0
+            extra_axes2 = 0
+
+        spw_select.callback = CustomJS(args=dict(bsel=batch_select,
+                                                 bsize=BATCH_SIZE,
+                                                 csel=corr_select,
+                                                 fsel=field_selector,
+                                                 nants=plotants.size,
+                                                 ncorrs=corrs.size,
+                                                 nfields=ufids.size,
+                                                 nbatches=num_legend_objs,
+                                                 nspws=uddids.size,
+                                                 p1=ax1_plots,
+                                                 p2=ax2_plots,
+                                                 extra_axes1=extra_axes1,
+                                                 extra_axes2=extra_axes2),
+                                       code=spw_select_callback())
 
         #################################################################
         ########## Define widget layouts #################################
@@ -1956,7 +2116,7 @@ def main(**kwargs):
         a = row([ant_select, toggle_err, legend_toggle, size_slider,
                  alpha_slider, title_fontslider])
         b = row([toggle_flag, batch_select, field_selector, corr_select,
-                 axis_fontslider])
+                 spw_select, axis_fontslider])
 
         plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
 
@@ -1966,11 +2126,11 @@ def main(**kwargs):
                           plot_height=PLOT_HEIGHT,
                           sizing_mode='stretch_width')
         if gain_type != 'K':
-            layout = gridplot([[tname_div], [plot_widgets], [ax1, ax2]],
-                              **grid_specs)
+            layout = gridplot([[tname_div], [plot_widgets], [ax1, ax2],
+                               [stats_table]], **grid_specs)
         else:
-            layout = gridplot([[tname_div], [plot_widgets], [ax1]],
-                              **grid_specs)
+            layout = gridplot([[tname_div], [plot_widgets], [ax1],
+                               [stats_table]], **grid_specs)
 
         final_layout.append(layout)
 
