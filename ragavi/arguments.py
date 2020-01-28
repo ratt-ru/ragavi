@@ -156,7 +156,7 @@ def gains_argparser():
     parser.add_argument('-p', '--plotname', dest='image_name', type=str,
                         metavar=' ', help='Output PNG or SVG image name',
                         default='')
-    parser.add_argument('--ddid', dest='ddid', type=int, metavar=' ',
+    parser.add_argument('--ddid', dest='ddid', type=str, metavar=' ',
                         help="""SPECTRAL_WINDOW_ID or ddid number. Defaults to all""",
                         default=None)
     parser.add_argument('--t0', dest='t0', type=float, metavar=' ',
