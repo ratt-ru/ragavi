@@ -1,15 +1,24 @@
 0.2.4
 -----
-- Introduced MS averaging in ``ragavi-vis``
-- ``--cbin`` and ``--tbin`` added for channel and time averaging
-- ``--mem-limit`` and ``--num-cores`` for specifying memory limit per core and number of cores dask should use
-- Remove ``--image-name`` argument from ``ragavi-vis``
+- All argument parsers moved to ``arguments.py``
+
+- **ragavi-vis**
+
+  - Introduced MS averaging in ``ragavi-vis``
+  - ``--cbin`` and ``--tbin`` added for channel and time averaging
+  - ``--mem-limit`` and ``--num-cores`` for specifying memory limit per core and number of cores dask should use
+  - Remove ``--image-name`` argument from ``ragavi-vis``
+
+- **ragavi-gains**
+  - Fixed field, correlation selection bugs #50
+  - Fixed spectral window selection bug
+  - Added spectral window selection widgets
+  - Moved stats from plot titles to table below the plots
 
 
 0.2.3
 -----
-- Add option `-kx` , `--k-xaxis` to allow selection of K table's x-axis 
-    (``ragavi-gains``)
+- Add option `-kx` , `--k-xaxis` to allow selection of K table's x-axis (``ragavi-gains``)
 - Values in `--field` can now be either comma or space separated
 
 
