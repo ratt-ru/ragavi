@@ -233,6 +233,7 @@ def get_frequencies(ms_name, spwid=0, chan=None, cbin=None):
         if chan is not None:
             spw_subtab = [_.sel(chan=chan) for _ in spw_subtab]
     else:
+        # averages done per spectral window, scan and field
         spw_subtab = average_spws(subname, cbin, chan_select=chan)
 
     # if averaging is true, it shall be done before selection
@@ -246,11 +247,11 @@ def get_frequencies(ms_name, spwid=0, chan=None, cbin=None):
     if isinstance(spw, list):
         freqs = []
         for s in spw:
-            freqs.append(spw.CHAN_FREQ)
+            freqs.append(s.CHAN_FREQ)
+        freqs = xr.concat(freqs, dim='row')
 
     else:
         freqs = spw.CHAN_FREQ
-
     return freqs
 
 
@@ -384,7 +385,7 @@ def slice_data(inp):
         # start = 0
         # stop = None
         # sl = slice(start, stop)
-        sl = None
+        sl = slice(0, None)
         return sl
 
     if inp.isdigit():
