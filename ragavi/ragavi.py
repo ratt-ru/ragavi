@@ -117,6 +117,39 @@ class DataCoreProcessor:
             y = ydata
         return y
 
+    def flatten_bandpass_data(self, y, x=None):
+        """ Massage B table with multiple unique times into a shape 
+        that works with BokehJS. Returns on x if x input is present
+        otherwise returns y.
+
+        Parameters
+        ----------
+        x : :obj:`np.array`
+            1-D Array containing data for the x-axis
+        y : :obj:`np.array`
+            2-D Array containing y-axis data.
+
+        Returns
+        -------
+        x : :obj:`np.array`
+            1-D Array containing repeated data for the x-axis
+        y : :obj:`np.array`
+            1-D Array containing y-axis flattened data.
+
+
+        """
+        if y.ndim > 1:
+            # no of unique times available in the bandpass
+            # last index because y is transposed to (chan, time)
+            nrows = y.shape[1]
+
+        if x is not None:
+            x = np.tile(x, (nrows))
+            return x
+        else:
+            y = y.flatten(order='F')
+            return y
+
     def get_errors(self, xds_table_obj):
         """Get error data from PARAMERR column.
 
@@ -168,7 +201,6 @@ class DataCoreProcessor:
         else:
             logger.error("Invalid xaxis name")
             return
-
         return xdata, x_label
 
     def prep_xaxis_data(self, xdata, gtype='G'):
@@ -198,6 +230,7 @@ class DataCoreProcessor:
                 prepdx = xdata - get_initial_time(self.ms_name)
             else:
                 prepdx = xdata
+
         return prepdx
 
     def get_yaxis_data(self, xds_table_obj, ms_name, yaxis):
@@ -294,9 +327,6 @@ class DataCoreProcessor:
         #(solns, chans)
         if self.gtype == 'B' or self.gtype == 'D':
             y = y.T
-            if y.ndim == 2:
-                # Take the item on the first row of the data before transpose
-                y = y[:, 0]
 
         return y
 
@@ -437,6 +467,15 @@ class DataCoreProcessor:
         prepd_x, y1, hi_y1_err, lo_y1_err, y2, hi_y2_err, lo_y2_err =\
             compute(prepd_x.data, y1.data, hi_y1_err.data, lo_y1_err.data,
                     y2.data, hi_y2_err.data, lo_y2_err.data)
+
+        if gtype == 'B' or gtype == 'D':
+            prepd_x = self.flatten_bandpass_data(y1, x=prepd_x)
+            y1 = self.flatten_bandpass_data(y1)
+            hi_y1_err = self.flatten_bandpass_data(hi_y1_err)
+            lo_y1_err = self.flatten_bandpass_data(lo_y1_err)
+            y2 = self.flatten_bandpass_data(y2)
+            hi_y2_err = self.flatten_bandpass_data(hi_y2_err)
+            lo_y2_err = self.flatten_bandpass_data(lo_y2_err)
 
         d = Data(x=prepd_x, x_label=xlabel, y1=y1,
                  y1_label=y1_label, y1_err=(hi_y1_err, lo_y1_err),
@@ -750,6 +789,12 @@ def ant_select_callback():
             /*p1 and p2: both lists containing the plot models
               bsel: batch selection group button
               nbatches: Number of batches available
+              fsel: field_selector widget,
+              csel: corr_select widget,
+              ssel: spw_select widget,
+              nfields: Number of available fields,
+              ncorrs: Number of avaiblable corrs,
+              nspws: Number of spectral windows,
             */
             let nplots = p1.length;
             if (cb_obj.active==false)
@@ -761,6 +806,9 @@ def ant_select_callback():
                     }
 
                     bsel.active = []
+                    csel.active = []
+                    fsel.active = []
+                    ssel.active = []
                 }
             else{
                     cb_obj.label='Deselect all Antennas';
@@ -769,8 +817,11 @@ def ant_select_callback():
                        p2[i].visible = true;
 
                     }
-                    //check all the checkboxes whose antennas are active
+                    //activate all the checkboxes whose antennas are active
                     bsel.active = [...Array(nbatches).keys()]
+                    csel.active = [...Array(ncorrs).keys()]
+                    fsel.active = [...Array(nfields).keys()]
+                    ssel.active = [...Array(nspws).keys()]
                 }
             """
 
@@ -828,14 +879,20 @@ def batch_select_callback():
     code = """
         /* antsel: Select or deselect all antennas button
            bsize: total number of items in a batch
-           cselect: the corr selector array
-           fselect: the field selector button
+           csel: the corr selector array
+           fsel: the field selector button
+           ssel: spw selector button
            ncorrs: number of available correlations
            nfields: number of available fields
            nbatches: total number of available batches
            p1 and p2: List containing plots for all antennas, fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
+        //incase the batch size is bigger than the num of antennas
+        if (bsize > nants){
+            bsize = nants;
+        }
+
 
         let count = 0;
         for (sp=0; sp<nspws; sp++){
@@ -843,7 +900,7 @@ def batch_select_callback():
                 for (f=0; f<nfields; f++){
                     for(n=0; n<nbatches; n++){
                         for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(n)){
+                            if (cb_obj.active.includes(n) && csel.active.includes(c) && ssel.active.includes(sp) && fsel.active.includes(f)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
                                 }
@@ -971,7 +1028,6 @@ def field_selector_callback():
          p1 and p2: List containing plots for all antennas, fields and  correlations
          count: keeping a cumulative sum of the traverse number
         */
-        debugger;
         if (bsize > nants){
             bsize = nants;
         }
@@ -982,7 +1038,7 @@ def field_selector_callback():
                 for (f=0; f<nfields; f++){
                     for(n=0; n<nbatches; n++){
                         for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(f) && bsel.active.includes(n) && csel.active.includes(c)&& 
+                            if (cb_obj.active.includes(f) && csel.active.includes(c)&& 
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
@@ -1102,7 +1158,7 @@ def corr_select_callback():
                 for (f=0; f<nfields; f++){
                     for(n=0; n<nbatches; n++){
                         for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(c) && bsel.active.includes(n) && fsel.active.includes(f) && 
+                            if (cb_obj.active.includes(c) && fsel.active.includes(f) && 
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
@@ -1146,23 +1202,29 @@ def spw_select_callback():
                 for (f=0; f<nfields; f++){
                     for(n=0; n<nbatches; n++){
                         for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(sp) && bsel.active.includes(n) && fsel.active.includes(f) && 
+                            if (cb_obj.active.includes(sp) && fsel.active.includes(f) && 
                                 csel.active.includes(c)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
-                                extra_axes1[sp].visible=true;
-                                extra_axes2[sp].visible=true;
                                 }
                             else{
                                 p1[count].visible = false;
                                 p2[count].visible = false;
-                                extra_axes1[sp].visible=false;
-                                extra_axes2[sp].visible=false;
                             }
                             count = count + 1;
                         }
                     }
                 }
+            }
+
+            if (cb_obj.active.includes(sp)){
+                extra_axes1[sp].visible=true;
+                extra_axes2[sp].visible=true;
+                }
+            else{
+                extra_axes1[sp].visible=false;
+                extra_axes2[sp].visible=false;
+
             }
 
         }
@@ -1372,10 +1434,13 @@ def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
     nchan = freqs.size
 
     if gtype == 'B' or gtype == 'D':
-        spw_id = spw_id[0].repeat(nchan, axis=0)
-        scan_no = scan_no[0].repeat(nchan, axis=0)
-        ant_id = ant_id[0].repeat(nchan, axis=0)
+        # extend array to accommodate for multiple time slots
+        spw_id = spw_id.repeat(nchan, axis=0)
+        # tile because of different scan numbers available
+        scan_no = np.tile(scan_no, nchan)
+        ant_id = ant_id.repeat(nchan, axis=0)
         ttip_antnames = antnames[ant_id]
+
     return spw_id, scan_no, ttip_antnames
 
 
@@ -1414,7 +1479,7 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True, spwid=None):
         med_y2 = ' '
         text = "Field {}: Med Delay: {:.4f}".format(field, med_y1)
         text2 = ' '
-        return text, text2
+        return [spwid, field, corr, med_y1, med_y2]
 
     if ptype == 'ap':
         y1 = dobj.y_only('amplitude').y.compute()
@@ -1748,7 +1813,7 @@ def main(**kwargs):
         uddids = uddids.astype(int)
 
         for win in uddids:
-            logger.info("Window {}".format(win))
+            logger.info("Spectral Window {}".format(win))
             freqs = (vu.get_frequencies(mytab, spwid=win) / GHZ).values
             for corr in corrs:
                 # check if selected corr is avail
@@ -1763,7 +1828,7 @@ def main(**kwargs):
                     stats_ax.append(stats)
 
                     logger.info(
-                        'Plotting field: {} corr: {}'.format(field, corr))
+                        """Plotting spw:{} field: {} corr: {}""".format(win, field, corr))
                     # for each antenna
                     for ant in plotants:
 
@@ -1999,7 +2064,13 @@ def main(**kwargs):
         ant_select.callback = CustomJS(args=dict(p1=ax1_plots,
                                                  p2=ax2_plots,
                                                  bsel=batch_select,
-                                                 nbatches=num_legend_objs),
+                                                 fsel=field_selector,
+                                                 csel=corr_select,
+                                                 ssel=spw_select,
+                                                 nbatches=num_legend_objs,
+                                                 nfields=ufids.size,
+                                                 ncorrs=corrs.size,
+                                                 nspws=uddids.size),
                                        code=ant_select_callback())
 
         toggle_err.js_on_click(CustomJS(args=dict(ax1s=ax1_plots,
@@ -2017,8 +2088,8 @@ def main(**kwargs):
                       nfields=ufids.size,
                       ncorrs=corrs.size,
                       nspws=uddids.size,
-                      fselect=field_selector,
-                      cselect=corr_select,
+                      fsel=field_selector,
+                      csel=corr_select,
                       antsel=ant_select,
                       ssel=spw_select),
             code=batch_select_callback())
