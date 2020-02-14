@@ -14,6 +14,7 @@
   - Fixed spectral window selection bug
   - Added spectral window selection widgets
   - Moved stats from plot titles to table below the plots
+  - Changed time xaxis to UTC time
 
 
 0.2.3
