@@ -118,7 +118,7 @@ class DataCoreProcessor:
         return y
 
     def flatten_bandpass_data(self, y, x=None):
-        """ Massage B table with multiple unique times into a shape 
+        """ Massage B table with multiple unique times into a shape
         that works with BokehJS. Returns on x if x input is present
         otherwise returns y.
 
@@ -190,11 +190,11 @@ class DataCoreProcessor:
 
         elif gtype == 'F' or gtype == 'G':
             xdata = xds_table_obj.TIME
-            x_label = 'Time bin'
+            x_label = 'Time'
         elif gtype == 'K':
             if self.kx == 'time':
                 xdata = xds_table_obj.TIME
-                x_label = 'Time bin'
+                x_label = 'Time'
             else:
                 xdata = xds_table_obj.ANTENNA1
                 x_label = 'Antenna'
@@ -223,11 +223,10 @@ class DataCoreProcessor:
         if gtype == 'B' or gtype == 'D':
             prepdx = xdata.chan
         elif gtype == 'G' or gtype == 'F':
-            prepdx = xdata - get_initial_time(self.ms_name)
-            # prepdx = vu.time_convert(xdata)
+            prepdx = vu.time_convert(xdata)
         elif gtype == 'K':
             if self.kx == "time":
-                prepdx = xdata - get_initial_time(self.ms_name)
+                prepdx = vu.time_convert(xdata)
             else:
                 prepdx = xdata
 
@@ -278,7 +277,7 @@ class DataCoreProcessor:
     def prep_yaxis_data(self, xds_table_obj, ms_name, ydata, yaxis=None, corr=0, flag=True):
         """Process data for the y-axis.
 
-        This function is responsible for : 
+        This function is responsible for :
 
             * Correlation selection
             * Flagging
@@ -582,7 +581,7 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None):
                                      group_cols=None)
         return tab_objs
     except:
-        logger.exception("""Invalid ANTENNA id, FIELD_ID, 
+        logger.exception("""Invalid ANTENNA id, FIELD_ID,
                             SPECTRAL_WINDOW_ID or TAQL clause""")
         sys.exit(-1)
 
@@ -591,7 +590,7 @@ def save_svg_image(img_name, figa, figb, glax1, glax2):
     """Save plots in SVG format
 
     Note
-    ---- 
+    ----
         Two images will emerge. the python package selenium, node package phantomjs are required. More information `Exporting bokeh plots <https://bokeh.pydata.org/en/latest/docs/user_guide/export.html>`_
 
     Parameters
@@ -1038,7 +1037,7 @@ def field_selector_callback():
                 for (f=0; f<nfields; f++){
                     for(n=0; n<nbatches; n++){
                         for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(f) && csel.active.includes(c)&& 
+                            if (cb_obj.active.includes(f) && csel.active.includes(c)&&
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
@@ -1158,7 +1157,7 @@ def corr_select_callback():
                 for (f=0; f<nfields; f++){
                     for(n=0; n<nbatches; n++){
                         for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(c) && fsel.active.includes(f) && 
+                            if (cb_obj.active.includes(c) && fsel.active.includes(f) &&
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
@@ -1202,7 +1201,7 @@ def spw_select_callback():
                 for (f=0; f<nfields; f++){
                     for(n=0; n<nbatches; n++){
                         for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(sp) && fsel.active.includes(f) && 
+                            if (cb_obj.active.includes(sp) && fsel.active.includes(f) &&
                                 csel.active.includes(c)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
@@ -1234,7 +1233,7 @@ def spw_select_callback():
 
 
 def create_legend_batches(num_leg_objs, li_ax1, li_ax2, batch_size=16):
-    """Automates creation of antenna **batches of 16** each unless otherwise. 
+    """Automates creation of antenna **batches of 16** each unless otherwise.
 
     This function takes in a long list containing all the generated legend items from the main function's iteration and divides this list into batches, each of size :attr:`batch_size`. The outputs provides the inputs to
     :meth:`ragavi.ragavi.create_legend_objs`.
@@ -1245,7 +1244,9 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, batch_size=16):
     batch_size : :obj:`int`, optional
         Number of antennas in a legend object. Default is 16
     li_ax1 : :obj:`list`
-        List containing all `legend items <https://bokeh.pydata.org/en/latest/docs/reference/models/annotations.html#bokeh.models.annotations.LegendItem>`_ for antennas for 1st figure items are in the form (antenna_legend, [renderer])
+        # bokeh.models.annotations.LegendItem>`_ for antennas for 1st figure
+        # items are in the form (antenna_legend, [renderer])
+        List containing all `legend items <https://bokeh.pydata.org/en/latest/docs/reference/models/annotations.html
     li_ax2 : :obj:`list`
         List containing all legend items for antennas for 2nd figure items are in the form (antenna_legend, [renderer])
     num_leg_objs : :obj:`int`
@@ -1383,7 +1384,7 @@ def add_axis(fig, axis_range, ax_label, ax_name):
     ax_label : :obj:`str`
         Label of the new axis
     ax_name : :obj:`str`
-        Name of the new model for the extra axis incase of multiple spectral windows. 
+        Name of the new model for the extra axis incase of multiple spectral windows.
 
     Returns
     ------
@@ -1445,15 +1446,15 @@ def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
 
 
 def stats_display(tab_name, gtype, ptype, corr, field, flag=True, spwid=None):
-    """Display some statistics on the plots. 
-    These statistics are derived from a specific correlation and a specified field of the data. 
+    """Display some statistics on the plots.
+    These statistics are derived from a specific correlation and a specified field of the data.
 
     Note
     ----
         Currently, only the medians of these plots are displayed.
 
     Parameters
-    ----------    
+    ----------
     corr : :obj:`int`
         Correlation number of the data to be displayed
     field : :obj:`int`
@@ -1542,7 +1543,8 @@ def condense_legend_items(inlist):
     Parameters
     ----------
     inlist : :obj:`list`
-             List containing legend items of the form (label, renders) as described in: `Bokeh legend items <https://bokeh.pydata.org/en/latest/docs/reference/models/annotations.html#bokeh.models.annotations.LegendItem>`_
+             # bokeh.models.annotations.LegendItem>`_
+             List containing legend items of the form (label, renders) as described in: `Bokeh legend items <https://bokeh.pydata.org/en/latest/docs/reference/models/annotations.html
     Returns
     -------
     outlist : :obj:`list`
@@ -1595,13 +1597,25 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker='circle_x'):
     return masked_markers_arr
 
 
-def get_initial_time(tab_name):
+def get_time_range(tab_name, unix_time=True):
     """Get the first TIME column before selections"""
+
     from pyrap.tables import table
+
+    # unix_time = MJD - munix
+    munix = 3506716800.0
+
     ms = table(tab_name, ack=False)
     i_time = ms.getcell('TIME', 0)
+    f_time = ms.getcell('TIME', (ms.nrows() - 1))
+
+    if unix_time:
+        i_time = i_time - munix
+        f_time = f_time - munix
+
     ms.close()
-    return i_time
+
+    return i_time, f_time
 
 
 def make_table_name(tab_name):
@@ -1730,8 +1744,8 @@ def main(**kwargs):
         if plotants is not None:
             plotants = vu.resolve_ranges(plotants)
 
-        # Get the very initial time available in the table
-        init_time = get_initial_time(mytab)
+        # Get the very initial and final time available in the table
+        init_time, end_time = get_time_range(mytab, unix_time=False)
 
         logger.info('Acquiring table: {}'.format(mytab.split('/')[-1]))
         tt = get_table(mytab, spwid=ddid, where=where, fid=fields,
@@ -1751,10 +1765,10 @@ def main(**kwargs):
             time_s = tt.TIME - init_time
             if t0 != None:
                 tt = tt.where((time_s >= t0), drop=True)
-                time_s = time_s.where(time_s >= t0, drop=True)
+                # time_s = time_s.where(time_s >= t0, drop=True)
             if t1 != None:
                 tt = tt.where((time_s <= t1), drop=True)
-                time_s = time_s.where(time_s <= t1, drop=True)
+                # time_s = time_s.where(time_s <= t1, drop=True)
 
         antnames = vu.get_antennas(mytab).values
 
@@ -1788,10 +1802,15 @@ def main(**kwargs):
         TOOLS = dict(tools='box_select, box_zoom, reset, pan, save,\
                             wheel_zoom, lasso_select')
 
+        if gain_type == 'G' or gain_type == 'F':
+            xaxis_type = "datetime"
+        else:
+            xaxis_type = "linear"
+
         logger.info('Setting up plotting canvas')
 
-        ax1 = figure(**TOOLS)
-        ax2 = figure(x_range=ax1.x_range, **TOOLS)
+        ax1 = figure(x_axis_type=xaxis_type, **TOOLS)
+        ax2 = figure(x_axis_type=xaxis_type, x_range=ax1.x_range, **TOOLS)
 
         # initialise plot containers
         ax1_plots = []
@@ -1899,6 +1918,7 @@ def main(**kwargs):
                         ax2.axis.axis_label_text_font_style = 'normal'
 
                         if doplot == 'ap':
+                            # Add degree sign to phase tick formatter
                             ax2.yaxis[0].formatter = PrintfTickFormatter(
                                 format=u"%f\u00b0")
 
@@ -1918,6 +1938,17 @@ def main(**kwargs):
                         if gain_type == 'K':
                             ax1_ylabel = y1label.replace('[ns]', '')
                             ax2_ylabel = y2label.replace('[ns]', '')
+
+                        if xlabel == 'Time':
+                            munix = 3506716800.0
+                            ni_time = datetime.utcfromtimestamp(
+                                init_time - munix).strftime("%d %b %Y, %H:%M:%S")
+                            ne_time = datetime.utcfromtimestamp(
+                                end_time - munix).strftime("%d %b %Y, %H:%M:%S")
+
+                            ax1.xaxis.axis_label = xlabel + \
+                                " from {} UTC".format(ni_time)
+                            ax2.xaxis.axis_label = ax1.axis[0].axis_label
 
                         source = ColumnDataSource(data={'x': prepd_x,
                                                         'y1': y1,
@@ -1963,6 +1994,7 @@ def main(**kwargs):
 
         ax1.add_tools(hover)
         ax2.add_tools(hover2)
+
         # LEGEND CONFIGURATIONS
         # determining the number of legend objects required to be created
         # for each plot
