@@ -445,9 +445,13 @@ def time_convert(xdata):
     """
     import pyrap.quanta as qa
 
-    # difference between MJD and unix time i.e. munix = MJD - unix_time
-    # so unix_time = MJD - munix
-    # munix = 3506716800.0
+    """
+    The difference between MJD and unix time i.e. munix = MJD - unix_time
+    so unix_time = MJD - munix
+    munix = 3506716800.0 = (40857 * 86400)
+
+    The value 40587 is the number of days between the MJD epoch (1858-11-17) and the Unix epoch (1970-01-01), and 86400 is the number of seconds in a day
+    """
 
     # get first time instance
     init_time = xdata[0].data.compute()
@@ -460,7 +464,7 @@ def time_convert(xdata):
     # convert the initial time to unix time in seconds
     init_time = qa.quantity(init_time, 's').to_unix_time()
 
-    # Add the initial unix time in seconds to get actual time progrssion
+    # Add the initial unix time in seconds to get actual time progression
     unix_time = time_diff + init_time
 
     # unix_time = da.array(unix_time, dtype='datetime64[s]')
