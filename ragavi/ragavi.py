@@ -110,7 +110,7 @@ class DataCoreProcessor:
         elif yaxis == 'imaginary':
             y = vu.calc_imaginary(ydata)
         elif yaxis == 'phase':
-            y = vu.calc_phase(ydata, wrap=True)
+            y = vu.calc_phase(ydata, wrap=False)
         elif yaxis == 'real':
             y = vu.calc_real(ydata)
         elif yaxis == 'delay' or yaxis == 'error':
@@ -1802,7 +1802,7 @@ def main(**kwargs):
         TOOLS = dict(tools='box_select, box_zoom, reset, pan, save,\
                             wheel_zoom, lasso_select')
 
-        if gain_type == 'G' or gain_type == 'F':
+        if gain_type == 'G' or gain_type == 'F' or (kx == "time" and gain_type == 'K'):
             xaxis_type = "datetime"
         else:
             xaxis_type = "linear"
