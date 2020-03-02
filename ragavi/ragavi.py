@@ -19,7 +19,7 @@ import xarray as xr
 from dask import delayed, compute
 from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
                       save, show)
-from bokeh.layouts import row, column, gridplot, widgetbox, grid
+from bokeh.layouts import row, column, gridplot, widgetbox, grid, layout
 from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           CustomJS, HoverTool, Range1d, Legend, LinearAxis,
                           PrintfTickFormatter, Select, Slider, Text, Title,
@@ -33,7 +33,7 @@ from ragavi import utils as vu
 # defining some constants
 # default plot dimensions
 PLOT_WIDTH = 900
-PLOT_HEIGHT = 700
+PLOT_HEIGHT = 750
 
 # gain types supported
 GAIN_TYPES = ['B', 'D', 'F', 'G', 'K']
@@ -796,12 +796,11 @@ def ant_select_callback():
               nspws: Number of spectral windows,
             */
             let nplots = p1.length;
-            if (cb_obj.active==false)
+            if (cb_obj.active.includes(0))
                 {
-                    cb_obj.label='Select all Antennas';
                     for(i=0; i<nplots; i++){
-                        p1[i].visible = false;
-                        p2[i].visible = false;
+                        p1[i].visible = true;
+                        p2[i].visible = true;
                     }
 
                     bsel.active = []
@@ -810,10 +809,9 @@ def ant_select_callback():
                     ssel.active = []
                 }
             else{
-                    cb_obj.label='Deselect all Antennas';
                     for(i=0; i<nplots; i++){
-                       p1[i].visible = true;
-                       p2[i].visible = true;
+                       p1[i].visible = false;
+                       p2[i].visible = false;
 
                     }
                     //activate all the checkboxes whose antennas are active
@@ -837,30 +835,26 @@ def toggle_err_callback():
     code = """
             let i;
              //if toggle button active
-            if (this.active==false)
+            if (cb_obj.active.includes(0))
                 {
-                    this.label='Show All Error bars';
-
-                    for(i=0; i<err1.length; i++){
-                        //check if the error bars are present first
-                        if (err1[i]){
-                            err1[i].visible = false;
-                            err2[i].visible = false;
-                        }
-
-
-
-                    }
-                }
-            else{
-                    this.label='Hide All Error bars';
                     for(i=0; i<err1.length; i++){
                         //only switch on if corresponding plot is on
                         if(ax1s[i].visible){
+                            //check if the error bars are present first
                             if (err1[i]){
                                 err1[i].visible = true;
                                 err2[i].visible = true;
                             }
+
+                        }
+
+                    }
+                }
+            else{
+                    for(i=0; i<err1.length; i++){
+                        if (err1[i]){
+                            err1[i].visible = false;
+                            err2[i].visible = false;
                         }
                     }
                 }
@@ -934,31 +928,20 @@ def legend_toggle_callback():
     code : :obj:`str`
     """
     code = """
-                var len = loax1.length;
-                var i ;
-                if (this.value == "alo"){
+                let len = loax1.length;
+                let i;
+                if (cb_obj.active.includes(0)){
                     for(i=0; i<len; i++){
                         loax1[i].visible = true;
-                        loax2[i].visible = true;
-
                     }
                 }
 
                 else{
                     for(i=0; i<len; i++){
                         loax1[i].visible = false;
-                        loax2[i].visible = false;
-
                     }
                 }
 
-                if (this.value == "non"){
-                    for(i=0; i<len; i++){
-                        loax1[i].visible = false;
-                        loax2[i].visible = false;
-
-                    }
-                }
            """
     return code
 
@@ -1232,7 +1215,7 @@ def spw_select_callback():
     return code
 
 
-def create_legend_batches(num_leg_objs, li_ax1, li_ax2, batch_size=16):
+def create_legend_batches(num_leg_objs, li_ax1, batch_size=16):
     """Automates creation of antenna **batches of 16** each unless otherwise.
 
     This function takes in a long list containing all the generated legend items from the main function's iteration and divides this list into batches, each of size :attr:`batch_size`. The outputs provides the inputs to
@@ -1247,24 +1230,22 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, batch_size=16):
         # bokeh.models.annotations.LegendItem>`_ for antennas for 1st figure
         # items are in the form (antenna_legend, [renderer])
         List containing all `legend items <https://bokeh.pydata.org/en/latest/docs/reference/models/annotations.html
-    li_ax2 : :obj:`list`
-        List containing all legend items for antennas for 2nd figure items are in the form (antenna_legend, [renderer])
     num_leg_objs : :obj:`int`
         Number of legend objects to be created
 
     Returns
     -------
-    (bax1, bax2) : (:obj:`list`, :obj:`list`)
-                Tuple containing List of lists which each have :attr:`batch_size` number of legend items for each batch.
-                bax1 are batches for figure1 antenna legends, and ax2 batches for figure2 antenna legends
+    bax1 : :obj:`list`
+           Tuple containing List of lists which each have :attr:`batch_size` number of legend items for each batch.
+           bax1 are batches for figure1 antenna legends, and ax2 batches for figure2 antenna legends
 
-                e.g bax1 = [[batch0], [batch1], ...,  [batch_numOfBatches]]
+           e.g bax1 = [[batch0], [batch1], ...,  [batch_numOfBatches]]
     """
 
-    bax1, bax2 = [], []
+    bax1 = []
 
     # condense the returned list if two fields were plotted
-    li_ax1, li_ax2 = list(map(condense_legend_items, [li_ax1, li_ax2]))
+    li_ax1 = condense_legend_items(li_ax1)
 
     j = 0
     for i in range(num_leg_objs):
@@ -1273,18 +1254,15 @@ def create_legend_batches(num_leg_objs, li_ax1, li_ax2, batch_size=16):
 
         if i == num_leg_objs:
             bax1.extend([li_ax1[j:]])
-            bax2.extend([li_ax2[j:]])
-
         else:
             bax1.extend([li_ax1[j:j + batch_size]])
-            bax2.extend([li_ax2[j:j + batch_size]])
 
         j += batch_size
 
-    return bax1, bax2
+    return bax1
 
 
-def create_legend_objs(num_leg_objs, bax1, bax2):
+def create_legend_objs(num_leg_objs, bax1):
     """Creates legend objects using items from batches list
     Legend objects allow legends be positioning outside the main plot
 
@@ -1294,33 +1272,32 @@ def create_legend_objs(num_leg_objs, bax1, bax2):
         Number of legend objects to be created
     bax1 : :obj:`list`
         Batches for antenna legends of 1st figure
-    bax2 : :obj:`list`
-        Batches for antenna legends of 2nd figure
 
     Returns
     -------
-    lo_ax1, lo_ax2 : :obj:`dict`, :obj:`dict`
-        Tuple containing dictionaries with legend objects for figure1 antenna legend objects, figure 2 antenna legend objects.
+    lo_ax1 : :obj:`dict`
+        Dictionaries with legend objects for figure1 antenna legend objects
 
 
     """
 
-    lo_ax1, lo_ax2 = {}, {}
+    lo_ax1 = {}
 
     l_opts = dict(click_policy='hide',
                   orientation='horizontal',
                   label_text_font_size='9pt',
                   visible=False,
-                  glyph_width=10)
+                  padding=2,
+                  margin=1,
+                  location='top_left',
+                  glyph_width=10,
+                  sizing_mode='stretch_width')
 
     for i in range(num_leg_objs):
         leg1 = Legend(items=bax1[i], **l_opts)
-        leg2 = Legend(items=bax2[i], **l_opts)
-
         lo_ax1['leg_%s' % str(i)] = leg1
-        lo_ax2['leg_%s' % str(i)] = leg2
 
-    return lo_ax1, lo_ax2
+    return lo_ax1
 
 
 def gen_checkbox_labels(batch_size, num_leg_objs, antnames):
@@ -1445,7 +1422,7 @@ def get_tooltip_data(xds_table_obj, gtype, antnames, freqs):
     return spw_id, scan_no, ttip_antnames
 
 
-def stats_display(tab_name, gtype, ptype, corr, field, flag=True, spwid=None):
+def stats_display(tab_name, gtype, ptype, corr, field, f_names=None, flag=True, spwid=None):
     """Display some statistics on the plots.
     These statistics are derived from a specific correlation and a specified field of the data.
 
@@ -1478,35 +1455,20 @@ def stats_display(tab_name, gtype, ptype, corr, field, flag=True, spwid=None):
         y1 = dobj.y_only('delay').y.compute()
         med_y1 = np.nanmedian(y1)
         med_y2 = ' '
-        text = "Field {}: Med Delay: {:.4f}".format(field, med_y1)
-        text2 = ' '
-        return [spwid, field, corr, med_y1, med_y2]
+
+        return [spwid, f_names[field], corr, med_y1, med_y2]
 
     if ptype == 'ap':
         y1 = dobj.y_only('amplitude').y.compute()
         y2 = dobj.y_only('phase').y.compute()
-        med_y1 = np.nanmedian(y1)
-        med_y2 = np.nanmedian(y2)
-
-        text = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y1)
-
-        try:
-            text2 = "Field {} C{} Med: {:.4f}{}".format(field, str(corr),
-                                                        med_y2, u"\u00b0")
-        except UnicodeEncodeError:
-            # for python2
-            text2 = "Field {} C{} Med: {:.4f}{}".format(field, str(corr),
-                                                        med_y2, u"\u00b0".encode('utf-8'))
-
     else:
         y1 = dobj.y_only('real').y.compute()
         y2 = dobj.y_only('imaginary').y.compute()
-        med_y1 = np.nanmedian(y1)
-        med_y2 = np.nanmedian(y2)
-        text = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y1)
-        text2 = "Field {} C{} Med: {:.4f}".format(field, str(corr), med_y2)
 
-    return [spwid, field, corr, med_y1, med_y2]
+    med_y1 = np.nanmedian(y1)
+    med_y2 = np.nanmedian(y2)
+
+    return [spwid, f_names[field], corr, med_y1, med_y2]
 
 
 def autofill_gains(t, g):
@@ -1641,10 +1603,12 @@ def create_stats_table(stats, ptype):
     source = ColumnDataSource(data=d_stats)
     cols = "spw field corr".split() + ys
     columns = [TableColumn(field=x, title=x.capitalize()) for x in cols]
-    dtab = DataTable(source=source, columns=columns, width=400, height=200)
+    dtab = DataTable(source=source, columns=columns,
+                     width=400, max_width=450,
+                     height=100, max_height=150, sizing_mode='stretch_both')
     t_title = Div(text="Median Statistics")
 
-    return column(t_title, dtab)
+    return column([t_title, dtab], sizing_mode='stretch_both')
 
 
 def main(**kwargs):
@@ -1772,6 +1736,11 @@ def main(**kwargs):
 
         antnames = vu.get_antennas(mytab).values
 
+        # get string names of available fields
+        fnames = vu.get_fields(mytab).data.compute()
+        fsyms = [u'\u2B24', u'\u25C6', u'\u25FC', u'\u25B2',
+                 u'\u25BC', u'\u2B22']
+
         # get all the ant ids present in a subtable
         plotants = np.unique(tt.ANTENNA1.values).astype(int)
 
@@ -1799,8 +1768,10 @@ def main(**kwargs):
         # creating bokeh figures for plots
         # linking plots ax1 and ax2 via the x_axes because of similarities in
         # range
-        TOOLS = dict(tools='box_select, box_zoom, reset, pan, save,\
-                            wheel_zoom, lasso_select')
+        TOOLS = dict(tools="""box_select, box_zoom, reset, pan, save,
+                            wheel_zoom, lasso_select""",
+                     # sizing_mode="stretch_both",
+                     min_border_right=20)
 
         if gain_type == 'G' or gain_type == 'F' or (kx == "time" and gain_type == 'K'):
             xaxis_type = "datetime"
@@ -1818,7 +1789,7 @@ def main(**kwargs):
 
         # forming Legend object items for data and errors
         legend_items_ax1 = []
-        legend_items_ax2 = []
+
         ebars_ax1 = []
         ebars_ax2 = []
 
@@ -1843,7 +1814,7 @@ def main(**kwargs):
                 for enum_fid, field in enumerate(ufids):
                     stats = stats_display(mytab, gain_type, doplot, corr,
                                           field, flag=flag_data,
-                                          spwid=str(win))
+                                          f_names=fnames, spwid=str(win))
                     stats_ax.append(stats)
 
                     logger.info(
@@ -1899,15 +1870,25 @@ def main(**kwargs):
                         spw_id, scan_no, ttip_antnames = get_tooltip_data(
                             subtab, gain_type, antnames, freqs)
 
-                        tab_tooltips = [("(x, y)", "($x, $y)"),
+                        tab_tooltips = [("({:.4}, {:.4})".format(xlabel,
+                                                                 y1label),
+                                         "(@x, @y1)"),
                                         ("spw", "@spw"),
                                         ("scan_id", "@scanid"),
                                         ("antenna", "@antname")]
+                        tab_tooltips2 = tab_tooltips.copy()
 
-                        hover = HoverTool(tooltips=tab_tooltips,
-                                          mode='mouse', point_policy='snap_to_data')
-                        hover2 = HoverTool(tooltips=tab_tooltips,
-                                           mode='mouse', point_policy='snap_to_data')
+                        # change tooltip info for the second plot
+                        tab_tooltips2[0] = ("({:.4}, {:.4})".format(xlabel,
+                                                                    y2label),
+                                            "(@x, @y2)")
+
+                        hover = HoverTool(tooltips=tab_tooltips, mode='mouse',
+                                          point_policy='snap_to_data')
+
+                        hover2 = HoverTool(tooltips=tab_tooltips2,
+                                           mode='mouse',
+                                           point_policy='snap_to_data')
 
                         ax1.xaxis.axis_label = ax1_xlabel = xlabel
                         ax2.xaxis.axis_label = ax2_xlabel = xlabel
@@ -1950,6 +1931,16 @@ def main(**kwargs):
                                 " from {} UTC".format(ni_time)
                             ax2.xaxis.axis_label = ax1.axis[0].axis_label
 
+                            # format tootltip to time value
+                            hover.formatters = dict(x="datetime")
+                            hover2.formatters = dict(x="datetime")
+
+                            tab_tooltips[0] = ("({:.4}, {:.4})".format(
+                                xlabel, y1label), "(@x{%F %T}, @y1)")
+
+                            tab_tooltips2[0] = ("({:.4}, {:.4})".format(
+                                xlabel, y2label), "(@x{%F %T}, @y2)")
+
                         source = ColumnDataSource(data={'x': prepd_x,
                                                         'y1': y1,
                                                         'y2': y2,
@@ -1969,7 +1960,7 @@ def main(**kwargs):
                             fid=enum_fid, y1err=y1_err, y2err=y2_err)
 
                         # hide all the other plots until legend is clicked
-                        if ant > 0:
+                        if ant >= BATCH_SIZE:
                             p1.visible = p2.visible = False
 
                         # collecting plot states for each iterations
@@ -1978,7 +1969,7 @@ def main(**kwargs):
 
                         # forming legend object items
                         legend_items_ax1.append((legend, [p1]))
-                        legend_items_ax2.append((legend, [p2]))
+
                         # for the errors
                         ebars_ax1.append(p1_err)
                         ebars_ax2.append(p2_err)
@@ -2000,23 +1991,21 @@ def main(**kwargs):
         # for each plot
         num_legend_objs = int(np.ceil(len(plotants) / BATCH_SIZE))
 
-        batches_ax1, batches_ax2 = create_legend_batches(num_legend_objs,
-                                                         legend_items_ax1,
-                                                         legend_items_ax2,
-                                                         batch_size=BATCH_SIZE)
+        batches_ax1 = create_legend_batches(num_legend_objs,
+                                            legend_items_ax1,
+                                            batch_size=BATCH_SIZE)
 
-        legend_objs_ax1, legend_objs_ax2 = create_legend_objs(num_legend_objs,
-                                                              batches_ax1,
-                                                              batches_ax2)
-
-        # adding legend objects to the layouts
-        for i in range(num_legend_objs):
-            ax1.add_layout(legend_objs_ax1['leg_%s' % str(i)], 'below')
-            ax2.add_layout(legend_objs_ax2['leg_%s' % str(i)], 'below')
+        legend_objs_ax1 = create_legend_objs(num_legend_objs,
+                                             batches_ax1)
 
         # adding plot titles
         ax2.add_layout(ax2_title, 'above')
         ax1.add_layout(ax1_title, 'above')
+
+        # adding legend objects to the layouts
+        # add them in reverse so that the first batch is the topmost
+        for i in reversed(range(num_legend_objs)):
+            ax1.add_layout(legend_objs_ax1['leg_%s' % str(i)], 'above')
 
         stats_table = create_stats_table(stats_ax, doplot)
 
@@ -2028,12 +2017,12 @@ def main(**kwargs):
         w_dims = dict(width=150, height=30)
 
         # creating and configuring Antenna selection buttons
-        ant_select = Toggle(label='Select All Antennas',
-                            button_type='success', **w_dims)
+        ant_select = CheckboxGroup(labels=['Select All Antennas'],
+                                   active=[], **w_dims)
 
         # configuring toggle button for showing all the errors
-        toggle_err = Toggle(label='Show All Error bars',
-                            button_type='warning', **w_dims)
+        toggle_err = CheckboxGroup(labels=['Show Error bars'], active=[],
+                                   **w_dims)
 
         ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs, antnames)
 
@@ -2041,42 +2030,43 @@ def main(**kwargs):
                                      width=150)
 
         # Dropdown to hide and show legends
-        legend_toggle = Select(title="Showing Legends: ", value="non",
-                               options=[("alo", "Antennas"),
-                                        ("non", "None")],
-                               width=150, height=45)
+        legend_toggle = CheckboxGroup(labels=['Show Legends'], active=[],
+                                      **w_dims)
 
         # creating glyph size slider for the plots
+        #margin = [top, right, bottom, left]
         size_slider = Slider(end=15, start=0.4, step=0.1,
-                             value=4, title='Glyph size',
-                             **w_dims)
+                             value=4, title='Glyph size', margin=(3, 5, 7, 5),
+                             bar_color='#6F95C3', ** w_dims)
 
         # Alpha slider for the glyphs
         alpha_slider = Slider(end=1, start=0.1, step=0.1, value=1,
-                              title='Glyph alpha', **w_dims)
-
-        fnames = vu.get_fields(mytab).data.compute()
-        fsyms = [u'\u2B24', u'\u25C6', u'\u25FC', u'\u25B2',
-                 u'\u25BC', u'\u2B22']
+                              margin=(3, 5, 7, 5), title='Glyph alpha',
+                              bar_color='#6F95C3', **w_dims)
 
         try:
-            field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[enum_fid]) for enum_fid, x in enumerate(ufids)]
+            field_labels = ["Field {} {}".format(
+                fnames[int(x)],
+                fsyms[enum_fid]) for enum_fid, x in enumerate(ufids)]
         except UnicodeEncodeError:
-            field_labels = ["Field {} {}".format(fnames[int(x)],
-                                                 fsyms[enum_fid].encode('utf-8')) for enum_fid, x in enumerate(ufids)]
+            field_labels = ["Field {} {}".format(
+                fnames[int(x)],
+                fsyms[enum_fid].encode('utf-8')) for enum_fid,
+                x in enumerate(ufids)]
 
         field_selector = CheckboxGroup(labels=field_labels,
                                        active=[e for e, f in enumerate(ufids)],
                                        **w_dims)
         axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
-                                 title='Axis label size', **w_dims)
+                                 margin=(3, 5, 7, 5), title='Axis label size',
+                                 bar_color='#6F95C3', **w_dims)
         title_fontslider = Slider(end=35, start=10, step=1, value=15,
-                                  title='Title size', **w_dims)
+                                  margin=(3, 5, 7, 5), title='Title size',
+                                  bar_color='#6F95C3', **w_dims)
 
         # if flag_data is true, i.e data is flagged, label==Un-flag,
         # button==inactive [not flag_data], otherwise button==in
-        toggle_flag = CheckboxGroup(labels=['Show Flagged-out Data'],
+        toggle_flag = CheckboxGroup(labels=['Show Flagged Data'],
                                     active=[], **w_dims)
 
         corr_labs = ["Correlation {}".format(str(_)) for _ in corrs]
@@ -2105,10 +2095,10 @@ def main(**kwargs):
                                                  nspws=uddids.size),
                                        code=ant_select_callback())
 
-        toggle_err.js_on_click(CustomJS(args=dict(ax1s=ax1_plots,
-                                                  err1=ebars_ax1,
-                                                  err2=ebars_ax2),
-                                        code=toggle_err_callback()))
+        toggle_err.callback = CustomJS(args=dict(ax1s=ax1_plots,
+                                                 err1=ebars_ax1,
+                                                 err2=ebars_ax2),
+                                       code=toggle_err_callback())
 
         # BATCH SELECTION
         batch_select.callback = CustomJS(
@@ -2127,8 +2117,7 @@ def main(**kwargs):
             code=batch_select_callback())
 
         legend_toggle.callback = CustomJS(
-            args=dict(loax1=listvalues(legend_objs_ax1),
-                      loax2=listvalues(legend_objs_ax2)),
+            args=dict(loax1=listvalues(legend_objs_ax1)),
             code=legend_toggle_callback())
 
         size_slider.js_on_change('value',
@@ -2215,27 +2204,31 @@ def main(**kwargs):
         #################################################################
         ########## Define widget layouts #################################
         ##################################################################
+        asel_div = Div(text="Antenna Batch")
+        fsel_div = Div(text="Field")
+        ssel_div = Div(text="SPW")
+        csel_div = Div(text="Select Correlation")
 
-        a = row([ant_select, toggle_err, legend_toggle, size_slider,
-                 alpha_slider, title_fontslider])
-        b = row([toggle_flag, batch_select, field_selector, corr_select,
-                 spw_select, axis_fontslider])
+        w_box1 = widgetbox([ant_select, legend_toggle, asel_div, batch_select])
+        w_box2 = widgetbox([toggle_err, toggle_flag, fsel_div, field_selector])
+        w_box3 = widgetbox([size_slider, alpha_slider, ssel_div, spw_select])
+        w_box4 = widgetbox([title_fontslider, axis_fontslider, csel_div,
+                            corr_select])
 
-        plot_widgets = widgetbox([a, b], sizing_mode='scale_both')
+        all_widgets = row([w_box1, w_box2, w_box3, w_box4,
+                           stats_table], sizing_mode='stretch_both')
 
-        # setting the gridspecs
-        # gridplot while maintaining the set aspect ratio
-        grid_specs = dict(plot_width=PLOT_WIDTH,
-                          plot_height=PLOT_HEIGHT,
-                          sizing_mode='stretch_width')
-        if gain_type != 'K':
-            layout = gridplot([[tname_div], [plot_widgets], [ax1, ax2],
-                               [stats_table]], **grid_specs)
+        if gain_type == 'K':
+            plots = gridplot([[ax1]], toolbar_location='above',
+                             sizing_mode='stretch_both')
         else:
-            layout = gridplot([[tname_div], [plot_widgets], [ax1],
-                               [stats_table]], **grid_specs)
+            plots = gridplot([[ax1, ax2]], plot_height=PLOT_HEIGHT,
+                             toolbar_location='above',
+                             sizing_mode='stretch_both')
 
-        final_layout.append(layout)
+        lay = layout([[tname_div], [all_widgets], [plots]],
+                     sizing_mode='stretch_width')
+        final_layout.append(lay)
 
         logger.info("Table {} done.".format(mytab))
 
@@ -2255,9 +2248,9 @@ def main(**kwargs):
             # if more than one table, give time based name
             if len(mytabs) > 1:
                 mytab = datetime.now().strftime('%Y%m%d_%H%M%S')
-            html_name = "{}_corr_{}_{}_field_{}".format(mytab, corr,
-                                                        doplot,
-                                                        "".join([str(x) for x in ufids.tolist()]))
+            html_name = "{}_corr_{}_{}_field_{}".format(
+                mytab, corr, doplot,
+                "".join([str(x) for x in ufids.tolist()]))
             save_html(html_name, final_layout)
 
         logger.info("Rendered: {}.html".format(html_name))
