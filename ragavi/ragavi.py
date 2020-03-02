@@ -22,7 +22,7 @@ from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
 from bokeh.layouts import row, column, gridplot, widgetbox, grid, layout
 from bokeh.models import (BasicTicker, CheckboxGroup, ColumnDataSource,
                           CustomJS, HoverTool, Range1d, Legend, LinearAxis,
-                          PrintfTickFormatter, Select, Slider, Text, Title,
+                          PrintfTickFormatter, Button, Slider, Text, Title,
                           Toggle, Whisker)
 
 from bokeh.models.widgets import Div, PreText
@@ -802,23 +802,23 @@ def ant_select_callback():
                         p1[i].visible = true;
                         p2[i].visible = true;
                     }
-
-                    bsel.active = []
-                    csel.active = []
-                    fsel.active = []
-                    ssel.active = []
-                }
-            else{
-                    for(i=0; i<nplots; i++){
-                       p1[i].visible = false;
-                       p2[i].visible = false;
-
-                    }
                     //activate all the checkboxes whose antennas are active
                     bsel.active = [...Array(nbatches).keys()]
                     csel.active = [...Array(ncorrs).keys()]
                     fsel.active = [...Array(nfields).keys()]
                     ssel.active = [...Array(nspws).keys()]
+
+                }
+            else{
+                    for(i=0; i<nplots; i++){
+                       p1[i].visible = false;
+                       p2[i].visible = false;
+                    }
+
+                    bsel.active = []
+                    csel.active = []
+                    fsel.active = []
+                    ssel.active = []
                 }
             """
 
@@ -1215,6 +1215,44 @@ def spw_select_callback():
     return code
 
 
+def save_selected_callback():
+    code = """
+        /*uf_src: Unflagged data source
+          f_src:  Flagged data source scanid antname
+        */        
+        let out = `x, y1, y2, antenna, scan_no, spw\n`;
+        
+        //for all the data sources available
+        for (i=0; i<uf_src.length; i++){
+            let sel_idx = uf_src[i].selected.indices;
+            let data = uf_src[i].data;
+
+            for (j=0; j<sel_idx.length; j++){
+                out +=  `${data['x'][sel_idx[j]]}, ` +
+                        `${data['y1'][sel_idx[j]]}, ` +
+                        `${data['y2'][sel_idx[j]]}, ` +
+                        `${data['antname'][sel_idx[j]]}, ` +
+                        `${data['scanid'][sel_idx[j]]}, ` +
+                        `${data['spw'][sel_idx[j]]}\n`;
+            }
+
+        }
+        let answer = confirm("Download selected data?");
+        if (answer){
+            let file = new Blob([out], {type: 'text/csv'});
+            let element = window.document.createElement('a');
+            element.href = window.URL.createObjectURL(file);
+            element.download = "data_selection.csv";
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+        }
+        
+    """
+
+    return code
+
+
 def create_legend_batches(num_leg_objs, li_ax1, batch_size=16):
     """Automates creation of antenna **batches of 16** each unless otherwise.
 
@@ -1290,8 +1328,7 @@ def create_legend_objs(num_leg_objs, bax1):
                   padding=2,
                   margin=1,
                   location='top_left',
-                  glyph_width=10,
-                  sizing_mode='stretch_width')
+                  glyph_width=10)
 
     for i in range(num_leg_objs):
         leg1 = Legend(items=bax1[i], **l_opts)
@@ -2017,11 +2054,11 @@ def main(**kwargs):
         w_dims = dict(width=150, height=30)
 
         # creating and configuring Antenna selection buttons
-        ant_select = CheckboxGroup(labels=['Select All Antennas'],
+        ant_select = CheckboxGroup(labels=['Select all antennas'],
                                    active=[], **w_dims)
 
         # configuring toggle button for showing all the errors
-        toggle_err = CheckboxGroup(labels=['Show Error bars'], active=[],
+        toggle_err = CheckboxGroup(labels=['Show error bars'], active=[],
                                    **w_dims)
 
         ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs, antnames)
@@ -2030,7 +2067,7 @@ def main(**kwargs):
                                      width=150)
 
         # Dropdown to hide and show legends
-        legend_toggle = CheckboxGroup(labels=['Show Legends'], active=[],
+        legend_toggle = CheckboxGroup(labels=['Show legends'], active=[],
                                       **w_dims)
 
         # creating glyph size slider for the plots
@@ -2058,15 +2095,13 @@ def main(**kwargs):
                                        active=[e for e, f in enumerate(ufids)],
                                        **w_dims)
         axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
-                                 margin=(3, 5, 7, 5), title='Axis label size',
+                                 margin=(7, 5, 3, 5), title='Axis label size',
                                  bar_color='#6F95C3', **w_dims)
         title_fontslider = Slider(end=35, start=10, step=1, value=15,
                                   margin=(3, 5, 7, 5), title='Title size',
                                   bar_color='#6F95C3', **w_dims)
 
-        # if flag_data is true, i.e data is flagged, label==Un-flag,
-        # button==inactive [not flag_data], otherwise button==in
-        toggle_flag = CheckboxGroup(labels=['Show Flagged Data'],
+        toggle_flag = CheckboxGroup(labels=['Show flagged data'],
                                     active=[], **w_dims)
 
         corr_labs = ["Correlation {}".format(str(_)) for _ in corrs]
@@ -2079,6 +2114,9 @@ def main(**kwargs):
         spw_select = CheckboxGroup(labels=spw_labs,
                                    active=[e for e, d in enumerate(uddids)],
                                    width=150)
+        save_selected = Button(label="Download data selection",
+                               button_type="success", margin=(7, 5, 3, 5),
+                               **w_dims)
         ######################################################################
         ############## Defining widget Callbacks ############################
         ######################################################################
@@ -2201,22 +2239,31 @@ def main(**kwargs):
                                                  extra_axes2=extra_axes2),
                                        code=spw_select_callback())
 
+        save_selected.js_on_click(CustomJS(args=dict(
+            uf_src=[x[0] for x in sources],
+            f_src=[x[1] for x in sources]),
+            code=save_selected_callback()))
+
         #################################################################
         ########## Define widget layouts #################################
         ##################################################################
-        asel_div = Div(text="Antenna Batch")
-        fsel_div = Div(text="Field")
-        ssel_div = Div(text="SPW")
-        csel_div = Div(text="Select Correlation")
+        asel_div = Div(text="Select antenna group")
+        fsel_div = Div(text="Fields")
+        ssel_div = Div(text="Select spw")
+        csel_div = Div(text="Select correlation")
 
-        w_box1 = widgetbox([ant_select, legend_toggle, asel_div, batch_select])
-        w_box2 = widgetbox([toggle_err, toggle_flag, fsel_div, field_selector])
-        w_box3 = widgetbox([size_slider, alpha_slider, ssel_div, spw_select])
+        w_box1 = widgetbox([ant_select, legend_toggle, asel_div,
+                            batch_select])
+        w_box2 = widgetbox([toggle_err, toggle_flag, fsel_div,
+                            field_selector])
+        w_box3 = widgetbox([size_slider, alpha_slider, ssel_div,
+                            spw_select])
         w_box4 = widgetbox([title_fontslider, axis_fontslider, csel_div,
                             corr_select])
 
         all_widgets = row([w_box1, w_box2, w_box3, w_box4,
-                           stats_table], sizing_mode='stretch_both')
+                           widgetbox(save_selected, stats_table)],
+                          sizing_mode='stretch_both', spacing=10)
 
         if gain_type == 'K':
             plots = gridplot([[ax1]], toolbar_location='above',
