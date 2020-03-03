@@ -3,7 +3,6 @@ dask[complete]
 dask-ms[xarray]
 datashader
 future
-matplotlib<=2.2.3; python_version <= '2.7'
 matplotlib>2.2.3; python_version >= '3.5'
 numpy>=1.14
 python-casacore

@@ -97,7 +97,7 @@ They must however be accompanied by their respective gain table type in the :cod
 
 .. code-block:: bash
 
-    $ ragavi -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
+    $ ragavi-gains -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
 
 
 For the visibility plotter, the name-space :code:`ragavi-vis` is used. Help can be obtained by running
