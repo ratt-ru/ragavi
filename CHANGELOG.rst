@@ -15,6 +15,8 @@
   - Added spectral window selection widgets
   - Moved stats from plot titles to table below the plots
   - Changed time xaxis to UTC time
+  - Added new download selected data button
+  - All availabe times displayed for bandpass plots
 
 
 0.2.3
