@@ -1,4 +1,4 @@
-0.2.4
+0.3.0
 -----
 - All argument parsers moved to ``arguments.py``
 
