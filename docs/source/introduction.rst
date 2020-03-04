@@ -21,6 +21,7 @@ The output interactive plots enable actions such as
 
 among others, without requiring any redraw actions or special software to view plots. All that is required to view a plot produced by ``ragavi`` is a *web-browser*.
 
+
 Limitations
 ***********
 ``Ragavi`` is still under development.
