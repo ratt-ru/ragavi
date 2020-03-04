@@ -875,27 +875,34 @@ def batch_select_callback():
            csel: the corr selector array
            fsel: the field selector button
            ssel: spw selector button
+           nants: Number of antennas
            ncorrs: number of available correlations
            nfields: number of available fields
            nbatches: total number of available batches
            p1 and p2: List containing plots for all antennas, fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
-        //incase the batch size is bigger than the num of antennas
-        if (bsize > nants){
-            bsize = nants;
-        }
-
 
         let count = 0;
+        let new_bsize;
         for (sp=0; sp<nspws; sp++){
             for (c=0; c<ncorrs; c++){
                 for (f=0; f<nfields; f++){
+                    //re-initialise bsize
+                    new_bsize = bsize;
                     for(n=0; n<nbatches; n++){
-                        for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(n) && csel.active.includes(c) && ssel.active.includes(sp) && fsel.active.includes(f)){
+                        /* Reduce batch size to the size of the last batch
+                        and number of antennas is not the same as bsize
+                        */
+                        if (n == nbatches-1 && nants!=bsize){
+                            new_bsize = nants % bsize;
+                        }
+                        debugger;
+                        for(b=0; b<new_bsize; b++){
+                            if (cb_obj.active.includes(n)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
+                                debugger;
                                 }
                             else{
                                 p1[count].visible = false;
@@ -909,12 +916,10 @@ def batch_select_callback():
         }
 
         if (cb_obj.active.length == nbatches){
-            antsel.active = true;
-            antsel.label = "Deselect all Antennas";
+            antsel.active = [0];
         }
         else if (cb_obj.active.length==0){
-            antsel.active = false;
-            antsel.label = "Select all Antennas";
+            antsel.active = [];
         }
        """
     return code
@@ -1010,17 +1015,20 @@ def field_selector_callback():
          p1 and p2: List containing plots for all antennas, fields and  correlations
          count: keeping a cumulative sum of the traverse number
         */
-        if (bsize > nants){
-            bsize = nants;
-        }
-
         let count = 0;
+        let new_bsize;
         for (sp=0; sp<nspws; sp++){
             for (c=0; c<ncorrs; c++){
                 for (f=0; f<nfields; f++){
+                    //re-initialise new batch size
+                    new_bsize = bsize;
                     for(n=0; n<nbatches; n++){
-                        for(b=0; b<bsize; b++){
-                            if (cb_obj.active.includes(f) && csel.active.includes(c)&&
+                        // Reduce new batch size to the size of the last batch
+                        if (n == nbatches-1 && nants!=bsize){
+                            new_bsize = nants % bsize;
+                        }
+                        for(b=0; b<new_bsize; b++){
+                            if (cb_obj.active.includes(f) && csel.active.includes(c) &&
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
@@ -1086,7 +1094,6 @@ def flag_callback():
             //flagging: status of flag_data
 
             let n_sources =  sources.length;
-            let state = cb_obj.active.length;
 
             let init_src = Array();
             let src_1 = Array();
@@ -1094,8 +1101,7 @@ def flag_callback():
             for(item in sources){init_src[item] = sources[item][0];}
             for(item in sources){src_1[item] = sources[item][1];}
 
-            if (state==1){
-                cb_obj.label = flagging ? 'Flag' : 'Un-Flag';
+            if (cb_obj.active.includes(0)){
                 for (i=0; i<n_sources; i++){
                     init_src[i].data.y1 = src_1[i].data.iy1;
                     init_src[i].data.y2 = src_1[i].data.iy2;
@@ -1103,7 +1109,6 @@ def flag_callback():
                 }
             }
             else{
-                cb_obj.label = flagging ? 'Un-Flag' : 'Flag';
                 for (i=0; i<n_sources; i++){
                     init_src[i].data.y1 = src_1[i].data.y1;
                     init_src[i].data.y2 = src_1[i].data.y2;
@@ -1122,6 +1127,7 @@ def corr_select_callback():
            bsel: the batch selector group buttons
            fsel: field selector group buttons
            ssel: spw selector group buttons
+           nants: Total number of antennas
            nspws: Number of spectral windows
            ncorrs: number of available correlations
            nfields: number of available fields
@@ -1129,17 +1135,20 @@ def corr_select_callback():
            p1 and p2: List containing plots for all antennas, fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
-        //incase the batch size is bigger than the num of antennas
-        if (bsize > nants){
-            bsize = nants;
-        }
 
         let count = 0;
+        let new_bsize;
         for (sp=0; sp<nspws; sp++){
             for (c=0; c<ncorrs; c++){
                 for (f=0; f<nfields; f++){
+                    //re-initialise new batch size
+                    new_bsize = bsize;
                     for(n=0; n<nbatches; n++){
-                        for(b=0; b<bsize; b++){
+                        // Reduce new_bsize to the size of the final batch
+                        if (n == nbatches-1 && nants!=bsize){
+                            new_bsize = nants % bsize;
+                        }
+                        for(b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(c) && fsel.active.includes(f) &&
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
@@ -1174,16 +1183,21 @@ def spw_select_callback():
            p1 and p2: List containing plots for all antennas, fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
-        if (bsize > nants){
-            bsize = nants;
-        }
 
         let count = 0;
+        let new_bsize;
         for (sp=0; sp<nspws; sp++){
             for (c=0; c<ncorrs; c++){
                 for (f=0; f<nfields; f++){
+                    //re-initialise new batch size
+                    new_bsize = bsize;
+
                     for(n=0; n<nbatches; n++){
-                        for(b=0; b<bsize; b++){
+                        // Reduce bsize to the size of the last batch
+                        if (n == nbatches-1 && nants!=bsize){
+                            new_bsize = nants % bsize;
+                        }
+                        for(b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(sp) && fsel.active.includes(f) &&
                                 csel.active.includes(c)){
                                 p1[count].visible = true;
@@ -1199,6 +1213,7 @@ def spw_select_callback():
                 }
             }
 
+            //Make the extra y-axes visible only if corresponding spw selected
             if (cb_obj.active.includes(sp)){
                 extra_axes1[sp].visible=true;
                 extra_axes2[sp].visible=true;
@@ -1219,9 +1234,9 @@ def save_selected_callback():
     code = """
         /*uf_src: Unflagged data source
           f_src:  Flagged data source scanid antname
-        */        
+        */
         let out = `x, y1, y2, antenna, scan_no, spw\n`;
-        
+
         //for all the data sources available
         for (i=0; i<uf_src.length; i++){
             let sel_idx = uf_src[i].selected.indices;
@@ -1247,7 +1262,7 @@ def save_selected_callback():
             element.click();
             document.body.removeChild(element);
         }
-        
+
     """
 
     return code
@@ -1894,25 +1909,23 @@ def main(**kwargs):
                         y2label = ready_data.y2_label
 
                         # inverse data object
-                        infl_data_obj = DataCoreProcessor(subtab, mytab,
-                                                          gain_type,
-                                                          fid=field,
-                                                          doplot=doplot,
-                                                          corr=corr,
-                                                          flag=not flag_data,
-                                                          kx=kx,
-                                                          ddid=win).act()
+                        infl_data_obj = DataCoreProcessor(
+                            subtab, mytab, gain_type, fid=field,
+                            doplot=doplot, corr=corr, flag=not flag_data,
+                            kx=kx, ddid=win).act()
 
                         # for tooltips
                         spw_id, scan_no, ttip_antnames = get_tooltip_data(
                             subtab, gain_type, antnames, freqs)
 
-                        tab_tooltips = [("({:.4}, {:.4})".format(xlabel,
-                                                                 y1label),
-                                         "(@x, @y1)"),
-                                        ("spw", "@spw"),
-                                        ("scan_id", "@scanid"),
-                                        ("antenna", "@antname")]
+                        tab_tooltips = [
+                            ("({:.4}, {:.4})".format(xlabel, y1label),
+                             "(@x, @y1)"),
+                            ("spw", "@spw"),
+                            ("scan_id", "@scanid"),
+                            ("antenna", "@antname"),
+                            ("corr", "@corr"),
+                            ("field", "@field")]
                         tab_tooltips2 = tab_tooltips.copy()
 
                         # change tooltip info for the second plot
@@ -1978,17 +1991,21 @@ def main(**kwargs):
                             tab_tooltips2[0] = ("({:.4}, {:.4})".format(
                                 xlabel, y2label), "(@x{%F %T}, @y2)")
 
-                        source = ColumnDataSource(data={'x': prepd_x,
-                                                        'y1': y1,
-                                                        'y2': y2,
-                                                        'spw': spw_id,
-                                                        'scanid': scan_no,
-                                                        'antname': ttip_antnames})
+                        source = ColumnDataSource(
+                            data={'x': prepd_x,
+                                  'y1': y1,
+                                  'y2': y2,
+                                  'corr': [corr] * prepd_x.size,
+                                  'field': [fnames[field]] * prepd_x.size,
+                                  'spw': spw_id,
+                                  'scanid': scan_no,
+                                  'antname': ttip_antnames})
 
-                        inv_source = ColumnDataSource(data={'y1': y1,
-                                                            'y2': y2,
-                                                            'iy1': infl_data_obj.y1,
-                                                            'iy2': infl_data_obj.y2})
+                        inv_source = ColumnDataSource(
+                            data={'y1': y1,
+                                  'y2': y2,
+                                  'iy1': infl_data_obj.y1,
+                                  'iy2': infl_data_obj.y2})
 
                         sources.append([source, inv_source])
 
@@ -1996,8 +2013,11 @@ def main(**kwargs):
                             source=source, color=y1col, ax1=ax1, ax2=ax2,
                             fid=enum_fid, y1err=y1_err, y2err=y2_err)
 
-                        # hide all the other plots until legend is clicked
-                        if ant >= BATCH_SIZE:
+                        if (ant < BATCH_SIZE and win == uddids.min() and
+                                corr == corrs.min() and enum_fid == 0):
+                            # select the first spw,corr and field
+                            p1.visible = p2.visible = True
+                        else:
                             p1.visible = p2.visible = False
 
                         # collecting plot states for each iterations
@@ -2063,15 +2083,15 @@ def main(**kwargs):
 
         ant_labs = gen_checkbox_labels(BATCH_SIZE, num_legend_objs, antnames)
 
-        batch_select = CheckboxGroup(labels=ant_labs, active=[],
-                                     width=150)
+        batch_select = CheckboxGroup(labels=ant_labs, active=[0],
+                                     **w_dims)
 
         # Dropdown to hide and show legends
         legend_toggle = CheckboxGroup(labels=['Show legends'], active=[],
                                       **w_dims)
 
         # creating glyph size slider for the plots
-        #margin = [top, right, bottom, left]
+        # margin = [top, right, bottom, left]
         size_slider = Slider(end=15, start=0.4, step=0.1,
                              value=4, title='Glyph size', margin=(3, 5, 7, 5),
                              bar_color='#6F95C3', ** w_dims)
@@ -2092,7 +2112,7 @@ def main(**kwargs):
                 x in enumerate(ufids)]
 
         field_selector = CheckboxGroup(labels=field_labels,
-                                       active=[e for e, f in enumerate(ufids)],
+                                       active=[0],
                                        **w_dims)
         axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
                                  margin=(7, 5, 3, 5), title='Axis label size',
@@ -2105,14 +2125,14 @@ def main(**kwargs):
                                     active=[], **w_dims)
 
         corr_labs = ["Correlation {}".format(str(_)) for _ in corrs]
-        corr_select = CheckboxGroup(labels=corr_labs, active=corrs.tolist(),
+        corr_select = CheckboxGroup(labels=corr_labs, active=[0],
                                     width=150)
 
         tname_div = make_table_name(mytab)
 
         spw_labs = ["Spw: {}".format(str(_)) for _ in uddids]
         spw_select = CheckboxGroup(labels=spw_labs,
-                                   active=[e for e, d in enumerate(uddids)],
+                                   active=[0],
                                    width=150)
         save_selected = Button(label="Download data selection",
                                button_type="success", margin=(7, 5, 3, 5),
@@ -2121,17 +2141,12 @@ def main(**kwargs):
         ############## Defining widget Callbacks ############################
         ######################################################################
 
-        ant_select.callback = CustomJS(args=dict(p1=ax1_plots,
-                                                 p2=ax2_plots,
-                                                 bsel=batch_select,
-                                                 fsel=field_selector,
-                                                 csel=corr_select,
-                                                 ssel=spw_select,
-                                                 nbatches=num_legend_objs,
-                                                 nfields=ufids.size,
-                                                 ncorrs=corrs.size,
-                                                 nspws=uddids.size),
-                                       code=ant_select_callback())
+        ant_select.callback = CustomJS(
+            args=dict(p1=ax1_plots, p2=ax2_plots, bsel=batch_select,
+                      fsel=field_selector, csel=corr_select, ssel=spw_select,
+                      nbatches=num_legend_objs, nfields=ufids.size,
+                      ncorrs=corrs.size, nspws=uddids.size),
+            code=ant_select_callback())
 
         toggle_err.callback = CustomJS(args=dict(ax1s=ax1_plots,
                                                  err1=ebars_ax1,
@@ -2140,18 +2155,11 @@ def main(**kwargs):
 
         # BATCH SELECTION
         batch_select.callback = CustomJS(
-            args=dict(p1=ax1_plots,
-                      p2=ax2_plots,
-                      bsize=BATCH_SIZE,
-                      nants=plotants.size,
-                      nbatches=num_legend_objs,
-                      nfields=ufids.size,
-                      ncorrs=corrs.size,
-                      nspws=uddids.size,
-                      fsel=field_selector,
-                      csel=corr_select,
-                      antsel=ant_select,
-                      ssel=spw_select),
+            args=dict(p1=ax1_plots, p2=ax2_plots, bsize=BATCH_SIZE,
+                      nants=plotants.size, nbatches=num_legend_objs,
+                      nfields=ufids.size, ncorrs=corrs.size,
+                      nspws=uddids.size, fsel=field_selector,
+                      csel=corr_select, antsel=ant_select, ssel=spw_select),
             code=batch_select_callback())
 
         legend_toggle.callback = CustomJS(
@@ -2168,18 +2176,13 @@ def main(**kwargs):
                                                      p1=ax1_plots,
                                                      p2=ax2_plots),
                                            code=alpha_slider_callback()))
-        field_selector.callback = CustomJS(args=dict(bsize=BATCH_SIZE,
-                                                     bsel=batch_select,
-                                                     csel=corr_select,
-                                                     nants=plotants.size,
-                                                     nfields=ufids.size,
-                                                     ncorrs=corrs.size,
-                                                     nbatches=num_legend_objs,
-                                                     nspws=uddids.size,
-                                                     p1=ax1_plots,
-                                                     p2=ax2_plots,
-                                                     ssel=spw_select),
-                                           code=field_selector_callback())
+        field_selector.callback = CustomJS(
+            args=dict(bsize=BATCH_SIZE, bsel=batch_select, csel=corr_select,
+                      nants=plotants.size, nfields=ufids.size,
+                      ncorrs=corrs.size, nbatches=num_legend_objs,
+                      nspws=uddids.size, p1=ax1_plots,
+                      p2=ax2_plots, ssel=spw_select),
+            code=field_selector_callback())
         axis_fontslider.js_on_change('value',
                                      CustomJS(args=dict(ax1=ax1.axis,
                                                         ax2=ax2.axis),
@@ -2193,18 +2196,13 @@ def main(**kwargs):
                                                   nants=plotants,
                                                   flagging=flag_data),
                                         code=flag_callback())
-        corr_select.callback = CustomJS(args=dict(bsel=batch_select,
-                                                  bsize=BATCH_SIZE,
-                                                  fsel=field_selector,
-                                                  nants=plotants.size,
-                                                  ncorrs=corrs.size,
-                                                  nfields=ufids.size,
-                                                  nbatches=num_legend_objs,
-                                                  nspws=uddids.size,
-                                                  p1=ax1_plots,
-                                                  p2=ax2_plots,
-                                                  ssel=spw_select),
-                                        code=corr_select_callback())
+        corr_select.callback = CustomJS(
+            args=dict(bsel=batch_select, bsize=BATCH_SIZE,
+                      fsel=field_selector, nants=plotants.size,
+                      ncorrs=corrs.size, nfields=ufids.size,
+                      nbatches=num_legend_objs, nspws=uddids.size,
+                      p1=ax1_plots, p2=ax2_plots, ssel=spw_select),
+            code=corr_select_callback())
 
         # for frequency axis with  spws
         # make the additional axes accesible to spw selector for toggling
@@ -2224,20 +2222,14 @@ def main(**kwargs):
             extra_axes1 = 0
             extra_axes2 = 0
 
-        spw_select.callback = CustomJS(args=dict(bsel=batch_select,
-                                                 bsize=BATCH_SIZE,
-                                                 csel=corr_select,
-                                                 fsel=field_selector,
-                                                 nants=plotants.size,
-                                                 ncorrs=corrs.size,
-                                                 nfields=ufids.size,
-                                                 nbatches=num_legend_objs,
-                                                 nspws=uddids.size,
-                                                 p1=ax1_plots,
-                                                 p2=ax2_plots,
-                                                 extra_axes1=extra_axes1,
-                                                 extra_axes2=extra_axes2),
-                                       code=spw_select_callback())
+        spw_select.callback = CustomJS(
+            args=dict(bsel=batch_select, bsize=BATCH_SIZE, csel=corr_select,
+                      fsel=field_selector, nants=plotants.size,
+                      ncorrs=corrs.size, nfields=ufids.size,
+                      nbatches=num_legend_objs, nspws=uddids.size,
+                      p1=ax1_plots, p2=ax2_plots, extra_axes1=extra_axes1,
+                      extra_axes2=extra_axes2),
+            code=spw_select_callback())
 
         save_selected.js_on_click(CustomJS(args=dict(
             uf_src=[x[0] for x in sources],
