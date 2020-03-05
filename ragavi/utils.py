@@ -562,14 +562,17 @@ sys.excepthook = __handle_uncaught_exceptions
 
 def __welcome():
     """Welcome to ragavi"""
+    """
     from pyfiglet import Figlet
 
-    print('\n\n')
-    #print("_*+_" * 23)
-    #print("Welcome to ")
-    # print(Figlet(font='nvscript').renderText('ragavi'))
-    #print("_*+_" * 23)
-    print('\n\n')
+    print("\n\n")
+    print("_*+_" * 23)
+    print("Welcome to ")
+    print(Figlet(font='nvscript').renderText('ragavi'))
+    print("_*+_" * 23)
+    print("\n\n")
+    """
+    pass
 
 
 def time_wrapper(func):
