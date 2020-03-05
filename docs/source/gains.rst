@@ -34,6 +34,11 @@ This will yield an output HTML file, with plots in the order
 | table4   |   0    |    F |
 +----------+--------+------+
 
+Note
+----
+* At least a single field, spectral window and correlation **must** be selected in order for plots to show up.
+* While antenna data can be made visible through clicking its corresponding legend, this behaviour is not linked to the field, SPW, correlation selection checkboxes. Therefore, clicking the legend for a specific antenna will make data from all fields, SPWs and correlation for that antenna visible. As a workaround, data points can be identifies using tooltip information
+* Unless **all** the available fields, SPWs and correlations have not been selected, the antenna legends will appear greyed-out. This is because a single legend is attached to multiple data for each of the available categories. Therefore, clicking on legends without meeting the preceeding condition may lead to some awkward results (a toggling effect).
 
 To use ``ragavi-gains`` in a notebook environment, run in a notebook cell
 

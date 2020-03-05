@@ -78,7 +78,7 @@ Ragavi currently has two segements:
   1. Gain plotter
   2. Visibility plotter
 
-For the gain plotter, the name-space :code:`ragavi-vis` is used. To get help for this
+For the gains plotter, the name-space :code:`ragavi-vis` is used. To get help for this
 
 .. note:: :code:`ragavi` namespace will soon change to  :code:`ragavi-vis`
 
@@ -97,9 +97,12 @@ They must however be accompanied by their respective gain table type in the :cod
 
 .. code-block:: bash
 
-    $ ragavi -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
+    $ ragavi-gains -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
 
-
+.. include:: ./docs/source/gains.rst
+    :start-line: 37
+    :end-line: 42
+    
 For the visibility plotter, the name-space :code:`ragavi-vis` is used. Help can be obtained by running
 
 .. code-block:: bash

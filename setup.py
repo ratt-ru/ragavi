@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3.6
 # -*- coding: utf-8 -*-
 
 import os
@@ -21,7 +21,7 @@ def requirements():
         return [pname.strip() for pname in f.readlines()]
 
 setup(name='ragavi',
-      version="0.2.3",
+      version="0.3.0",
       description='Radio Astronomy Gain and Visibility Inspector',
       long_description=readme(),
       url='https://github.com/ratt-ru/ragavi',
@@ -37,4 +37,5 @@ setup(name='ragavi',
       packages=[pkg],
       install_requires=requirements(),
       scripts=["ragavi/bin/" + i for i in os.listdir("ragavi/bin/")],
-      include_package_data=True)
+      include_package_data=True,
+      python_requires=">=3.6")

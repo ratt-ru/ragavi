@@ -1,17 +1,42 @@
+0.3.0
+-----
+- All argument parsers moved to ``arguments.py``
+
+- **ragavi-vis**
+
+  - Introduced MS averaging in ``ragavi-vis``
+  - ``--cbin`` and ``--tbin`` added for channel and time averaging
+  - ``--mem-limit`` and ``--num-cores`` for specifying memory limit per core and number of cores dask should use
+  - Remove ``--image-name`` argument from ``ragavi-vis``
+
+- **ragavi-gains**
+  - Fixed field, correlation selection bugs #50
+  - Fixed spectral window selection bug
+  - Added spectral window selection widgets
+  - Moved stats from plot titles to table below the plots
+  - Changed time xaxis to UTC time
+  - Added new download selected data button
+  - All availabe times displayed for bandpass plots
+
+
 0.2.3
 -----
-- Add option `-kx` , `--k-xaxis` to allow selection of K table's x-axis
+- Add option `-kx` , `--k-xaxis` to allow selection of K table's x-axis (``ragavi-gains``)
 - Values in `--field` can now be either comma or space separated
+
+
 0.2.2
 -----
 - Add name of gain table plotted to the plot
 - Delay (K) now plotted over time (Fixing #45)
 - Fix bug with relative times (Fixing $46)
 
+
 0.2.1
 -----
 - Fix some bugs with missing fields and correlations
 - Only supporting python3 now
+
 
 0.2.0
 -----
@@ -26,8 +51,6 @@
 - Removed ``--yu0, --yu1, --yl0, --yl1`` from `ragavi-gains`
 - Fixed field selection and errorbar size bugs
 - ``--field`` arguments in ``ragavi-gains`` **MUST** now be comma separated rather than space separated.
-
-
 
 
 0.1.0
