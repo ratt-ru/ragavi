@@ -1235,7 +1235,7 @@ def save_selected_callback():
         /*uf_src: Unflagged data source
           f_src:  Flagged data source scanid antname
         */
-        let out = `x, y1, y2, antenna, scan_no, spw\n`;
+        let out = `x, y1, y2, ant, corr, field, scan, spw\n`;
 
         //for all the data sources available
         for (i=0; i<uf_src.length; i++){
@@ -1247,6 +1247,8 @@ def save_selected_callback():
                         `${data['y1'][sel_idx[j]]}, ` +
                         `${data['y2'][sel_idx[j]]}, ` +
                         `${data['antname'][sel_idx[j]]}, ` +
+                        `${data['corr'][sel_idx[j]]}, ` +
+                        `${data['field'][sel_idx[j]]}, ` +
                         `${data['scanid'][sel_idx[j]]}, ` +
                         `${data['spw'][sel_idx[j]]}\n`;
             }
