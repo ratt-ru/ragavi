@@ -109,7 +109,9 @@ To run ragavi-vis, the arguments :code:`--table`, :code:`--xaxis` and :code:`--y
 
 .. code-block:: bash
 
-    $ ragavi-vis --table /my/measurement/set --xaxis time --yaxis amplitude
+    $ ragavi-vis --ms /my/measurement/set --xaxis time --yaxis amplitude
+
+For large datasets, it is advisable to supply at least `--ymin` and `--ymax` values to avoid an extra pass over the data.
 
 =======
 License
