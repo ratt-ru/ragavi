@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 from multiprocessing import cpu_count
+from psutil import virtual_memory
 
 # for ragavi-vis
 
@@ -76,8 +77,10 @@ def vis_argparser():
                         choices=iter_choices,
                         help="""Select column to colourise by. Default is None.""",
                         default=None)
-    parser.add_argument('-ml', '--mem-limit', type=str, metavar='',
-                        help="""Memory limit per core e.g '1GB' or '128MB'""")
+    parser.add_argument('-ml', '--mem-limit', dest="mem_limit",
+                        type=str, metavar='',
+                        default="1GB",
+                        help="""Memory limit per core e.g '1GB' or '128MB' Default is 1GB""")
     # NOTE: Changed iterate argument to colorize. Iteration to be added later
     parser.add_argument('-nf', '--no-flag', dest='flag', action='store_false',
                         help="""Plot both flagged and unflagged data. Default only plot data that is not flagged.""",
