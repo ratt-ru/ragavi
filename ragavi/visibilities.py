@@ -27,6 +27,7 @@ from bokeh.models import (BasicTicker, ColorBar, HoverTool, LinearAxis,
                           Title)
 
 from ragavi import utils as vu
+from dask.distributed import Client, LocalCluster
 
 logger = vu.logger
 excepthook = vu.sys.excepthook
@@ -396,12 +397,14 @@ def add_axis(fig, axis_range, ax_label):
         The figure onto which to add extra axis
 
     axis_range: :obj:`list`, :obj:`tuple`
-        A range of sorted values or a tuple with 2 values containing or the order (min, max). This can be any ordered iteraable that can be indexed.
+        A range of sorted values or a tuple with 2 values containing or the 
+        order (min, max). This can be any ordered iteraable that can be 
+        indexed.
 
     Returns
     -------
     fig : :obj:`bokeh.plotting.figure`
-        Bokeh gigure with an extra axis added
+        Bokeh figure with an extra axis added
     """
     fig.extra_x_ranges = {"fxtra": Range1d(
         start=axis_range[0], end=axis_range[-1])}
@@ -447,7 +450,9 @@ def make_cbar(cats, category, cmap=None):
     return cbar
 
 
-def create_bk_fig(x_range, y_range, xlab=None, ylab=None, col_bar=None,              title=None, pw=1920, ph=1080, x_axis_type='linear',              y_axis_type='linear', x=None, y=None):
+def create_bk_fig(x_range, y_range, xlab=None, ylab=None, col_bar=None,
+                  title=None, pw=1920, ph=1080, x_axis_type='linear',
+                  y_axis_type='linear', x=None, y=None):
 
     fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
                  x_range=tuple(x_range), x_axis_label=xlab, y_axis_label=ylab,
@@ -513,7 +518,8 @@ def create_bl_data_array(ant1, ant2):
     return baseline
 
 
-def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=None, chan=None):
+def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='',
+               columns=None, chan=None):
     """ Perform MS averaging
     Parameters
     ----------
@@ -564,7 +570,7 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=
     x_datasets = []
     spw_ds = []
 
-    logger.info("Creating averaged Xarray Dataset")
+    logger.info("Creating averaged xarray Dataset")
 
     for ams in avg_mss:
         data_vars = OrderedDict()
@@ -572,27 +578,29 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=
 
         for k, v in sorted(ams.data_vars.items()):
             if k in columns:
-                data_vars[k] = xr.DataArray(v.data.compute_chunk_sizes(),
+                data_vars[k] = xr.DataArray(v,
                                             dims=v.dims, attrs=v.attrs)
-
+        """
         for k, v in sorted(ams.coords.items()):
             if k in columns:
-                coords[k] = xr.DataArray(v.data.compute_chunk_sizes(),
+                coords[k] = xr.DataArray(v,
                                          dims=v.dims, attrs=v.attrs)
+        """
 
         # create datasets and rename dimension "[uvw]"" to "uvw"
         x_datasets.append(xr.Dataset(data_vars,
                                      attrs=dict(ams.attrs),
-                                     coords=coords).rename_dims({"[uvw]":
-                                                                 "uvw"}))
+                                     coords=coords))
 
-    # Separate datasets in different MSs
+    # Separate datasets in different SPWs
     for di in unique_spws:
         spw_ds.append(
             [x for x in x_datasets if x.DATA_DESC_ID[0] == di])
 
     x_datasets = []
     # produce multiple datasets incase of multiple SPWs
+    # previous step results in  list of the form [[spw1_data], [spw2_data]]
+    # for each spw
     for spw in spw_ds:
         # Compact averaged MS datasets into a single dataset for ragavi
         ms_obj = xr.combine_nested(spw, concat_dim='row',
@@ -605,6 +613,111 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=
     logger.info("Averaging completed.")
 
     return x_datasets
+
+
+def massage_data(x, y, get_y=False, iter_ax=None):
+    """Massages x-data into a size similar to that of y-axis data via
+    the necessary repetitions. This function also flattens y-axis data
+    into 1-D.
+
+    Parameters
+    ----------
+    x: :obj:`xr.DataArray`
+        Data for the x-axis
+    y: :obj:`xr.DataArray`
+        Data for the y-axis
+    get_y: :obj:`bool`
+        Choose whether to return y-axis data or not
+
+    Returns
+    -------
+    x: :obj:`dask.array`
+        Data for the x-axis
+    y: :obj:`dask.array`
+        Data for the y-axis
+    """
+
+    # available dims in the x and y axes
+    y_dims = set(y.dims)
+    x_dims = set(x.dims)
+
+    # find dims that are not available in x and only avail in y
+    req_x_dims = y_dims - x_dims
+
+    if not isinstance(x.data, da.Array):
+        nx = da.asarray(x.data)
+    else:
+        nx = x.data
+
+    if x.ndim > 1:
+        nx = nx.ravel()
+
+    if len(req_x_dims) > 0:
+
+        sizes = []
+
+        # calculate dim sizes for repetion of x_axis
+        for item in req_x_dims:
+            sizes.append(y[item].size)
+
+        if iter_ax == "corr":
+            nx = nx.reshape(1, nx.size).repeat(np.prod(sizes), axis=0).ravel()
+            nx = nx.rechunk(y.data.ravel().chunks)
+        else:
+            try:
+                nx = nx.map_blocks(np.repeat,
+                                   np.prod(sizes),
+                                   chunks=y.data.ravel().chunks)
+            except ValueError:
+                # for the non-xarray dask data
+                nx = nx.repeat(np.prod(sizes)).rechunk(y.data.ravel().chunks)
+    if get_y:
+        # flatten y data
+        # get_data also
+        ny = y.data.ravel()
+        return nx, ny
+    else:
+        return nx
+
+
+def create_df(x, y, iter_data=None):
+    """Create a dask dataframe from input x, y and iterate columns if 
+    available. This function flattens all the data into 1-D Arrays
+
+    Parameters
+    ----------
+    x: :obj:`dask.array`
+        Data for the x-axis
+    y: :obj:`dask.array`
+        Data for the y-axis
+    iter_ax: :obj:`dask.array`
+        iteration axis if possible
+
+    Returns
+    -------
+    new_ds: :obj:`dask.Dataframe`
+        Dataframe containing the required columns
+    """
+
+    x_name = x.name
+    y_name = y.name
+
+    # flatten and chunk the data accordingly
+    nx, ny = massage_data(x, y, get_y=True)
+
+    # declare variable names for the xarray dataset
+    var_names = {x_name: ('row', nx),
+                 y_name: ('row', ny)}
+
+    if iter_data is not None:
+        i_name = iter_data.name
+        iter_data = massage_data(iter_data, y, get_y=False, iter_ax=i_name)
+        var_names[i_name] = ('row', iter_data)
+
+    new_ds = xr.Dataset(data_vars=var_names)
+    new_ds = new_ds.to_dask_dataframe()
+
+    return new_ds
 
 
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
@@ -737,31 +850,33 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     if iterate:
         title = title + " Colourise By: {}".format(iterate.capitalize())
         if iterate in ['corr', 'chan']:
-            xy = xr.merge([x, y]).unify_chunks()
             if iterate == 'corr':
-                cats = y.corr.values
-            else:
-                cats = y.chan.values
-        else:
+                iter_data = xr.DataArray(da.arange(y[iterate].size),
+                                         name=iterate, dims=[iterate])
+        elif iter_cols[iterate] == 'Baseline':
             # get the data array over which to iterate and merge it to x and y
-            if iter_cols[iterate] == 'Baseline':
-                iter_data = create_bl_data_array(xds_table_obj.ANTENNA1,
-                                                 xds_table_obj.ANTENNA2)
-            else:
+            iter_data = create_bl_data_array(xds_table_obj.ANTENNA1,
+                                             xds_table_obj.ANTENNA2)
+        else:
+            try:
                 iter_data = xds_table_obj[iter_cols[iterate]]
-            xy = xr.merge([x, y, iter_data]).unify_chunks()
-            cats = np.unique(iter_data.values)
+            except:
+                logger.error("Specified data column not found.")
 
-        # change value of iterate to the required data column
+        xy_df = create_df(x, y, iter_data=iter_data)[[x.name, y.name,
+                                                      iter_cols[iterate]]]
+        cats = np.unique(iter_data.values)
+
+       # change value of iterate to the required data column
         iterate = iter_cols[iterate]
-        xy_df = xy.to_dask_dataframe()[[x.name, y.name, iterate]]
+
         xy_df = xy_df.astype({iterate: 'category'})
+        xy_df[iterate] = xy_df[iterate].cat.as_known()
 
         # initialise bokeh colorbar
         cbar = make_cbar(cats, iterate, cmap=color)
     else:
-        xy = xr.merge([x, y]).unify_chunks()
-        xy_df = xy.to_dask_dataframe()[[x.name, y.name]]
+        xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
         cats = None
         cbar = None
 
@@ -774,13 +889,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                         x_axis_type=x_axis_type, x=x, y=y)
 
     logger.info("Starting datashader")
-
-    """
-    nonin = image_callback(xr=(x_min, x_max), yr=(y_min, y_max), w=800, h=600,
-                           x=x.name, y=y.name, cat=iterate, col=color, 
-                           cat_ids=cats)
-    export_image(nonin, filename='ino', fmt='.png', background='white')
-    """
 
     im = InteractiveImage(fig, image_callback, x=x.name,
                           y=y.name, cat=iterate,
@@ -867,7 +975,7 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
         else:
             tab_objs = xm.xds_from_ms(ms_name, taql_where=where,
                                       table_schema=ms_schema,
-                                      group_cols=['DATA_DESC_ID'],
+                                      group_cols=[],
                                       chunks=chunks,
                                       columns=sel_cols)
             # select channels
@@ -875,8 +983,8 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
                 tab_objs = [_.sel(chan=chan_select) for _ in tab_objs]
 
         # get some info about the data
-        chunk_sizes = tab_objs[0].DATA.data.chunksize
-        chunk_p = tab_objs[0].DATA.data.npartitions
+        chunk_sizes = tab_objs[0].FLAG.data.chunksize
+        chunk_p = tab_objs[0].FLAG.data.npartitions
 
         logger.info("Chunk sizes: {}".format(chunk_sizes))
         logger.info("Number of Partitions: {}".format(chunk_p))
@@ -905,6 +1013,7 @@ def main(**kwargs):
         html_name = options.html_name
         mycmap = options.mycmap
         mytabs = options.mytabs
+        mem_limit = options.mem_limit
         n_cores = options.n_cores
         scan = options.scan
         where = options.where
@@ -918,7 +1027,7 @@ def main(**kwargs):
         cbin = options.cbin
 
     # number of processes or threads/ cores
-    dask_config.set(num_workers=n_cores, memory_limit='1GB')
+    dask_config.set(num_workers=n_cores, memory_limit=mem_limit)
 
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
@@ -975,7 +1084,6 @@ def main(**kwargs):
 
         # iterating over spectral windows (spws)
         for count, chunk in enumerate(partitions):
-
             # black box returns an plottable element / composite element
             if iterate != None:
                 logger.info('Setting categorical colors')
