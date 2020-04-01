@@ -862,7 +862,7 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_width, c_height, ncols=9,
 
     # title for each single plot
     p_title = Text(x="x", y="y", text="text", text_font="monospace",
-                   text_font_style="bold", text_font_size="11pt",
+                   text_font_style="bold", text_font_size="10pt",
                    text_align="center")
 
     if x_name.lower() == "time":
@@ -985,7 +985,7 @@ def validate_axis_inputs(inp):
         Validated string
     """
     alts = {}
-    alts['amplitude'] = alts['Amp'] = 'amp'
+    alts['amp'] = alts['Amp'] = 'amplitude'
     alts['ant1'] = alts['Antenna1'] = alts[
         'Antenna'] = alts['ant'] = 'antenna1'
     alts['ant2'] = alts['Antenna2'] = 'antenna2'
@@ -994,7 +994,7 @@ def validate_axis_inputs(inp):
     alts['correlation'] = alts['Corr'] = 'corr'
     alts['freq'] = alts['Frequency'] = 'frequency'
     alts['Field'] = 'field'
-    alts['imaginary'] = alts['Imag'] = 'imag'
+    alts['imaginary'] = alts['Imag'] = 'imaginary'
     alts['Real'] = 'real'
     alts['Scan'] = 'scan'
     alts['Spw'] = 'spw'
@@ -1002,7 +1002,7 @@ def validate_axis_inputs(inp):
     alts['Phase'] = 'phase'
     alts['UVdist'] = alts['uvdist'] = 'uvdistance'
     alts['uvdistl'] = alts['uvdist_l'] = alts['UVwave'] = 'uvwave'
-    alts['ant'] = alts['Antenna'] = 'antenna'
+    alts['ant'] = alts['Antenna'] = 'antenna1'
 
     # convert to proper name if in other name
     if inp in alts:
