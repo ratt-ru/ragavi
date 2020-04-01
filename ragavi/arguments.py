@@ -2,9 +2,8 @@ from argparse import ArgumentParser
 from multiprocessing import cpu_count
 from psutil import virtual_memory
 
+
 # for ragavi-vis
-
-
 def vis_argparser():
     """Create command line arguments for ragavi-vis
 
@@ -14,15 +13,15 @@ def vis_argparser():
         Argument parser object that contains command line argument's values
 
     """
-    x_choices = ['antenna1', 'antenna2',
-                 'channel', 'frequency', 'phase',
-                 'real', 'scan', 'time',
-                 'uvdistance', 'uvwave']
+    x_choices = ['ant', 'antenna', 'ant1', 'antenna1', 'ant2', 'antenna2',
+                 'chan', 'channel', 'freq',  'frequency', 'phase',
+                 'real', 'scan', 'time', 'uvdist', 'UVdist',
+                 'uvdistance', 'uvdistl', 'uvdist_l', 'UVwave', 'uvwave']
 
-    y_choices = ['amplitude', 'imaginary', 'phase', 'real']
+    y_choices = ['amp', 'amplitude', 'imag', 'imaginary', 'phase', 'real']
 
-    iter_choices = ['antenna1', 'antenna2', 'baseline', 'chan', 'corr',
-                    'field', 'scan', 'spw']
+    iter_choices = ['ant1', 'antenna1', 'ant2', 'antenna2',
+                    'bl', 'baseline', 'chan', 'corr', 'field', 'scan', 'spw']
 
     parser = ArgumentParser(usage='ragavi-vis [options] <value>')
 
@@ -57,7 +56,7 @@ def vis_argparser():
                         Note that if the argument "colour-axis" is supplied, 
                         a categorical colour scheme will be adopted. Default 
                         is blue. """,
-                        default=None)
+                        default="blues")
     parser.add_argument('-dc', '--data-column', dest='data_column', type=str,
                         metavar='',
                         help="""Column from MS to use for data. Default is DATA.""", default='DATA')
@@ -72,6 +71,10 @@ def vis_argparser():
     parser.add_argument('-o', '--htmlname', dest='html_name', type=str,
                         metavar='',
                         help='Output HTMLfile name', default=None)
+    parser.add_argument('-ch', '--canvas-height', dest='c_height', type=int,
+                        metavar='',
+                        help="""Set size of resulting image height. Note: This is not the plot height. Default is 1020""",
+                        default=1020)
     parser.add_argument('-ca', '--colour-axis', dest='iterate', type=str,
                         metavar='',
                         choices=iter_choices,
@@ -105,6 +108,10 @@ def vis_argparser():
                         help='Minimum y value to plot', default=None)
     parser.add_argument('--ymax', dest='ymax', type=float, metavar='',
                         help='Maximum y value to plot', default=None)
+    parser.add_argument('-cw', '--canvas-width', dest='c_width', type=int,
+                        metavar='',
+                        help="""Set size of resulting image width. Note: This is not the plot width. Default is 1720.""",
+                        default=1280)
 
     return parser
 
