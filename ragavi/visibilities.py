@@ -21,10 +21,10 @@ from daskms.table_schemas import MS_SCHEMA
 from bokeh.plotting import figure
 from bokeh.layouts import column, gridplot, row, grid
 from bokeh.io import (output_file, output_notebook, show, save, curdoc)
-from bokeh.models import (BasicTicker, ColumnDataSource,  CustomJS,
+from bokeh.models import (BasicTicker, ColorBar, ColumnDataSource,  CustomJS,
                           DatetimeTickFormatter, Div, ImageRGBA, LinearAxis,
-                          PrintfTickFormatter, Plot, Range1d,  Text,
-                          Title)
+                          LinearColorMapper, PrintfTickFormatter, Plot,
+                          Range1d, Text, Title)
 from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
                                 WheelZoomTool)
 
@@ -446,14 +446,24 @@ def make_cbar(cats, category, cmap=None):
     category = category.capitalize()
     ncats = cats.size
 
+    # format the cateogry name for cbar title
+    if "_" in category:
+        if category == "Data_desc_id":
+            category = "Spw"
+        else:
+            category = category.split("_")[0]
+
     # not using categorical because we'll need to define our own colors
     cmapper = LinearColorMapper(palette=cmap[:ncats], low=lo, high=hi)
-    b_ticker = BasicTicker(desired_num_ticks=ncats)
+    b_ticker = BasicTicker(desired_num_ticks=ncats,
+                           num_minor_ticks=0)
 
     cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
                     border_line_color=None, ticker=b_ticker,
                     location=(0, 0), title=category, title_standoff=5,
-                    title_text_font_size='15pt')
+                    title_text_font_size='10pt', title_text_align="left",
+                    title_text_font="monospace", minor_tick_line_width=0,
+                    title_text_font_style="normal")
 
     return cbar
 
@@ -790,7 +800,12 @@ def gen_image(df, x_min, x_max, y_min, y_max, c_width, c_height, x_name=None,
                         x_axis_type=x_axis_type, x_name=x_name, y_name=y_name,
                         pw=pw, ph=ph)
 
-    img = tf.shade(agg, cmap=color)
+    if cat:
+        img = tf.shade(agg, color_key=color[:agg[cat].size])
+        cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size])
+        fig.add_layout(cbar, 'right')
+    else:
+        img = tf.shade(agg, cmap=color)
 
     cds = ColumnDataSource(data=dict(image=[img.data], x=[x_min],
                                      y=[y_min], dw=[dw], dh=[dh]))
@@ -1013,7 +1028,8 @@ def validate_axis_inputs(inp):
 
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                color='blue', xds_table_obj=None, ms_name=None, iterate=None,
-               x_min=None, x_max=None, y_min=None, y_max=None, c_width=None, c_height=None):
+               x_min=None, x_max=None, y_min=None, y_max=None, c_width=None,
+               c_height=None, colour_axis=None):
     """Responsible for plotting in this script.
 
     This is responsible for:
@@ -1117,7 +1133,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         x_min, x_max, y_min, y_max = compute(x_min, x_max, y_min, y_max)
     logger.info("Done")
 
-    if iterate:
+    if iterate != None:
         title = title + " Iterated By: {}".format(iterate.capitalize())
         if iterate in ['corr', 'chan']:
             if iterate == 'corr':
@@ -1151,7 +1167,41 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                          pw=210, ph=100, xlab=xlab, ylab=ylab, x=x,
                          ms_name=ms_name, xds_table_obj=xds_table_obj)
 
-    else:
+    if colour_axis != None:
+        title = title + " Colourised By: {}".format(colour_axis.capitalize())
+        if colour_axis in ['corr', 'chan']:
+            if colour_axis == 'corr':
+                iter_data = xr.DataArray(da.arange(y[colour_axis].size),
+                                         name=colour_axis, dims=[colour_axis])
+        elif iter_cols[colour_axis] == 'Baseline':
+            # get the data array over which to colour_axis and merge it to x
+            # and y
+            iter_data = create_bl_data_array(xds_table_obj)
+        else:
+            try:
+                iter_data = xds_table_obj[iter_cols[colour_axis]]
+            except:
+                logger.error("Specified data column not found.")
+        logger.info("Creating Dataframe")
+        xy_df = create_df(x, y, iter_data=iter_data)[[x.name, y.name,
+                                                      iter_cols[colour_axis]]]
+
+        cats = np.unique(iter_data.values)
+
+        # change value of colour_axis to the required data column
+        colour_axis = iter_cols[colour_axis]
+
+        xy_df = xy_df.astype({colour_axis: 'category'})
+        xy_df[colour_axis] = xy_df[colour_axis].cat.as_known()
+
+        # generate resulting image
+        image = gen_image(xy_df, x_min, x_max, y_min, y_max, x=x,
+                          c_width=c_width, c_height=c_height, x_name=x.name,
+                          y_name=y.name, cat=colour_axis, color=color,
+                          title=title, ylab=ylab, xlab=xlab,
+                          x_axis_type=x_axis_type)
+
+    if colour_axis is None and iterate is None:
         logger.info("Creating Dataframe")
         xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
 
@@ -1161,6 +1211,10 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                           y_name=y.name, cat=iterate, color=color,
                           title=title, ylab=ylab, xlab=xlab,
                           x_axis_type=x_axis_type)
+
+    elif colour_axis is not None and iterate is not None:
+        logger.error(
+            """Unable to generate plot. Ensure that NOT both colour-axis and iter-axis have been specified.""")
 
     return image
 
@@ -1296,6 +1350,7 @@ def main(**kwargs):
         cbin = options.cbin
         c_width = options.c_width
         c_height = options.c_height
+        colour_axis = validate_axis_inputs(options.colour_axis)
 
     # number of processes or threads/ cores
     dask_config.set(num_workers=n_cores, memory_limit=mem_limit)
@@ -1350,6 +1405,10 @@ def main(**kwargs):
                 """Selected color not found in palette. Reverting to default""")
             mycmap = cc.palette["blues"]
 
+        if colour_axis != None:
+            logger.info('Enforcing categorical colours for colour axis')
+            mycmap = cc.palette['glasbey_bw']
+
         oup_a = []
 
         # iterating over spectral windows (spws)
@@ -1376,7 +1435,8 @@ def main(**kwargs):
                              ylab=ready.ylabel, color=mycmap, iterate=iterate,
                              xds_table_obj=chunk, ms_name=mytab, x_min=xmin,
                              x_max=xmax, y_min=ymin, y_max=ymax,
-                             c_width=c_width, c_height=c_height)
+                             c_width=c_width, c_height=c_height,
+                             colour_axis=colour_axis)
 
             logger.info("Plotting complete.")
 
