@@ -1,3 +1,14 @@
+0.3.2
+-----
+- **ragavi-vis**
+
+  - Added ``--iter-axis`` argument to generate grid plots over the iteration axis
+  - ``--colour-axis`` generates a single plot coloured by the specified axis
+  - Added ``--canvas-width`` and ``--canvas-height`` option to set resuting image resolution
+  - Improved RAM management
+  - Available X and Y axes names can be specified in short forms like CASA
+
+
 0.3.1
 -----
 - All argument parsers moved to ``arguments.py``
@@ -10,6 +21,7 @@
   - Remove ``--image-name`` argument from ``ragavi-vis``
 
 - **ragavi-gains**
+
   - Fixed field, correlation selection bugs #50
   - Fixed spectral window selection bug
   - Added spectral window selection widgets
