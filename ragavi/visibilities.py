@@ -26,7 +26,7 @@ from bokeh.models import (BasicTicker, ColorBar, ColumnDataSource,  CustomJS,
                           LinearColorMapper, PrintfTickFormatter, Plot,
                           Range1d, Text, Title)
 from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
-                                WheelZoomTool)
+                                WheelZoomTool, SaveTool)
 
 from ragavi import utils as vu
 
@@ -883,7 +883,8 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_width, c_height, ncols=9,
     if x_name.lower() == "time":
         h_tool.formatters["$x"] = "datetime"
 
-    tools = [BoxZoomTool(), h_tool, ResetTool(), WheelZoomTool(), PanTool()]
+    tools = [BoxZoomTool(), h_tool, ResetTool(), WheelZoomTool(), PanTool(),
+             SaveTool()]
 
     logger.info("Creating Bokeh grid")
     for i, c_val in enumerate(cat_vals):
