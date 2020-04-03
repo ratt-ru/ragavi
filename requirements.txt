@@ -7,3 +7,4 @@ matplotlib>2.2.3; python_version >= '3.5'
 numpy>=1.14
 python-casacore
 xarray
+git+git://github.com/ska-sa/xova.git@master
