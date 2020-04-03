@@ -8,6 +8,10 @@ RUN docker-apt-install -y \
     python3-casacore
 ADD . /src
 WORKDIR /src
+RUN add-apt-repository ppa:git-core/ppa
+RUN apt-get update
+RUN apt-get install -y git
+RUN pip3 install git+git://github.com/ska-sa/xova.git@master
 RUN pip3 install --upgrade pip
 RUN pip3 install .
 RUN python3 -c "import ragavi.ragavi"
