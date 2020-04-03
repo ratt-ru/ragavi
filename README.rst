@@ -111,7 +111,9 @@ To run ragavi-vis, the arguments :code:`--table`, :code:`--xaxis` and :code:`--y
 
     $ ragavi-vis --ms /my/measurement/set --xaxis time --yaxis amplitude
 
-For large datasets, it is advisable to supply at least `--ymin` and `--ymax` values to avoid an extra pass over the data.
+For large datasets, it is advisable to supply at least :code:`--ymin` and :code:`--ymax` values to avoid an extra pass over the data.
+
+Change the size (resolution) of the output aggregated image -- and resulting html file size -- by specifying :code:`--canvas-width` and :code:`--canvas-height` options.
 
 =======
 License
