@@ -109,7 +109,17 @@ To run ragavi-vis, the arguments :code:`--table`, :code:`--xaxis` and :code:`--y
 
 .. code-block:: bash
 
-    $ ragavi-vis --table /my/measurement/set --xaxis time --yaxis amplitude
+    $ ragavi-vis --ms /my/measurement/set --xaxis time --yaxis amplitude
+
+For large datasets, it is advisable to supply at least :code:`--ymin` and :code:`--ymax` values to avoid an extra pass over the data.
+
+Change the size (resolution) of the output aggregated image -- and resulting html file size -- by specifying :code:`--canvas-width` and :code:`--canvas-height` options.
+
+The ``xova`` package is **required** for **Averaging**. It is not available on PyPi yet and therefore can be installed via:
+
+.. code-block:: bash
+
+    $ pip install git+git://github.com/ska-sa/xova.git@master
 
 =======
 License

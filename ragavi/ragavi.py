@@ -798,7 +798,7 @@ def ant_select_callback():
             let nplots = p1.length;
             if (cb_obj.active.includes(0))
                 {
-                    for(i=0; i<nplots; i++){
+                    for(let i=0; i<nplots; i++){
                         p1[i].visible = true;
                         p2[i].visible = true;
                     }
@@ -810,7 +810,7 @@ def ant_select_callback():
 
                 }
             else{
-                    for(i=0; i<nplots; i++){
+                    for(let i=0; i<nplots; i++){
                        p1[i].visible = false;
                        p2[i].visible = false;
                     }
@@ -885,24 +885,22 @@ def batch_select_callback():
 
         let count = 0;
         let new_bsize;
-        for (sp=0; sp<nspws; sp++){
-            for (c=0; c<ncorrs; c++){
-                for (f=0; f<nfields; f++){
+        for (let sp=0; sp<nspws; sp++){
+            for (let c=0; c<ncorrs; c++){
+                for (let f=0; f<nfields; f++){
                     //re-initialise bsize
                     new_bsize = bsize;
-                    for(n=0; n<nbatches; n++){
+                    for(let n=0; n<nbatches; n++){
                         /* Reduce batch size to the size of the last batch
                         and number of antennas is not the same as bsize
                         */
                         if (n == nbatches-1 && nants!=bsize){
                             new_bsize = nants % bsize;
                         }
-                        debugger;
-                        for(b=0; b<new_bsize; b++){
+                        for(let b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(n)){
                                 p1[count].visible = true;
                                 p2[count].visible = true;
-                                debugger;
                                 }
                             else{
                                 p1[count].visible = false;
@@ -934,15 +932,14 @@ def legend_toggle_callback():
     """
     code = """
                 let len = loax1.length;
-                let i;
                 if (cb_obj.active.includes(0)){
-                    for(i=0; i<len; i++){
+                    for(let i=0; i<len; i++){
                         loax1[i].visible = true;
                     }
                 }
 
                 else{
-                    for(i=0; i<len; i++){
+                    for(let i=0; i<len; i++){
                         loax1[i].visible = false;
                     }
                 }
@@ -961,7 +958,7 @@ def size_slider_callback():
 
     code = """
 
-            var pos, i, numplots;
+            let pos, i, numplots;
 
             numplots = p1.length;
             pos = slide.value;
@@ -984,7 +981,7 @@ def alpha_slider_callback():
 
     code = """
 
-            var pos, i, numplots;
+            let pos, i, numplots;
             numplots = p1.length;
             pos = alpha.value;
 
@@ -1017,17 +1014,17 @@ def field_selector_callback():
         */
         let count = 0;
         let new_bsize;
-        for (sp=0; sp<nspws; sp++){
-            for (c=0; c<ncorrs; c++){
-                for (f=0; f<nfields; f++){
+        for (let sp=0; sp<nspws; sp++){
+            for (let c=0; c<ncorrs; c++){
+                for (let f=0; f<nfields; f++){
                     //re-initialise new batch size
                     new_bsize = bsize;
-                    for(n=0; n<nbatches; n++){
+                    for(let n=0; n<nbatches; n++){
                         // Reduce new batch size to the size of the last batch
                         if (n == nbatches-1 && nants!=bsize){
                             new_bsize = nants % bsize;
                         }
-                        for(b=0; b<new_bsize; b++){
+                        for(let b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(f) && csel.active.includes(c) &&
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
@@ -1056,11 +1053,10 @@ def axis_fs_callback():
     """
     code = """
             let naxes = ax1.length;
-
-
+            let i;
             for(i=0; i<naxes; i++){
-                ax1[i].axis_label_text_font_size = `${this.value}pt`;
-                ax2[i].axis_label_text_font_size = `${this.value}pt`;
+                ax1[i].axis_label_text_font_size = `${cb_obj.value}pt`;
+                ax2[i].axis_label_text_font_size = `${cb_obj.value}pt`;
             }
            """
     return code
@@ -1074,9 +1070,14 @@ def title_fs_callback():
     code : :obj:`str`
     """
     code = """
-            last_idx = ax1.length-1;
-            ax1[last_idx].text_font_size = `${this.value}px`;
-            ax2[last_idx].text_font_size = `${this.value}px`;
+            let len = ax1.length;
+            for (let i=0; i<len; i++){
+                if (ax1[i].name == "ftitle"){
+                    ax1[i].text_font_size = `${cb_obj.value}px`;
+                    ax2[i].text_font_size = `${cb_obj.value}px`;
+                }
+            }
+
            """
     return code
 
@@ -1138,17 +1139,17 @@ def corr_select_callback():
 
         let count = 0;
         let new_bsize;
-        for (sp=0; sp<nspws; sp++){
-            for (c=0; c<ncorrs; c++){
-                for (f=0; f<nfields; f++){
+        for (let sp=0; sp<nspws; sp++){
+            for (let c=0; c<ncorrs; c++){
+                for (let f=0; f<nfields; f++){
                     //re-initialise new batch size
                     new_bsize = bsize;
-                    for(n=0; n<nbatches; n++){
+                    for(let n=0; n<nbatches; n++){
                         // Reduce new_bsize to the size of the final batch
                         if (n == nbatches-1 && nants!=bsize){
                             new_bsize = nants % bsize;
                         }
-                        for(b=0; b<new_bsize; b++){
+                        for(let b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(c) && fsel.active.includes(f) &&
                                 ssel.active.includes(sp)){
                                 p1[count].visible = true;
@@ -1186,18 +1187,18 @@ def spw_select_callback():
 
         let count = 0;
         let new_bsize;
-        for (sp=0; sp<nspws; sp++){
-            for (c=0; c<ncorrs; c++){
-                for (f=0; f<nfields; f++){
+        for (let sp=0; sp<nspws; sp++){
+            for (let c=0; c<ncorrs; c++){
+                for (let f=0; f<nfields; f++){
                     //re-initialise new batch size
                     new_bsize = bsize;
 
-                    for(n=0; n<nbatches; n++){
+                    for(let n=0; n<nbatches; n++){
                         // Reduce bsize to the size of the last batch
                         if (n == nbatches-1 && nants!=bsize){
                             new_bsize = nants % bsize;
                         }
-                        for(b=0; b<new_bsize; b++){
+                        for(let b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(sp) && fsel.active.includes(f) &&
                                 csel.active.includes(c)){
                                 p1[count].visible = true;
@@ -1235,18 +1236,20 @@ def save_selected_callback():
         /*uf_src: Unflagged data source
           f_src:  Flagged data source scanid antname
         */
-        let out = `x, y1, y2, antenna, scan_no, spw\n`;
+        let out = `x, y1, y2, ant, corr, field, scan, spw\n`;
 
         //for all the data sources available
-        for (i=0; i<uf_src.length; i++){
+        for (let i=0; i<uf_src.length; i++){
             let sel_idx = uf_src[i].selected.indices;
             let data = uf_src[i].data;
 
-            for (j=0; j<sel_idx.length; j++){
+            for (let j=0; j<sel_idx.length; j++){
                 out +=  `${data['x'][sel_idx[j]]}, ` +
                         `${data['y1'][sel_idx[j]]}, ` +
                         `${data['y2'][sel_idx[j]]}, ` +
                         `${data['antname'][sel_idx[j]]}, ` +
+                        `${data['corr'][sel_idx[j]]}, ` +
+                        `${data['field'][sel_idx[j]]}, ` +
                         `${data['scanid'][sel_idx[j]]}, ` +
                         `${data['spw'][sel_idx[j]]}\n`;
             }
@@ -2036,9 +2039,11 @@ def main(**kwargs):
 
         # configuring titles for the plots
         ax1_title = Title(text="{} vs {}".format(ax1_ylabel, ax1_xlabel),
-                          align='center', text_font_size='15px')
+                          align='center', text_font_size='15px',
+                          name="ftitle")
         ax2_title = Title(text="{} vs {}".format(ax2_ylabel, ax2_xlabel),
-                          align='center', text_font_size='15px')
+                          align='center', text_font_size='15px',
+                          name="ftitle")
 
         ax1.add_tools(hover)
         ax2.add_tools(hover2)
@@ -2141,30 +2146,30 @@ def main(**kwargs):
         ############## Defining widget Callbacks ############################
         ######################################################################
 
-        ant_select.callback = CustomJS(
+        ant_select.js_on_change("active", CustomJS(
             args=dict(p1=ax1_plots, p2=ax2_plots, bsel=batch_select,
                       fsel=field_selector, csel=corr_select, ssel=spw_select,
                       nbatches=num_legend_objs, nfields=ufids.size,
                       ncorrs=corrs.size, nspws=uddids.size),
-            code=ant_select_callback())
+            code=ant_select_callback()))
 
-        toggle_err.callback = CustomJS(args=dict(ax1s=ax1_plots,
-                                                 err1=ebars_ax1,
-                                                 err2=ebars_ax2),
-                                       code=toggle_err_callback())
+        toggle_err.js_on_change("active", CustomJS(args=dict(ax1s=ax1_plots,
+                                                             err1=ebars_ax1,
+                                                             err2=ebars_ax2),
+                                                   code=toggle_err_callback()))
 
         # BATCH SELECTION
-        batch_select.callback = CustomJS(
+        batch_select.js_on_change("active", CustomJS(
             args=dict(p1=ax1_plots, p2=ax2_plots, bsize=BATCH_SIZE,
                       nants=plotants.size, nbatches=num_legend_objs,
                       nfields=ufids.size, ncorrs=corrs.size,
                       nspws=uddids.size, fsel=field_selector,
                       csel=corr_select, antsel=ant_select, ssel=spw_select),
-            code=batch_select_callback())
+            code=batch_select_callback()))
 
-        legend_toggle.callback = CustomJS(
+        legend_toggle.js_on_change("active", CustomJS(
             args=dict(loax1=listvalues(legend_objs_ax1)),
-            code=legend_toggle_callback())
+            code=legend_toggle_callback()))
 
         size_slider.js_on_change('value',
                                  CustomJS(args=dict(slide=size_slider,
@@ -2176,13 +2181,13 @@ def main(**kwargs):
                                                      p1=ax1_plots,
                                                      p2=ax2_plots),
                                            code=alpha_slider_callback()))
-        field_selector.callback = CustomJS(
+        field_selector.js_on_change("active", CustomJS(
             args=dict(bsize=BATCH_SIZE, bsel=batch_select, csel=corr_select,
                       nants=plotants.size, nfields=ufids.size,
                       ncorrs=corrs.size, nbatches=num_legend_objs,
                       nspws=uddids.size, p1=ax1_plots,
                       p2=ax2_plots, ssel=spw_select),
-            code=field_selector_callback())
+            code=field_selector_callback()))
         axis_fontslider.js_on_change('value',
                                      CustomJS(args=dict(ax1=ax1.axis,
                                                         ax2=ax2.axis),
@@ -2192,17 +2197,17 @@ def main(**kwargs):
                                                          ax2=ax2.above),
                                                code=title_fs_callback()))
 
-        toggle_flag.callback = CustomJS(args=dict(sources=sources,
-                                                  nants=plotants,
-                                                  flagging=flag_data),
-                                        code=flag_callback())
-        corr_select.callback = CustomJS(
+        toggle_flag.js_on_change("active", CustomJS(args=dict(sources=sources,
+                                                              nants=plotants,
+                                                              flagging=flag_data),
+                                                    code=flag_callback()))
+        corr_select.js_on_change("active", CustomJS(
             args=dict(bsel=batch_select, bsize=BATCH_SIZE,
                       fsel=field_selector, nants=plotants.size,
                       ncorrs=corrs.size, nfields=ufids.size,
                       nbatches=num_legend_objs, nspws=uddids.size,
                       p1=ax1_plots, p2=ax2_plots, ssel=spw_select),
-            code=corr_select_callback())
+            code=corr_select_callback()))
 
         # for frequency axis with  spws
         # make the additional axes accesible to spw selector for toggling
@@ -2222,14 +2227,14 @@ def main(**kwargs):
             extra_axes1 = 0
             extra_axes2 = 0
 
-        spw_select.callback = CustomJS(
+        spw_select.js_on_change("active", CustomJS(
             args=dict(bsel=batch_select, bsize=BATCH_SIZE, csel=corr_select,
                       fsel=field_selector, nants=plotants.size,
                       ncorrs=corrs.size, nfields=ufids.size,
                       nbatches=num_legend_objs, nspws=uddids.size,
                       p1=ax1_plots, p2=ax2_plots, extra_axes1=extra_axes1,
                       extra_axes2=extra_axes2),
-            code=spw_select_callback())
+            code=spw_select_callback()))
 
         save_selected.js_on_click(CustomJS(args=dict(
             uf_src=[x[0] for x in sources],

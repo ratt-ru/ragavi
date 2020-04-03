@@ -17,16 +17,20 @@ import xarray as xr
 from dask import compute, delayed, config as dask_config
 from dask.diagnostics import ProgressBar
 from daskms.table_schemas import MS_SCHEMA
-from datashader.bokeh_ext import InteractiveImage
 
 from bokeh.plotting import figure
-from bokeh.layouts import column, gridplot, row, widgetbox
-from bokeh.io import (output_file, output_notebook, show, save)
-from bokeh.models import (BasicTicker, ColorBar, HoverTool, LinearAxis,
-                          LinearColorMapper, PrintfTickFormatter, Range1d,
-                          Title)
+from bokeh.layouts import column, gridplot, row, grid
+from bokeh.io import (output_file, output_notebook, show, save, curdoc)
+from bokeh.models import (BasicTicker, ColorBar, ColumnDataSource,  CustomJS,
+                          DatetimeTickFormatter, Div, ImageRGBA, LinearAxis,
+                          LinearColorMapper, PrintfTickFormatter, Plot,
+                          Range1d, Text, Title)
+from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
+                                WheelZoomTool, SaveTool)
 
 from ragavi import utils as vu
+
+from dask.distributed import Client, LocalCluster
 
 logger = vu.logger
 excepthook = vu.sys.excepthook
@@ -35,6 +39,9 @@ wrapper = vu.textwrap.TextWrapper(initial_indent='',
                                   break_long_words=True,
                                   subsequent_indent=''.rjust(50),
                                   width=160)
+
+PLOT_WIDTH = int(1920 * 0.95)
+PLOT_HEIGHT = int(1080 * 0.9)
 
 
 class DataCoreProcessor:
@@ -396,17 +403,21 @@ def add_axis(fig, axis_range, ax_label):
         The figure onto which to add extra axis
 
     axis_range: :obj:`list`, :obj:`tuple`
-        A range of sorted values or a tuple with 2 values containing or the order (min, max). This can be any ordered iteraable that can be indexed.
+        A range of sorted values or a tuple with 2 values containing or the
+        order (min, max). This can be any ordered iteraable that can be
+        indexed.
 
     Returns
     -------
     fig : :obj:`bokeh.plotting.figure`
-        Bokeh gigure with an extra axis added
+        Bokeh figure with an extra axis added
     """
-    fig.extra_x_ranges = {"fxtra": Range1d(
-        start=axis_range[0], end=axis_range[-1])}
+    if fig.extra_x_ranges is None:
+        fig.extra_x_ranges = {}
+    fig.extra_x_ranges["fxtra"] = Range1d(start=axis_range[0],
+                                          end=axis_range[-1])
     linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
-                         minor_tick_line_alpha=0,
+                         minor_tick_line_alpha=0, name="chan_xtra_linaxis",
                          major_label_orientation='horizontal',
                          ticker=BasicTicker(desired_num_ticks=30))
     fig.add_layout(linaxis, 'above')
@@ -435,19 +446,31 @@ def make_cbar(cats, category, cmap=None):
     category = category.capitalize()
     ncats = cats.size
 
+    # format the cateogry name for cbar title
+    if "_" in category:
+        if category == "Data_desc_id":
+            category = "Spw"
+        else:
+            category = category.split("_")[0]
+
     # not using categorical because we'll need to define our own colors
     cmapper = LinearColorMapper(palette=cmap[:ncats], low=lo, high=hi)
-    b_ticker = BasicTicker(desired_num_ticks=ncats)
+    b_ticker = BasicTicker(desired_num_ticks=ncats,
+                           num_minor_ticks=0)
 
     cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
                     border_line_color=None, ticker=b_ticker,
                     location=(0, 0), title=category, title_standoff=5,
-                    title_text_font_size='15pt')
+                    title_text_font_size='10pt', title_text_align="left",
+                    title_text_font="monospace", minor_tick_line_width=0,
+                    title_text_font_style="normal")
 
     return cbar
 
 
-def create_bk_fig(x_range, y_range, xlab=None, ylab=None, col_bar=None,              title=None, pw=1920, ph=1080, x_axis_type='linear',              y_axis_type='linear', x=None, y=None):
+def create_bk_fig(x_range, y_range, x=None, xlab=None, ylab=None,
+                  title=None, pw=1920, ph=1080, x_axis_type='linear',
+                  y_axis_type='linear', x_name=None, y_name=None):
 
     fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
                  x_range=tuple(x_range), x_axis_label=xlab, y_axis_label=ylab,
@@ -456,51 +479,61 @@ def create_bk_fig(x_range, y_range, xlab=None, ylab=None, col_bar=None,         
                  plot_width=pw, plot_height=ph,
                  sizing_mode='stretch_both')
 
-    h_tool = HoverTool(tooltips=[(x.name, '$x'),
-                                 (y.name, '$y')])
+    h_tool = HoverTool(tooltips=[(x_name, '$x'),
+                                 (y_name, '$y')],
+                       point_policy='snap_to_data')
+    if x_axis_type == "datetime":
+        h_tool.formatters["$x"] = x_axis_type
     fig.add_tools(h_tool)
 
     x_axis = fig.xaxis[0]
     x_axis.major_label_orientation = 45
     x_axis.ticker.desired_num_ticks = 30
 
-    if col_bar:
-        fig.add_layout(col_bar, 'right')
-
-    if x.name.lower() in ['channel', 'frequency']:
+    if x_name.lower() in ['channel', 'frequency']:
         fig = add_axis(fig=fig,
                        axis_range=x.chan.values,
                        ax_label='Channel')
-    if y.name.lower() == 'phase':
+    if y_name.lower() == 'phase':
         fig.yaxis[0].formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
     fig.axis.axis_label_text_font_style = "normal"
+    fig.axis.axis_label_text_font = "monospace"
     fig.axis.axis_label_text_font_size = "15px"
-    fig.title.text_font = "helvetica"
-    fig.title.text_font_size = "25px"
+    fig.title.text = title
+    fig.title.text_font = "monospace"
+    fig.title.text_font_size = "24px"
     fig.title.align = 'center'
 
     return fig
 
 
-def create_bl_data_array(ant1, ant2):
+def create_bl_data_array(xds_table_obj, bl_combos=False):
     """Make a dataArray containing baseline numbers
 
     Parameters
     ----------
-    ant1: :obj:`xarray.DataArray`
-        ANTENNA1 dataArray
-    ant2: :obj:`xarray.DataArray`
-        ANTENNA2 dataArray
+    xds_table_obj: :obj:`xarray.Dataset`
+        Daskms dataset object
+    bl_combos: :obj:`Bool`
+        Whether to return only the available baseline combinations
     Returns
     -------
     baseline: :obj:`xarray.DataArray`
         DataArray containing baseline numbers
     """
+    ant1 = xds_table_obj.ANTENNA1
+    ant2 = xds_table_obj.ANTENNA2
+
     u_ants = da.unique(ant1.data).compute()
     u_bls_combos = combinations(np.arange(u_ants.size + 1), 2)
 
+    if bl_combos:
+        return u_bls_combos
+
     logger.info("Populating baseline data")
+
+    # create a baseline array of the same shape as antenna1
     baseline = np.empty_like(ant1.values)
     for bl, a in enumerate(u_bls_combos):
         a1 = a[0]
@@ -513,7 +546,8 @@ def create_bl_data_array(ant1, ant2):
     return baseline
 
 
-def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=None, chan=None):
+def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='',
+               columns=None, chan=None):
     """ Perform MS averaging
     Parameters
     ----------
@@ -564,7 +598,7 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=
     x_datasets = []
     spw_ds = []
 
-    logger.info("Creating averaged Xarray Dataset")
+    logger.info("Creating averaged xarray Dataset")
 
     for ams in avg_mss:
         data_vars = OrderedDict()
@@ -572,13 +606,14 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=
 
         for k, v in sorted(ams.data_vars.items()):
             if k in columns:
-                data_vars[k] = xr.DataArray(v.data.compute_chunk_sizes(),
+                data_vars[k] = xr.DataArray(v,
                                             dims=v.dims, attrs=v.attrs)
-
+        """
         for k, v in sorted(ams.coords.items()):
             if k in columns:
-                coords[k] = xr.DataArray(v.data.compute_chunk_sizes(),
+                coords[k] = xr.DataArray(v,
                                          dims=v.dims, attrs=v.attrs)
+        """
 
         # create datasets and rename dimension "[uvw]"" to "uvw"
         x_datasets.append(xr.Dataset(data_vars,
@@ -586,13 +621,15 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=
                                      coords=coords).rename_dims({"[uvw]":
                                                                  "uvw"}))
 
-    # Separate datasets in different MSs
+    # Separate datasets in different SPWs
     for di in unique_spws:
         spw_ds.append(
             [x for x in x_datasets if x.DATA_DESC_ID[0] == di])
 
     x_datasets = []
     # produce multiple datasets incase of multiple SPWs
+    # previous step results in  list of the form [[spw1_data], [spw2_data]]
+    # for each spw
     for spw in spw_ds:
         # Compact averaged MS datasets into a single dataset for ragavi
         ms_obj = xr.combine_nested(spw, concat_dim='row',
@@ -607,9 +644,393 @@ def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='', columns=
     return x_datasets
 
 
+def massage_data(x, y, get_y=False, iter_ax=None):
+    """Massages x-data into a size similar to that of y-axis data via
+    the necessary repetitions. This function also flattens y-axis data
+    into 1-D.
+
+    Parameters
+    ----------
+    x: :obj:`xr.DataArray`
+        Data for the x-axis
+    y: :obj:`xr.DataArray`
+        Data for the y-axis
+    get_y: :obj:`bool`
+        Choose whether to return y-axis data or not
+
+    Returns
+    -------
+    x: :obj:`dask.array`
+        Data for the x-axis
+    y: :obj:`dask.array`
+        Data for the y-axis
+    """
+
+    iter_cols = ['ANTENNA1', 'ANTENNA2',
+                 'FIELD_ID', 'SCAN_NUMBER', 'DATA_DESC_ID', 'Baseline']
+    # can add 'chan','corr' to this list
+
+    # available dims in the x and y axes
+    y_dims = set(y.dims)
+    x_dims = set(x.dims)
+
+    # find dims that are not available in x and only avail in y
+    req_x_dims = y_dims - x_dims
+
+    if not isinstance(x.data, da.Array):
+        nx = da.asarray(x.data)
+    else:
+        nx = x.data
+
+    if x.ndim > 1:
+        nx = nx.ravel()
+
+    if len(req_x_dims) > 0:
+
+        sizes = []
+
+        # calculate dim sizes for repetion of x_axis
+        for item in req_x_dims:
+            sizes.append(y[item].size)
+
+        if iter_ax == "corr":
+            nx = nx.reshape(1, nx.size).repeat(np.prod(sizes), axis=0).ravel()
+            nx = nx.rechunk(y.data.ravel().chunks)
+
+        elif y.dims[0] == "chan" and iter_ax in iter_cols:
+            # Because data is transposed this must be done
+            nx = nx.reshape(1, nx.size).repeat(np.prod(sizes), axis=0).ravel()
+            nx = nx.rechunk(y.data.ravel().chunks)
+
+        else:
+            try:
+                nx = nx.map_blocks(np.repeat,
+                                   np.prod(sizes),
+                                   chunks=y.data.ravel().chunks)
+            except ValueError:
+                # for the non-xarray dask data
+                nx = nx.repeat(np.prod(sizes)).rechunk(y.data.ravel().chunks)
+    if get_y:
+        # flatten y data
+        # get_data also
+        ny = y.data.ravel()
+        return nx, ny
+    else:
+        return nx
+
+
+def create_df(x, y, iter_data=None):
+    """Create a dask dataframe from input x, y and iterate columns if 
+    available. This function flattens all the data into 1-D Arrays
+
+    Parameters
+    ----------
+    x: :obj:`dask.array`
+        Data for the x-axis
+    y: :obj:`dask.array`
+        Data for the y-axis
+    iter_ax: :obj:`dask.array`
+        iteration axis if possible
+
+    Returns
+    -------
+    new_ds: :obj:`dask.Dataframe`
+        Dataframe containing the required columns
+    """
+
+    x_name = x.name
+    y_name = y.name
+
+    # flatten and chunk the data accordingly
+    nx, ny = massage_data(x, y, get_y=True)
+
+    # declare variable names for the xarray dataset
+    var_names = {x_name: ('row', nx),
+                 y_name: ('row', ny)}
+
+    if iter_data is not None:
+        i_name = iter_data.name
+        iter_data = massage_data(iter_data, y, get_y=False, iter_ax=i_name)
+        var_names[i_name] = ('row', iter_data)
+
+    new_ds = xr.Dataset(data_vars=var_names)
+    new_ds = new_ds.to_dask_dataframe()
+    new_ds = new_ds.dropna()
+    return new_ds
+
+
+@time_wrapper
+def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
+    cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
+    logger.info("Datashader aggregation starting")
+
+    if cat:
+        with ProgressBar():
+            agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
+    else:
+        with ProgressBar():
+            agg = cvs.points(xy_df, x, y, ds.any())
+
+    logger.info("Aggregation done")
+
+    return agg
+
+
+def gen_image(df, x_min, x_max, y_min, y_max, c_width, c_height, x_name=None,
+              y_name=None, xlab=None, ylab=None, title=None, x=None,
+              x_axis_type="linear", pw=PLOT_WIDTH, ph=PLOT_HEIGHT,
+              cat=None, color=None):
+
+    x_range = (x_min, x_max)
+    y_range = (y_min, y_max)
+    dw, dh = x_max - x_min, y_max - y_min
+
+    # shorten some names
+    tf = ds.transfer_functions
+
+    # perform data aggregation
+    # shaded data and the aggregated data
+    logger.info("Launching datashader")
+    agg = image_callback(df, xr=x_range, yr=y_range, w=c_width, h=c_height,
+                         x=x_name, y=y_name, cat=cat)
+
+    logger.info("Creating Bokeh Figure")
+    fig = create_bk_fig(x_range=(x_min, x_max), y_range=(y_min, y_max),
+                        xlab=xlab, ylab=ylab, title=title, x=x,
+                        x_axis_type=x_axis_type, x_name=x_name, y_name=y_name,
+                        pw=pw, ph=ph)
+
+    if cat:
+        img = tf.shade(agg, color_key=color[:agg[cat].size])
+        cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size])
+        fig.add_layout(cbar, 'right')
+    else:
+        img = tf.shade(agg, cmap=color)
+
+    cds = ColumnDataSource(data=dict(image=[img.data], x=[x_min],
+                                     y=[y_min], dw=[dw], dh=[dh]))
+
+    fig.image_rgba(source=cds, image='image', x='x', y='y',
+                   dw='dw', dh='dh', dilate=False)
+
+    return fig
+
+
+def gen_grid(df, x_min, x_max, y_min, y_max, c_width, c_height, ncols=9,
+             x_name=None, y_name=None, xlab=None, ylab=None, title=None,
+             x_axis_type="linear", pw=190, ph=100, x=None,
+             color=None, cat=None, cat_vals=None, ms_name=None,
+             xds_table_obj=None):
+
+    n_grid = []
+
+    nrows = int(np.ceil(cat_vals.size / ncols))
+
+    # if there are more columns than there are items
+    if ncols > cat_vals.size:
+        pw = int(PLOT_WIDTH / cat_vals.size)
+        ph = int(PLOT_HEIGHT * 0.8)
+
+    # If there is still space extend height
+    if (nrows * ph) < (PLOT_HEIGHT * 0.85):
+        ph = int((PLOT_HEIGHT * 0.85) / nrows)
+
+    # frame dimensions. Actual size of plot without axes
+    fw = int(0.93 * pw)
+    fh = int(0.93 * ph)
+
+    x_range = (x_min, x_max)
+    y_range = (y_min, y_max)
+    dw, dh = x_max - x_min, y_max - y_min
+
+    # shorten some names
+    tf = ds.transfer_functions
+
+    # perform data aggregation
+    # shaded data and the aggregated data
+    logger.info("Launching datashader")
+    agg = image_callback(df, x_range, y_range, c_width, c_height, x=x_name,
+                         y=y_name, cat=cat)
+
+    # get actual field or corr names
+    i_names = None
+    if cat.lower() == "corr":
+        i_names = vu.get_polarizations(ms_name)
+    elif cat.lower() == "field_id":
+        i_names = vu.get_fields(ms_name).values.tolist()
+    elif cat.lower() in ["antenna1", "antenna2"]:
+        i_names = vu.get_antennas(ms_name).values.tolist()
+    elif cat.lower() == "baseline":
+        # get the only bl numbers. This function returns an iterator obj
+        ubl = create_bl_data_array(xds_table_obj, bl_combos=True)
+        ant_names = vu.get_antennas(ms_name).values
+
+        # create list of unique baselines with the ant_names
+        i_names = [f"{bl}: {ant_names[pair[0]]}, {ant_names[pair[1]]}"
+                   for bl, pair in enumerate(ubl)]
+
+    bk_xr = Range1d(*x_range)
+    bk_yr = Range1d(*y_range)
+
+    h_tool = HoverTool(tooltips=[(f"{cat.capitalize()}", "@i_axis"),
+                                 (f"({xlab[:4]}, {ylab[:4]})", "($x, $y)")])
+
+    # title for each single plot
+    p_title = Text(x="x", y="y", text="text", text_font="monospace",
+                   text_font_style="bold", text_font_size="10pt",
+                   text_align="center")
+
+    if x_name.lower() == "time":
+        h_tool.formatters["$x"] = "datetime"
+
+    tools = [BoxZoomTool(), h_tool, ResetTool(), WheelZoomTool(), PanTool(),
+             SaveTool()]
+
+    logger.info("Creating Bokeh grid")
+    for i, c_val in enumerate(cat_vals):
+        p_title_src = ColumnDataSource(data=dict(x=[x_min + (dw * 0.5)],
+                                                 y=[y_max * 0.87],
+                                                 text=[""]))
+
+        if i_names:
+            p_title_src.data["text"][0] = f"{i_names[c_val]}"
+        else:
+            p_title_src.data["text"][0] = f"{c_val}"
+
+        f = Plot(frame_width=fw, frame_height=fh, plot_width=pw,
+                 plot_height=ph, x_range=bk_xr,
+                 y_range=bk_yr, sizing_mode="stretch_width",
+                 outline_line_color="#18c3cf", outline_line_alpha=0.3,
+                 outline_line_width=2)
+
+        s_agg = agg.sel(**{cat: c_val})
+        s_img = tf.shade(s_agg, cmap=color)
+
+        if i_names:
+            i_axis_data = [i_names[c_val]]
+        else:
+            i_axis_data = [c_val]
+
+        s_ds = ColumnDataSource(data=dict(image=[s_img.data], x=[x_min],
+                                          i_axis=i_axis_data,
+                                          y=[y_min], dw=[dw], dh=[dh]))
+
+        ir = ImageRGBA(image='image', x='x', y='y', dw='dw', dh='dh',
+                       dilate=False)
+
+        f.add_glyph(s_ds, ir)
+        f.add_glyph(p_title_src, p_title)
+
+        for tool in tools:
+            f.add_tools(tool)
+
+        # some common axis specifications
+        axis_specs = dict(axis_label_text_font="monospace",
+                          axis_label_text_font_style="normal",
+                          axis_label_text_font_size="8pt",
+                          minor_tick_line_width=0,
+                          major_tick_out=2,
+                          major_tick_in=2,
+                          major_label_text_font_size="8pt",
+                          ticker=BasicTicker(desired_num_ticks=4))
+
+        # Add x-axis to all items in the last row
+        if (i >= ncols * (nrows - 1)):
+            f.extra_x_ranges = {"xr": bk_xr}
+            f.add_layout(LinearAxis(x_range_name="xr",
+                                    axis_label=xlab, **axis_specs),
+                         'below')
+
+            if x_name.lower() == "time":
+                f.xaxis[0].formatter = DatetimeTickFormatter(hourmin=['%H:%M']
+                                                             )
+
+        # Add y-axis to all items in the first columns
+        if (i % ncols == 0):
+            f.extra_y_ranges = {"yr": bk_yr}
+            f.add_layout(LinearAxis(y_range_name="yr",
+                                    axis_label=ylab, **axis_specs),
+                         'left')
+
+            # Set formating if yaxis is phase
+            if y_name.lower() == 'phase':
+                f.yaxis[0].formatter = PrintfTickFormatter(
+                    format=u"%f\u00b0")
+
+        if x_name.lower() in ['channel', 'frequency']:
+            # Add this extra axis on all items in the first row
+            if (i < ncols):
+                f = add_axis(fig=f,
+                             axis_range=x.chan.values,
+                             ax_label='Channel')
+
+                # name of axis known from add_axis()
+                # update with the new changes
+                f.select(selector={
+                    "name": "chan_xtra_linaxis"})[0].update(**axis_specs)
+
+        n_grid.append(f)
+
+    title_div = Div(text=title, align="center", width=PLOT_WIDTH,
+                    style={"font-size": "24px", "height": "50px",
+                           "text-align": "centre",
+                           "font-weight": "bold",
+                           "font-family": "monospace"},
+                    sizing_mode="stretch_width")
+    n_grid = grid(children=n_grid, ncols=ncols,
+                  nrows=nrows, sizing_mode="stretch_both")
+    final_grid = gridplot(children=[title_div, n_grid], ncols=1)
+
+    return final_grid
+
+
+def validate_axis_inputs(inp):
+    """Check if the input axes tally with those that are available
+    Parameters
+    ----------
+    inp: :obj:`str`
+        User's axis input
+    choices: :obj:`list`
+        Available choices for a specific axis
+    alts: :obj:`dict`
+        All the available altenatives for the various axes
+
+    Returns
+    -------
+    inp: :obj:`str`
+        Validated string
+    """
+    alts = {}
+    alts['amp'] = alts['Amp'] = 'amplitude'
+    alts['ant1'] = alts['Antenna1'] = alts[
+        'Antenna'] = alts['ant'] = 'antenna1'
+    alts['ant2'] = alts['Antenna2'] = 'antenna2'
+    alts['Baseline'] = alts['bl'] = 'baseline'
+    alts['chan'] = alts['Channel'] = 'channel'
+    alts['correlation'] = alts['Corr'] = 'corr'
+    alts['freq'] = alts['Frequency'] = 'frequency'
+    alts['Field'] = 'field'
+    alts['imaginary'] = alts['Imag'] = 'imaginary'
+    alts['Real'] = 'real'
+    alts['Scan'] = 'scan'
+    alts['Spw'] = 'spw'
+    alts['Time'] = 'time'
+    alts['Phase'] = 'phase'
+    alts['UVdist'] = alts['uvdist'] = 'uvdistance'
+    alts['uvdistl'] = alts['uvdist_l'] = alts['UVwave'] = 'uvwave'
+    alts['ant'] = alts['Antenna'] = 'antenna1'
+
+    # convert to proper name if in other name
+    if inp in alts:
+        inp = alts[inp]
+
+    return inp
+
+
 def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                color='blue', xds_table_obj=None, ms_name=None, iterate=None,
-               x_min=None, x_max=None, y_min=None, y_max=None):
+               x_min=None, x_max=None, y_min=None, y_max=None, c_width=None,
+               c_height=None, colour_axis=None):
     """Responsible for plotting in this script.
 
     This is responsible for:
@@ -642,7 +1063,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         Color scheme to be used in the plot. It could be a string containing a color, a matplotlib or bokeh or colorcet colormap of a cycler containing specified colors.
     xds_table_obj : :obj:`xarray.Dataset`
         Dataset object containing the columns of the MS. This is passed on in case there are items required from the actual dataset.
-    ms_nmae : :obj:`str`
+    ms_name : :obj:`str`
         Name or [can include path] to Measurement Set
     xmin: :obj:`float`
         Minimum x value to be plotted
@@ -672,27 +1093,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                  'spw': 'DATA_DESC_ID',
                  'baseline': 'Baseline',
                  None: None}
-
-    # shorten some names
-    tf = ds.transfer_functions
-
-    @time_wrapper
-    def image_callback(xr, yr, w, h, x=None, y=None, cat=None, cat_ids=None, col=None):
-        cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
-        logger.info("Datashader aggregation starting")
-
-        if cat:
-            with ProgressBar():
-                agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
-            img = tf.shade(agg, color_key=col[:cat_ids.size])
-        else:
-            with ProgressBar():
-                agg = cvs.points(xy_df, x, y, ds.any())
-            img = tf.shade(agg, cmap=col)
-
-        logger.info("Aggregation done")
-
-        return img
 
     # change xaxis name to frequency if xaxis is channel. For df purpose
     xaxis = 'frequency' if xaxis == 'channel' else xaxis
@@ -734,58 +1134,90 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         x_min, x_max, y_min, y_max = compute(x_min, x_max, y_min, y_max)
     logger.info("Done")
 
-    if iterate:
-        title = title + " Colourise By: {}".format(iterate.capitalize())
+    if iterate != None:
+        title = title + " Iterated By: {}".format(iterate.capitalize())
         if iterate in ['corr', 'chan']:
-            xy = xr.merge([x, y]).unify_chunks()
             if iterate == 'corr':
-                cats = y.corr.values
-            else:
-                cats = y.chan.values
-        else:
+                iter_data = xr.DataArray(da.arange(y[iterate].size),
+                                         name=iterate, dims=[iterate])
+        elif iter_cols[iterate] == 'Baseline':
             # get the data array over which to iterate and merge it to x and y
-            if iter_cols[iterate] == 'Baseline':
-                iter_data = create_bl_data_array(xds_table_obj.ANTENNA1,
-                                                 xds_table_obj.ANTENNA2)
-            else:
+            iter_data = create_bl_data_array(xds_table_obj)
+        else:
+            try:
                 iter_data = xds_table_obj[iter_cols[iterate]]
-            xy = xr.merge([x, y, iter_data]).unify_chunks()
-            cats = np.unique(iter_data.values)
+            except:
+                logger.error("Specified data column not found.")
+
+        logger.info("Creating Dataframe")
+        xy_df = create_df(x, y, iter_data=iter_data)[[x.name, y.name,
+                                                      iter_cols[iterate]]]
+        cats = np.unique(iter_data.values)
 
         # change value of iterate to the required data column
         iterate = iter_cols[iterate]
-        xy_df = xy.to_dask_dataframe()[[x.name, y.name, iterate]]
+
         xy_df = xy_df.astype({iterate: 'category'})
+        xy_df[iterate] = xy_df[iterate].cat.as_known()
 
-        # initialise bokeh colorbar
-        cbar = make_cbar(cats, iterate, cmap=color)
-    else:
-        xy = xr.merge([x, y]).unify_chunks()
-        xy_df = xy.to_dask_dataframe()[[x.name, y.name]]
-        cats = None
-        cbar = None
+        # generate resulting grid
+        image = gen_grid(xy_df, x_min, x_max, y_min, y_max,
+                         c_width=c_width, c_height=c_height, x_name=x.name,
+                         y_name=y.name, cat=iterate, cat_vals=cats, ncols=9,
+                         color=color, title=title, x_axis_type=x_axis_type,
+                         pw=210, ph=100, xlab=xlab, ylab=ylab, x=x,
+                         ms_name=ms_name, xds_table_obj=xds_table_obj)
 
-    # Drop all NaN values
-    xy_df = xy_df.dropna()
+    if colour_axis != None:
+        title = title + " Colourised By: {}".format(colour_axis.capitalize())
+        if colour_axis in ['corr', 'chan']:
+            if colour_axis == 'corr':
+                iter_data = xr.DataArray(da.arange(y[colour_axis].size),
+                                         name=colour_axis, dims=[colour_axis])
+        elif iter_cols[colour_axis] == 'Baseline':
+            # get the data array over which to colour_axis and merge it to x
+            # and y
+            iter_data = create_bl_data_array(xds_table_obj)
+        else:
+            try:
+                iter_data = xds_table_obj[iter_cols[colour_axis]]
+            except:
+                logger.error("Specified data column not found.")
+        logger.info("Creating Dataframe")
+        xy_df = create_df(x, y, iter_data=iter_data)[[x.name, y.name,
+                                                      iter_cols[colour_axis]]]
 
-    logger.info('Creating canvas')
-    fig = create_bk_fig(x_range=(x_min, x_max), y_range=(y_min, y_max),
-                        xlab=xlab, ylab=ylab, col_bar=cbar, title=title,
-                        x_axis_type=x_axis_type, x=x, y=y)
+        cats = np.unique(iter_data.values)
 
-    logger.info("Starting datashader")
+        # change value of colour_axis to the required data column
+        colour_axis = iter_cols[colour_axis]
 
-    """
-    nonin = image_callback(xr=(x_min, x_max), yr=(y_min, y_max), w=800, h=600,
-                           x=x.name, y=y.name, cat=iterate, col=color, 
-                           cat_ids=cats)
-    export_image(nonin, filename='ino', fmt='.png', background='white')
-    """
+        xy_df = xy_df.astype({colour_axis: 'category'})
+        xy_df[colour_axis] = xy_df[colour_axis].cat.as_known()
 
-    im = InteractiveImage(fig, image_callback, x=x.name,
-                          y=y.name, cat=iterate,
-                          col=color, cat_ids=cats)
-    return fig
+        # generate resulting image
+        image = gen_image(xy_df, x_min, x_max, y_min, y_max, x=x,
+                          c_width=c_width, c_height=c_height, x_name=x.name,
+                          y_name=y.name, cat=colour_axis, color=color,
+                          title=title, ylab=ylab, xlab=xlab,
+                          x_axis_type=x_axis_type)
+
+    if colour_axis is None and iterate is None:
+        logger.info("Creating Dataframe")
+        xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
+
+        # generate resulting image
+        image = gen_image(xy_df, x_min, x_max, y_min, y_max, x=x,
+                          c_width=c_width, c_height=c_height, x_name=x.name,
+                          y_name=y.name, cat=iterate, color=color,
+                          title=title, ylab=ylab, xlab=xlab,
+                          x_axis_type=x_axis_type)
+
+    elif colour_axis is not None and iterate is not None:
+        logger.error(
+            """Unable to generate plot. Ensure that NOT both colour-axis and iter-axis have been specified.""")
+
+    return image
 
 
 def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
@@ -867,7 +1299,7 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
         else:
             tab_objs = xm.xds_from_ms(ms_name, taql_where=where,
                                       table_schema=ms_schema,
-                                      group_cols=['DATA_DESC_ID'],
+                                      group_cols=[],
                                       chunks=chunks,
                                       columns=sel_cols)
             # select channels
@@ -875,8 +1307,8 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
                 tab_objs = [_.sel(chan=chan_select) for _ in tab_objs]
 
         # get some info about the data
-        chunk_sizes = tab_objs[0].DATA.data.chunksize
-        chunk_p = tab_objs[0].DATA.data.npartitions
+        chunk_sizes = tab_objs[0].FLAG.data.chunksize
+        chunk_p = tab_objs[0].FLAG.data.npartitions
 
         logger.info("Chunk sizes: {}".format(chunk_sizes))
         logger.info("Number of Partitions: {}".format(chunk_p))
@@ -901,24 +1333,28 @@ def main(**kwargs):
         ddid = options.ddid
         fields = options.fields
         flag = options.flag
-        iterate = options.iterate
+        iterate = validate_axis_inputs(options.iterate)
         html_name = options.html_name
         mycmap = options.mycmap
         mytabs = options.mytabs
+        mem_limit = options.mem_limit
         n_cores = options.n_cores
         scan = options.scan
         where = options.where
-        xaxis = options.xaxis
+        xaxis = validate_axis_inputs(options.xaxis)
         xmin = options.xmin
         xmax = options.xmax
         ymin = options.ymin
         ymax = options.ymax
-        yaxis = options.yaxis
+        yaxis = validate_axis_inputs(options.yaxis)
         tbin = options.tbin
         cbin = options.cbin
+        c_width = options.c_width
+        c_height = options.c_height
+        colour_axis = validate_axis_inputs(options.colour_axis)
 
     # number of processes or threads/ cores
-    dask_config.set(num_workers=n_cores, memory_limit='1GB')
+    dask_config.set(num_workers=n_cores, memory_limit=mem_limit)
 
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
@@ -963,23 +1399,21 @@ def main(**kwargs):
                             fid=fields, scan=scan, where=where, chunks=chunks,
                             tbin=tbin, cbin=cbin, chan_select=chan)
 
-        if mycmap == None:
-            mycmap = cc.palette['blues']
+        if mycmap in cc.palette:
+            mycmap = cc.palette[mycmap]
         else:
-            if mycmap in cc.palette:
-                mycmap = cc.palette[mycmap]
-            else:
-                pass
+            logging.info(
+                """Selected color not found in palette. Reverting to default""")
+            mycmap = cc.palette["blues"]
+
+        if colour_axis != None:
+            logger.info('Enforcing categorical colours for colour axis')
+            mycmap = cc.palette['glasbey_bw']
 
         oup_a = []
 
         # iterating over spectral windows (spws)
         for count, chunk in enumerate(partitions):
-
-            # black box returns an plottable element / composite element
-            if iterate != None:
-                logger.info('Setting categorical colors')
-                mycmap = cc.palette['glasbey_bw']
 
             # We check current DATA_DESC_ID
             if isinstance(chunk.DATA_DESC_ID, xr.DataArray):
@@ -996,11 +1430,14 @@ def main(**kwargs):
 
             logger.info("Starting plotting function.")
 
+            # black box returns an plottable element / composite element
             fig = hv_plotter(x=ready.x, y=ready.y, xaxis=xaxis,
                              xlab=ready.xlabel, yaxis=yaxis,
                              ylab=ready.ylabel, color=mycmap, iterate=iterate,
                              xds_table_obj=chunk, ms_name=mytab, x_min=xmin,
-                             x_max=xmax, y_min=ymin, y_max=ymax)
+                             x_max=xmax, y_min=ymin, y_max=ymax,
+                             c_width=c_width, c_height=c_height,
+                             colour_axis=colour_axis)
 
             logger.info("Plotting complete.")
 
