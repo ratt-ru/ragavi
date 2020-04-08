@@ -1800,6 +1800,8 @@ def main(**kwargs):
         # get all unique field ids in the data
         ufids = np.unique(tt.FIELD_ID.values).astype(int)
 
+        # Don't allow polarization labels because the MS base name may be
+        # different from the table base name.
         if _corr is not None:
             # because of iteration _corr and corrs must'nt be the same
             if ',' in _corr:

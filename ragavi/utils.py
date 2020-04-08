@@ -8,6 +8,8 @@ import warnings
 import dask.array as da
 import numpy as np
 
+import bokeh.palettes as pl
+import colorcet as cc
 import xarray as xr
 import daskms as xm
 
@@ -639,3 +641,96 @@ def average_spws(ms_name, cbin, chan_select=None):
                                      coords=coords))
     logger.info("Done")
     return x_datasets
+
+
+#####################################################################
+#################### Return colours functions #######################
+
+"""
+Some categories of colormaps and their names
+
+############################ Colorcet ############################
+eg. cc.palette[categorical_colours[0]]
+
+categorical_colours = ['glasbey', 'glasbey_light', 'glasbey_dark',
+                        'glasbey_warm', 'glasbey_cool']
+diverging_colours = ['bkr', 'bky', 'bwy', 'cwr', 'coolwarm', 'gwv', 'bjy']
+
+misc_colours = ['colorwheel', 'isolum', 'rainbow']
+
+linear_colours = ['bgy', 'bgyw', 'kbc', 'blues', 'bmw', 'bmy', 'kgy', 'gray',
+                  'dimgray', 'fire', 'kb', 'kg', 'kr']
+
+
+"""
+
+
+def get_cmap(cmap, fall_back="coolwarm"):
+    """Get Hex colors that form a certain cmap. 
+    This function checks for the requested cmap in bokeh.palettes 
+    and colorcet.palettes.
+    List of valid names can be found at:
+    https: // colorcet.holoviz.org / user_guide / index.html
+    https: // docs.bokeh.org / en / latest / docs / reference / palettes.html
+
+    """
+    if cmap in pl.all_palettes:
+        max_colours = max(pl.all_palettes[cmap].keys())
+        colors = pl.all_palettes[cmap][max_colours]
+    elif cmap.capitalize() in pl.all_palettes:
+        cmap = cmap.capitalize()
+        max_colours = max(pl.all_palettes[cmap].keys())
+        colors = pl.all_palettes[cmap][max_colours]
+    elif cmap in cc.palette:
+        colors = cc.palette[cmap]
+    else:
+        colors = cc.palette[fall_back]
+        logger.info("Selected colourmap not found. Reverting to default")
+
+    return colors
+
+
+def get_linear_cmap(cmap, n_colors, fall_back="coolwarm"):
+    """Produce n_colors that differ linearly from a given colormap
+    This function depends on pl.linear_palettes whose doc be found at:
+    https: // docs.bokeh.org / en / latest / docs / reference / palettes.html
+    cmap: : obj: `str`
+        The colourmap chosen
+    n_colors: : obj: `int`
+        Number of colours to generate
+
+    Returns
+    -------
+    colors: : obj: `list`
+        A list of size n_colors containing the linear colours
+    """
+    colors = get_cmap(cmap)
+    if len(colors) < n_colors:
+        logger.info(f"""The colourmap selected has less colours than needed. Requested {n_colors}, available: {len(colors)}. Reverting back to default.""")
+        colors = get_cmap(cmap, n_colors, fall_back=fall_back)
+    colors = pl.linear_palette(colors, n_colors)
+
+    return colors
+
+
+def get_diverging_cmap(n_colors, cmap1=None, cmap2=None):
+    """Produce n_colors that diverge given two different colourmaps.
+    This function depends on pl.diverging_palettes whose doc can be found at:
+    https: // docs.bokeh.org / en / latest / docs / reference / palettes.html
+    cmap1: : obj: `str`
+        Name of the first colourmap to use
+    cmap2: : obj: `str`
+        Name of the second colourmap to use
+    n_colors: : obj: `int`
+        Number of colours to generate.
+
+    Returns
+    -------
+    colors: : obj: `list`
+        A list of size n_colors containing the diverging colours
+    """
+    colors1 = get_cmap(cmap1)
+    colors2 = get_cmap(cmap2)
+    colors = pl.diverging_palette(colors1, colors2, n_colors)
+
+    return colors
