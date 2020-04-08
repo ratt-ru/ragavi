@@ -12,8 +12,6 @@ from future.utils import listitems, listvalues
 
 import dask.array as da
 import daskms as xm
-import matplotlib.cm as cmx
-import matplotlib.colors as colors
 import xarray as xr
 
 from dask import delayed, compute
@@ -1812,13 +1810,8 @@ def main(**kwargs):
         else:
             corrs = tt.FLAG.corr.values
 
-        # freqs = (vu.get_frequencies(
-        #     mytab, spwid=vu.slice_data(ddid)) / GHZ).values
-
-        # setting up colors for the antenna plots
-        cNorm = colors.Normalize(vmin=0, vmax=plotants.size - 1)
-        mymap = cm = cmx.get_cmap(mycmap)
-        scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=mymap)
+        # setting up colors for the antenna plot
+        mycmap = vu.get_linear_cmap(mycmap, plotants.size)
 
         # creating bokeh figures for plots
         # linking plots ax1 and ax2 via the x_axes because of similarities in
@@ -1883,8 +1876,7 @@ def main(**kwargs):
                         legend_err = "E" + antnames[ant]
 
                         # creating colors for maps
-                        y1col = y2col = scalarMap.to_rgba(
-                            float(ant), bytes=True)[:-1]
+                        y1col = y2col = mycmap[ant]
 
                         # filter for antenna and field
                         subtab = tt.where((tt.ANTENNA1 == int(ant)) &
