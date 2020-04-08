@@ -156,7 +156,10 @@ def gains_argparser():
                         help="""Correlation index to plot. Can be a single integer or comma separated integers e.g '0,2'. Defaults to all.""",
                         default=None)
     parser.add_argument('--cmap', dest='mycmap', type=str, metavar=' ',
-                        help="""Matplotlib colour map to use for antennas. Defaults to coolwarm""",
+                        help="""Bokeh or Colorcet colour map to use for antennas. List of available colour maps can be 
+                        found at: https://docs.bokeh.org/en/latest/docs/reference/palettes.html or 
+                        https://colorcet.holoviz.org/user_guide/index.html .
+                        Defaults to coolwarm""",
                         default='coolwarm')
     parser.add_argument('--ddid', dest='ddid', type=str, metavar=' ',
                         help="""SPECTRAL_WINDOW_ID or ddid number. Defaults to all""",
