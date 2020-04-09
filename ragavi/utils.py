@@ -690,7 +690,7 @@ def get_cmap(cmap, fall_back="coolwarm"):
     return colors
 
 
-def get_linear_cmap(cmap, n_colors, fall_back="coolwarm"):
+def get_linear_cmap(cmap, n_colors, fallback="coolwarm"):
     """Produce n_colors that differ linearly from a given colormap
     This function depends on pl.linear_palettes whose doc be found at:
     https: // docs.bokeh.org / en / latest / docs / reference / palettes.html
@@ -704,10 +704,10 @@ def get_linear_cmap(cmap, n_colors, fall_back="coolwarm"):
     colors: : obj: `list`
         A list of size n_colors containing the linear colours
     """
-    colors = get_cmap(cmap)
+    colors = get_cmap(cmap, fall_back=fallback)
     if len(colors) < n_colors:
         logger.info(f"""The colourmap selected has less colours than needed. Requested {n_colors}, available: {len(colors)}. Reverting back to default.""")
-        colors = get_cmap(cmap, n_colors, fall_back=fall_back)
+        colors = get_cmap(fallback)
     colors = pl.linear_palette(colors, n_colors)
 
     return colors
