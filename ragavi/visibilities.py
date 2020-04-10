@@ -22,9 +22,10 @@ from bokeh.plotting import figure
 from bokeh.layouts import column, gridplot, row, grid
 from bokeh.io import (output_file, output_notebook, show, save, curdoc)
 from bokeh.models import (BasicTicker, ColorBar, ColumnDataSource,  CustomJS,
-                          DatetimeTickFormatter, Div, ImageRGBA, LinearAxis,
-                          LinearColorMapper, PrintfTickFormatter, Plot,
-                          Range1d, Text, Title)
+                          DatetimeTickFormatter, Div, Grid, ImageRGBA,
+                          LinearAxis, LinearColorMapper, LinearScale,
+                          LogScale, PrintfTickFormatter, Plot,
+                          Range1d, Text, Title, Toolbar)
 from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
                                 WheelZoomTool, SaveTool)
 
@@ -416,10 +417,17 @@ def add_axis(fig, axis_range, ax_label):
         fig.extra_x_ranges = {}
     fig.extra_x_ranges["fxtra"] = Range1d(start=axis_range[0],
                                           end=axis_range[-1])
+
     linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
-                         minor_tick_line_alpha=0, name="chan_xtra_linaxis",
+                         axis_label_text_font="monospace",
+                         axis_label_text_font_style="normal",
+                         axis_label_text_font_size="8pt",
+                         major_tick_out=2,
+                         major_tick_in=2,
+                         major_label_text_font_size="8pt",
+                         minor_tick_line_width=0, name="p_extra_xaxis",
                          major_label_orientation='horizontal',
-                         ticker=BasicTicker(desired_num_ticks=30))
+                         ticker=BasicTicker(desired_num_ticks=6))
     fig.add_layout(linaxis, 'above')
     return fig
 
@@ -470,42 +478,94 @@ def make_cbar(cats, category, cmap=None):
 
 def create_bk_fig(x_range, y_range, x=None, xlab=None, ylab=None,
                   title=None, pw=1920, ph=1080, x_axis_type='linear',
-                  y_axis_type='linear', x_name=None, y_name=None):
+                  y_axis_type='linear', x_name=None, y_name=None, **kwargs):
 
-    fig = figure(tools='pan,box_zoom,wheel_zoom,reset,save',
-                 x_range=tuple(x_range), x_axis_label=xlab, y_axis_label=ylab,
-                 y_range=tuple(y_range), x_axis_type=x_axis_type,
-                 y_axis_type=y_axis_type, title=title,
-                 plot_width=pw, plot_height=ph,
-                 sizing_mode='stretch_both')
+    plot_specs = dict(background="white", border_fill_alpha=0.1,
+                      border_fill_color="white",
+                      name="plot", outline_line_dash="solid",
+                      outline_line_width=2, outline_line_color="#37c8b1",
+                      outline_line_alpha=0.7, output_backend="svg",
+                      sizing_mode="stretch_both", title_location="above",
+                      toolbar_location="right")
 
-    h_tool = HoverTool(tooltips=[(x_name, '$x'),
-                                 (y_name, '$y')],
-                       point_policy='snap_to_data')
-    if x_axis_type == "datetime":
-        h_tool.formatters["$x"] = x_axis_type
-    fig.add_tools(h_tool)
+    axis_specs = dict(minor_tick_line_alpha=0, axis_label_text_align="center",
+                      axis_label_text_font="monospace",
+                      axis_label_text_font_size="10px",
+                      axis_label_text_font_style="normal",
+                      major_label_orientation='horizontal')
 
-    x_axis = fig.xaxis[0]
-    x_axis.major_label_orientation = 45
-    x_axis.ticker.desired_num_ticks = 30
+    add_grid = kwargs.get("add_grid", False)
+    add_title = kwargs.get("add_title", True)
+    add_xaxis = kwargs.get("add_xaxis", False)
+    add_yaxis = kwargs.get("add_yaxis", False)
 
-    if x_name.lower() in ['channel', 'frequency']:
-        fig = add_axis(fig=fig,
-                       axis_range=x.chan.values,
-                       ax_label='Channel')
-    if y_name.lower() == 'phase':
-        fig.yaxis[0].formatter = PrintfTickFormatter(format=u"%f\u00b0")
+    # Define frame width and height
+    # This is the actual size of the plot without the titles et al
+    fw = int(0.93 * pw)
+    fh = int(0.93 * ph)
 
-    fig.axis.axis_label_text_font_style = "normal"
-    fig.axis.axis_label_text_font = "monospace"
-    fig.axis.axis_label_text_font_size = "15px"
-    fig.title.text = title
-    fig.title.text_font = "monospace"
-    fig.title.text_font_size = "24px"
-    fig.title.align = 'center'
+    x_min, x_max = x_range
+    y_min, y_max = y_range
 
-    return fig
+    # percentage increase in axis ranges
+    inc = 1.00
+
+    # define the axes ranges
+    x_range = Range1d(start=(inc * x_min), end=(inc * x_max),
+                      name="p_x_range")
+    y_range = Range1d(start=(inc * y_min), end=(inc * y_max),
+                      name="p_y_range")
+
+    # select the axis scales for x and y
+    if x_axis_type == "linear":
+        x_scale = LinearScale(name="p_x_scale")
+    elif x_axis_type == "log":
+        x_scale = LogScale(name="p_x_scale")
+
+    if y_axis_type == "linear":
+        y_scale = LinearScale(name="p_y_scale")
+    elif y_axis_type == "log":
+        y_scale = LogScale(name="p_y_scale")
+
+    # define items to add on the plot
+    p_htool = HoverTool(tooltips=[(x_name, '$x'),
+                                  (y_name, '$y')],
+                        name="p_htool", point_policy='snap_to_data')
+
+    p_toolbar = Toolbar(name="p_toolbar",
+                        tools=[p_htool, BoxZoomTool(), PanTool(), ResetTool(),
+                               WheelZoomTool(), SaveTool()])
+    p_ticker = BasicTicker(desired_num_ticks=5, name="p_ticker")
+
+    # Create the plot object
+    p = Plot(plot_width=pw, plot_height=ph, frame_height=fh, frame_width=fw,
+             toolbar=p_toolbar, x_range=x_range, x_scale=x_scale,
+             y_range=y_range, y_scale=y_scale, **plot_specs)
+
+    if add_title:
+        p_title = Title(align="center", name="p_title", text=title, text_font_size="24px",
+                        text_font="monospace", text_font_style="bold",)
+        p.title = p_title
+
+    if add_xaxis:
+        # define the axes and tickers
+        p_x_axis = LinearAxis(axis_label=xlab, name="p_x_axis",
+                              ticker=p_ticker, **axis_specs)
+        p.add_layout(p_x_axis, "below")
+
+    if add_yaxis:
+        # define the axes and tickers
+        p_y_axis = LinearAxis(axis_label=ylab, name="p_y_axis",
+                              ticker=p_ticker, **axis_specs)
+        p.add_layout(p_y_axis, "left")
+
+    if add_grid:
+        p_x_grid = Grid(dimension=0, ticker=p_ticker)
+        p_y_grid = Grid(dimension=1, ticker=p_ticker)
+        p.add_layout(p_x_grid)
+        p.add_layout(p_y_grid)
+
+    return p
 
 
 def create_bl_data_array(xds_table_obj, bl_combos=False):
@@ -759,6 +819,63 @@ def create_df(x, y, iter_data=None):
     return new_ds
 
 
+def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
+    """
+    it_axis: :obj:`str`
+        Column over which to iterate / colourise
+    x_data: :obj:`xr.DataArray`
+        x-axis data
+    y_data: :obj:`xr.DataArray`
+        y-axis data
+    xds_table_obj: :obj:`xr.Dataset`
+        Daskms partition for this chunk of data
+
+    Returns
+    -------
+    xy_df: :obj:`dask.DataFrame`
+        Dask dataframe with the required category
+    cat_values: :obj:`np.array`
+        Array containing the unique identities of the iteration axis
+    """
+    # iteration key word: data column name
+    iterable_cols = {'antenna1': 'ANTENNA1',
+                     'antenna2': 'ANTENNA2',
+                     'chan': 'chan',
+                     'corr': 'corr',
+                     'field': 'FIELD_ID',
+                     'scan': 'SCAN_NUMBER',
+                     'spw': 'DATA_DESC_ID',
+                     'baseline': 'Baseline',
+                     None: None}
+
+    # convert to appropriate axis name
+    it_axis = iterable_cols[it_axis]
+
+    if it_axis in ['corr', 'chan']:
+        iter_data = xr.DataArray(da.arange(y_data[it_axis].size),
+                                 name=it_axis, dims=[it_axis])
+    elif it_axis == 'Baseline':
+        # should only be applicable to color axis
+        # get the data array over which to iterate and merge it to x and y
+        iter_data = create_bl_data_array(xds_table_obj)
+    else:
+        try:
+            iter_data = xds_table_obj[it_axis]
+        except:
+            logger.error("Specified data column not found.")
+
+    logger.info("Creating Dataframe")
+    xy_df = create_df(x_data, y_data, iter_data=iter_data)[[x_data.name,
+                                                            y_data.name,
+                                                            it_axis]]
+    cat_values = np.unique(iter_data.values)
+
+    xy_df = xy_df.astype({it_axis: 'category'})
+    xy_df[it_axis] = xy_df[it_axis].cat.as_known()
+
+    return xy_df, cat_values
+
+
 @time_wrapper
 def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
     cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
@@ -779,7 +896,12 @@ def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
 def gen_image(df, x_min, x_max, y_min, y_max, c_width, c_height, x_name=None,
               y_name=None, xlab=None, ylab=None, title=None, x=None,
               x_axis_type="linear", pw=PLOT_WIDTH, ph=PLOT_HEIGHT,
-              cat=None, color=None):
+              cat=None, color=None, **kwargs):
+
+    add_cbar = kwargs.get("add_cbar", True)
+    add_title = kwargs.get("add_title", True)
+    add_xaxis = kwargs.get("add_xaxis", True)
+    add_yaxis = kwargs.get("add_yaxis", True)
 
     x_range = (x_min, x_max)
     y_range = (y_min, y_max)
@@ -796,22 +918,42 @@ def gen_image(df, x_min, x_max, y_min, y_max, c_width, c_height, x_name=None,
 
     logger.info("Creating Bokeh Figure")
     fig = create_bk_fig(x_range=(x_min, x_max), y_range=(y_min, y_max),
-                        xlab=xlab, ylab=ylab, title=title, x=x,
+                        xlab=xlab, ylab=ylab, title=title,
                         x_axis_type=x_axis_type, x_name=x_name, y_name=y_name,
-                        pw=pw, ph=ph)
+                        pw=pw, ph=ph, add_title=add_title,
+                        add_xaxis=add_xaxis, add_yaxis=add_yaxis)
 
     if cat:
         img = tf.shade(agg, color_key=color[:agg[cat].size])
-        cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size])
-        fig.add_layout(cbar, 'right')
+        if add_cbar:
+            cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size])
+            fig.add_layout(cbar, 'right')
     else:
         img = tf.shade(agg, cmap=color)
 
     cds = ColumnDataSource(data=dict(image=[img.data], x=[x_min],
                                      y=[y_min], dw=[dw], dh=[dh]))
 
-    fig.image_rgba(source=cds, image='image', x='x', y='y',
-                   dw='dw', dh='dh', dilate=False)
+    image_glyph = ImageRGBA(image='image', x='x', y='y', dw='dw', dh='dh',
+                            dilate=False)
+    fig.add_glyph(cds, image_glyph)
+
+    if add_xaxis:
+        # some formatting on the x and y axes
+        if x_name.lower() in ['channel', 'frequency']:
+            fig = add_axis(fig=fig, axis_range=x.chan.values,
+                           ax_label='Channel')
+        elif x_name.lower() == "time":
+            xaxis = fig.select(name="p_x_axis")[0]
+            xaxis.formatter = DatetimeTickFormatter(hourmin=['%H:%M'])
+        elif x_name.lower() == "phase":
+            xaxis = fig.select(name="p_x_axis")[0]
+            xaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
+
+    if add_yaxis:
+        if y_name.lower() == 'phase':
+            yaxis = fig.select(name="p_y_axis")[0]
+            yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
     return fig
 
@@ -834,10 +976,6 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_width, c_height, ncols=9,
     # If there is still space extend height
     if (nrows * ph) < (PLOT_HEIGHT * 0.85):
         ph = int((PLOT_HEIGHT * 0.85) / nrows)
-
-    # frame dimensions. Actual size of plot without axes
-    fw = int(0.93 * pw)
-    fh = int(0.93 * ph)
 
     x_range = (x_min, x_max)
     y_range = (y_min, y_max)
@@ -869,105 +1007,76 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_width, c_height, ncols=9,
         i_names = [f"{bl}: {ant_names[pair[0]]}, {ant_names[pair[1]]}"
                    for bl, pair in enumerate(ubl)]
 
-    bk_xr = Range1d(*x_range)
-    bk_yr = Range1d(*y_range)
-
-    h_tool = HoverTool(tooltips=[(f"{cat.capitalize()}", "@i_axis"),
-                                 (f"({xlab[:4]}, {ylab[:4]})", "($x, $y)")])
-
-    # title for each single plot
-    p_title = Text(x="x", y="y", text="text", text_font="monospace",
-                   text_font_style="bold", text_font_size="10pt",
-                   text_align="center")
-
-    if x_name.lower() == "time":
-        h_tool.formatters["$x"] = "datetime"
-
-    tools = [BoxZoomTool(), h_tool, ResetTool(), WheelZoomTool(), PanTool(),
-             SaveTool()]
-
     logger.info("Creating Bokeh grid")
+
     for i, c_val in enumerate(cat_vals):
-        p_title_src = ColumnDataSource(data=dict(x=[x_min + (dw * 0.5)],
-                                                 y=[y_max * 0.87],
-                                                 text=[""]))
+        # some text title for the iterated columns
+        p_txtt = Text(x="x", y="y", text="text", text_font="monospace",
+                      text_font_style="bold", text_font_size="10pt",
+                      text_align="center")
 
+        p_txtt_src = ColumnDataSource(data=dict(x=[x_min + (dw * 0.5)],
+                                                y=[y_max * 0.87],
+                                                text=[""]))
         if i_names:
-            p_title_src.data["text"][0] = f"{i_names[c_val]}"
+            p_txtt_src.add([f"{i_names[c_val]}"], name="text")
+            i_axis_data = [i_names[c_val]]
         else:
-            p_title_src.data["text"][0] = f"{c_val}"
-
-        f = Plot(frame_width=fw, frame_height=fh, plot_width=pw,
-                 plot_height=ph, x_range=bk_xr,
-                 y_range=bk_yr, sizing_mode="stretch_width",
-                 outline_line_color="#18c3cf", outline_line_alpha=0.3,
-                 outline_line_width=2)
+            p_txtt_src.add([f"{c_val}"], name="text")
+            i_axis_data = [c_val]
 
         s_agg = agg.sel(**{cat: c_val})
         s_img = tf.shade(s_agg, cmap=color)
 
-        if i_names:
-            i_axis_data = [i_names[c_val]]
-        else:
-            i_axis_data = [c_val]
-
         s_ds = ColumnDataSource(data=dict(image=[s_img.data], x=[x_min],
                                           i_axis=i_axis_data,
                                           y=[y_min], dw=[dw], dh=[dh]))
+        s_ds.add(i_axis_data, "i_axis")
 
         ir = ImageRGBA(image='image', x='x', y='y', dw='dw', dh='dh',
                        dilate=False)
 
-        f.add_glyph(s_ds, ir)
-        f.add_glyph(p_title_src, p_title)
-
-        for tool in tools:
-            f.add_tools(tool)
-
-        # some common axis specifications
-        axis_specs = dict(axis_label_text_font="monospace",
-                          axis_label_text_font_style="normal",
-                          axis_label_text_font_size="8pt",
-                          minor_tick_line_width=0,
-                          major_tick_out=2,
-                          major_tick_in=2,
-                          major_label_text_font_size="8pt",
-                          ticker=BasicTicker(desired_num_ticks=4))
-
         # Add x-axis to all items in the last row
         if (i >= ncols * (nrows - 1)):
-            f.extra_x_ranges = {"xr": bk_xr}
-            f.add_layout(LinearAxis(x_range_name="xr",
-                                    axis_label=xlab, **axis_specs),
-                         'below')
-
-            if x_name.lower() == "time":
-                f.xaxis[0].formatter = DatetimeTickFormatter(hourmin=['%H:%M']
-                                                             )
+            add_xaxis = True
+        else:
+            add_xaxis = False
 
         # Add y-axis to all items in the first columns
         if (i % ncols == 0):
-            f.extra_y_ranges = {"yr": bk_yr}
-            f.add_layout(LinearAxis(y_range_name="yr",
-                                    axis_label=ylab, **axis_specs),
-                         'left')
+            add_yaxis = True
+        else:
+            add_yaxis = False
 
+        f = create_bk_fig(x_range=x_range, y_range=y_range,
+                          xlab=xlab, ylab=ylab, title=title,
+                          x_axis_type=x_axis_type, x_name=x_name, y_name=y_name,
+                          pw=pw, ph=ph, add_title=False, add_xaxis=add_xaxis,
+                          add_yaxis=add_yaxis)
+
+        f.add_glyph(s_ds, ir)
+        f.add_glyph(p_txtt_src, p_txtt)
+
+        # Add some information on the tooltip
+        h_tool = f.select(name="p_htool")[0]
+        h_tool.tooltips.append((cat, '@i_axis'))
+
+        if add_xaxis:
+            if x_name.lower() in ['channel', 'frequency']:
+                f = add_axis(fig=f, axis_range=x.chan.values,
+                             ax_label='Channel')
+            elif x_name.lower() == "time":
+                xaxis = f.select(name="p_x_axis")[0]
+                xaxis.formatter = DatetimeTickFormatter(hourmin=['%H:%M'])
+            elif x_name.lower() == "phase":
+                xaxis = f.select(name="p_x_axis")[0]
+                xaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
+
+        if add_yaxis:
             # Set formating if yaxis is phase
             if y_name.lower() == 'phase':
-                f.yaxis[0].formatter = PrintfTickFormatter(
-                    format=u"%f\u00b0")
-
-        if x_name.lower() in ['channel', 'frequency']:
-            # Add this extra axis on all items in the first row
-            if (i < ncols):
-                f = add_axis(fig=f,
-                             axis_range=x.chan.values,
-                             ax_label='Channel')
-
-                # name of axis known from add_axis()
-                # update with the new changes
-                f.select(selector={
-                    "name": "chan_xtra_linaxis"})[0].update(**axis_specs)
+                yaxis = f.select(name="p_y_axis")[0]
+                yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
         n_grid.append(f)
 
@@ -1134,66 +1243,37 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         x_min, x_max, y_min, y_max = compute(x_min, x_max, y_min, y_max)
     logger.info("Done")
 
-    if iterate != None:
+    if iterate and colour_axis:
+        xy_df, cat_values = create_categorical_df(colour_axis, x, y,
+                                                  xds_table_obj)
+        # generate resulting image
+        image = gen_image(xy_df, x_min, x_max, y_min, y_max, x=x,
+                          c_width=c_width, c_height=c_height, x_name=x.name,
+                          y_name=y.name, cat=colour_axis, color=color,
+                          title=title, ylab=ylab, xlab=xlab,
+                          x_axis_type=x_axis_type, add_cbar=False,
+                          add_title=False, add_xaxis=False, add_yaxis=False)
+
+    elif iterate:
         title = title + " Iterated By: {}".format(iterate.capitalize())
-        if iterate in ['corr', 'chan']:
-            if iterate == 'corr':
-                iter_data = xr.DataArray(da.arange(y[iterate].size),
-                                         name=iterate, dims=[iterate])
-        elif iter_cols[iterate] == 'Baseline':
-            # get the data array over which to iterate and merge it to x and y
-            iter_data = create_bl_data_array(xds_table_obj)
-        else:
-            try:
-                iter_data = xds_table_obj[iter_cols[iterate]]
-            except:
-                logger.error("Specified data column not found.")
 
-        logger.info("Creating Dataframe")
-        xy_df = create_df(x, y, iter_data=iter_data)[[x.name, y.name,
-                                                      iter_cols[iterate]]]
-        cats = np.unique(iter_data.values)
-
-        # change value of iterate to the required data column
-        iterate = iter_cols[iterate]
-
-        xy_df = xy_df.astype({iterate: 'category'})
-        xy_df[iterate] = xy_df[iterate].cat.as_known()
+        xy_df, cat_values = create_categorical_df(iterate, x, y,
+                                                  xds_table_obj)
 
         # generate resulting grid
         image = gen_grid(xy_df, x_min, x_max, y_min, y_max,
                          c_width=c_width, c_height=c_height, x_name=x.name,
-                         y_name=y.name, cat=iterate, cat_vals=cats, ncols=9,
+                         y_name=y.name, cat=iterate, cat_vals=cat_values,
+                         ncols=9,
                          color=color, title=title, x_axis_type=x_axis_type,
                          pw=210, ph=100, xlab=xlab, ylab=ylab, x=x,
                          ms_name=ms_name, xds_table_obj=xds_table_obj)
 
-    if colour_axis != None:
+    elif colour_axis:
         title = title + " Colourised By: {}".format(colour_axis.capitalize())
-        if colour_axis in ['corr', 'chan']:
-            if colour_axis == 'corr':
-                iter_data = xr.DataArray(da.arange(y[colour_axis].size),
-                                         name=colour_axis, dims=[colour_axis])
-        elif iter_cols[colour_axis] == 'Baseline':
-            # get the data array over which to colour_axis and merge it to x
-            # and y
-            iter_data = create_bl_data_array(xds_table_obj)
-        else:
-            try:
-                iter_data = xds_table_obj[iter_cols[colour_axis]]
-            except:
-                logger.error("Specified data column not found.")
-        logger.info("Creating Dataframe")
-        xy_df = create_df(x, y, iter_data=iter_data)[[x.name, y.name,
-                                                      iter_cols[colour_axis]]]
 
-        cats = np.unique(iter_data.values)
-
-        # change value of colour_axis to the required data column
-        colour_axis = iter_cols[colour_axis]
-
-        xy_df = xy_df.astype({colour_axis: 'category'})
-        xy_df[colour_axis] = xy_df[colour_axis].cat.as_known()
+        xy_df, cat_values = create_categorical_df(colour_axis, x, y,
+                                                  xds_table_obj)
 
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, x=x,
@@ -1202,7 +1282,7 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                           title=title, ylab=ylab, xlab=xlab,
                           x_axis_type=x_axis_type)
 
-    if colour_axis is None and iterate is None:
+    else:
         logger.info("Creating Dataframe")
         xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
 
@@ -1212,10 +1292,6 @@ def hv_plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                           y_name=y.name, cat=iterate, color=color,
                           title=title, ylab=ylab, xlab=xlab,
                           x_axis_type=x_axis_type)
-
-    elif colour_axis is not None and iterate is not None:
-        logger.error(
-            """Unable to generate plot. Ensure that NOT both colour-axis and iter-axis have been specified.""")
 
     return image
 
