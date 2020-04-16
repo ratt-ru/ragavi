@@ -402,9 +402,7 @@ def slice_data(inp):
         splits = [None if x == '' else int(x) for x in splits]
 
         len_splits = len(splits)
-        start = None
-        stop = None
-        step = 1
+        start, stop, step = None, None, 1
 
         if len_splits == 1:
             start = int(splits[0])
