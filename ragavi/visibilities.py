@@ -29,7 +29,8 @@ from bokeh.models import (BasicTicker, ColorBar, ColumnDataSource,  CustomJS,
 from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
                                 WheelZoomTool, SaveTool)
 
-from ragavi import utils as vu
+import ragavi.utils as vu
+from ipdb import set_trace
 
 from dask.distributed import Client, LocalCluster
 
@@ -406,6 +407,7 @@ class DataCoreProcessor(object):
         return d
 
 
+##################### Plot related functions ###########################
 def add_axis(fig, axis_range, ax_label):
     """Add an extra axis to the current figure
 
@@ -441,50 +443,6 @@ def add_axis(fig, axis_range, ax_label):
                          ticker=BasicTicker(desired_num_ticks=6))
     fig.add_layout(linaxis, 'above')
     return fig
-
-
-def make_cbar(cats, category, cmap=None):
-    """Initiate a colorbar for categorical data
-    Parameters
-    ----------
-    cats: :obj:`np.ndarray`
-        Available category ids e.g scan_number, field id etc
-    category: :obj:`str`
-        Name of the categorizing axis
-    cmap: :obj:`matplotlib.cmap`
-        Matplotlib colormap
-
-    Returns
-    -------
-    cbar: :obj:`bokeh.models`
-        Colorbar instance
-    """
-    lo = np.min(cats)
-    hi = np.max(cats)
-    cats = cats.astype(str)
-    category = category.capitalize()
-    ncats = cats.size
-
-    # format the cateogry name for cbar title
-    if "_" in category:
-        if category == "Data_desc_id":
-            category = "Spw"
-        else:
-            category = category.split("_")[0]
-
-    # not using categorical because we'll need to define our own colors
-    cmapper = LinearColorMapper(palette=cmap[:ncats], low=lo, high=hi)
-    b_ticker = BasicTicker(desired_num_ticks=ncats,
-                           num_minor_ticks=0)
-
-    cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
-                    border_line_color=None, ticker=b_ticker,
-                    location=(0, 0), title=category, title_standoff=5,
-                    title_text_font_size='10pt', title_text_align="left",
-                    title_text_font="monospace", minor_tick_line_width=0,
-                    title_text_font_style="normal")
-
-    return cbar
 
 
 def create_bk_fig(x_range, y_range, x=None, xlab=None, ylab=None,
@@ -578,324 +536,6 @@ def create_bk_fig(x_range, y_range, x=None, xlab=None, ylab=None,
     return p
 
 
-def create_bl_data_array(xds_table_obj, bl_combos=False):
-    """Make a dataArray containing baseline numbers
-
-    Parameters
-    ----------
-    xds_table_obj: :obj:`xarray.Dataset`
-        Daskms dataset object
-    bl_combos: :obj:`Bool`
-        Whether to return only the available baseline combinations
-    Returns
-    -------
-    baseline: :obj:`xarray.DataArray`
-        DataArray containing baseline numbers
-    """
-    ant1 = xds_table_obj.ANTENNA1
-    ant2 = xds_table_obj.ANTENNA2
-
-    u_ants = da.unique(ant1.data).compute()
-    u_bls_combos = combinations(np.arange(u_ants.size + 1), 2)
-
-    if bl_combos:
-        return u_bls_combos
-
-    logger.info("Populating baseline data")
-
-    # create a baseline array of the same shape as antenna1
-    baseline = np.empty_like(ant1.values)
-    for bl, a in enumerate(u_bls_combos):
-        a1 = a[0]
-        a2 = a[-1]
-        baseline[(ant2.values == a2) & (ant1.values == a1)] = bl
-
-    baseline = da.asarray(a=baseline).rechunk(ant1.data.chunksize)
-    baseline = ant1.copy(deep=True, data=baseline)
-    baseline.name = 'Baseline'
-    return baseline
-
-
-def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='',
-               columns=None, chan=None, corr=None):
-    """ Perform MS averaging
-    Parameters
-    ----------
-    ms_name : :obj:`str`
-        Name of the input MS
-    tbin : :obj:`float`
-        Time bin in seconds
-    cbin : :obj:`int`
-        Number of channels to bin together
-    chunk_size : :obj:`dict` 
-        Size of resulting MS chunks. 
-    taql: :obj:`str`
-        TAQL clause to pass to xarrayms
-
-    Returns
-    -------
-    x_dataset: :obj:`list`
-        List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split by Spectral windows
-
-    """
-    from xova.apps.xova import averaging as av
-
-    if chunk_size is None:
-        chunk_size = dict(row=100000)
-    if tbin is None:
-        tbin = 1
-    if cbin is None:
-        cbin = 1
-
-    # must be grouped this way because of time averaging
-    ms_obj = xm.xds_from_ms(ms_name, group_cols=['DATA_DESC_ID',
-                                                 'FIELD_ID',
-                                                 'SCAN_NUMBER'],
-                            taql_where=taql)
-
-    # some channels have been selected
-    if chan is not None:
-        ms_obj = [_.sel(chan=chan) for _ in ms_obj]
-
-    # select a corr
-    if corr is not None:
-        ms_obj = [_.sel(corr=corr) for _ in ms_obj]
-
-    # unique ddids available
-    unique_spws = np.unique([ds.DATA_DESC_ID for ds in ms_obj])
-
-    logger.info("Averaging MAIN table")
-
-    # perform averaging to the MS
-    avg_mss = av.average_main(ms_obj, tbin, cbin, 100000, False)
-
-    x_datasets = []
-    spw_ds = []
-
-    logger.info("Creating averaged xarray Dataset")
-
-    for ams in avg_mss:
-        data_vars = OrderedDict()
-        coords = OrderedDict()
-
-        for k, v in sorted(ams.data_vars.items()):
-            if k in columns:
-                data_vars[k] = xr.DataArray(v,
-                                            dims=v.dims, attrs=v.attrs)
-        """
-        for k, v in sorted(ams.coords.items()):
-            if k in columns:
-                coords[k] = xr.DataArray(v,
-                                         dims=v.dims, attrs=v.attrs)
-        """
-
-        # create datasets and rename dimension "[uvw]"" to "uvw"
-        x_datasets.append(xr.Dataset(data_vars,
-                                     attrs=dict(ams.attrs),
-                                     coords=coords).rename_dims({"[uvw]":
-                                                                 "uvw"}))
-
-    # Separate datasets in different SPWs
-    for di in unique_spws:
-        spw_ds.append(
-            [x for x in x_datasets if x.DATA_DESC_ID[0] == di])
-
-    x_datasets = []
-    # produce multiple datasets incase of multiple SPWs
-    # previous step results in  list of the form [[spw1_data], [spw2_data]]
-    # for each spw
-    for spw in spw_ds:
-        # Compact averaged MS datasets into a single dataset for ragavi
-        ms_obj = xr.combine_nested(spw, concat_dim='row',
-                                   compat='no_conflicts', data_vars='all',
-                                   coords='different', join='outer')
-        # chunk the data as user wanted it
-        ms_obj = ms_obj.chunk(chunk_size)
-        x_datasets.append(ms_obj)
-
-    logger.info("Averaging completed.")
-
-    return x_datasets
-
-
-def massage_data(x, y, get_y=False, iter_ax=None):
-    """Massages x-data into a size similar to that of y-axis data via
-    the necessary repetitions. This function also flattens y-axis data
-    into 1-D.
-
-    Parameters
-    ----------
-    x: :obj:`xr.DataArray`
-        Data for the x-axis
-    y: :obj:`xr.DataArray`
-        Data for the y-axis
-    get_y: :obj:`bool`
-        Choose whether to return y-axis data or not
-
-    Returns
-    -------
-    x: :obj:`dask.array`
-        Data for the x-axis
-    y: :obj:`dask.array`
-        Data for the y-axis
-    """
-
-    iter_cols = ['ANTENNA1', 'ANTENNA2',
-                 'FIELD_ID', 'SCAN_NUMBER', 'DATA_DESC_ID', 'Baseline']
-    # can add 'chan','corr' to this list
-
-    # available dims in the x and y axes
-    y_dims = set(y.dims)
-    x_dims = set(x.dims)
-
-    # find dims that are not available in x and only avail in y
-    req_x_dims = y_dims - x_dims
-
-    if not isinstance(x.data, da.Array):
-        nx = da.asarray(x.data)
-    else:
-        nx = x.data
-
-    if x.ndim > 1:
-        nx = nx.ravel()
-
-    if len(req_x_dims) > 0:
-
-        sizes = []
-
-        # calculate dim sizes for repetion of x_axis
-        for item in req_x_dims:
-            sizes.append(y[item].size)
-
-        if iter_ax == "corr":
-            nx = nx.reshape(1, nx.size).repeat(np.prod(sizes), axis=0).ravel()
-            nx = nx.rechunk(y.data.ravel().chunks)
-
-        elif y.dims[0] == "chan" and iter_ax in iter_cols:
-            # Because data is transposed this must be done
-            nx = nx.reshape(1, nx.size).repeat(np.prod(sizes), axis=0).ravel()
-            nx = nx.rechunk(y.data.ravel().chunks)
-
-        else:
-            try:
-                nx = nx.map_blocks(np.repeat,
-                                   np.prod(sizes),
-                                   chunks=y.data.ravel().chunks)
-            except ValueError:
-                # for the non-xarray dask data
-                nx = nx.repeat(np.prod(sizes)).rechunk(y.data.ravel().chunks)
-    if get_y:
-        # flatten y data
-        # get_data also
-        ny = y.data.ravel()
-        return nx, ny
-    else:
-        return nx
-
-
-def create_df(x, y, iter_data=None):
-    """Create a dask dataframe from input x, y and iterate columns if 
-    available. This function flattens all the data into 1-D Arrays
-
-    Parameters
-    ----------
-    x: :obj:`dask.array`
-        Data for the x-axis
-    y: :obj:`dask.array`
-        Data for the y-axis
-    iter_ax: :obj:`dask.array`
-        iteration axis if possible
-
-    Returns
-    -------
-    new_ds: :obj:`dask.Dataframe`
-        Dataframe containing the required columns
-    """
-
-    x_name = x.name
-    y_name = y.name
-
-    # flatten and chunk the data accordingly
-    nx, ny = massage_data(x, y, get_y=True)
-
-    # declare variable names for the xarray dataset
-    var_names = {x_name: ('row', nx),
-                 y_name: ('row', ny)}
-
-    if iter_data is not None:
-        i_name = iter_data.name
-        iter_data = massage_data(iter_data, y, get_y=False, iter_ax=i_name)
-        var_names[i_name] = ('row', iter_data)
-
-    new_ds = xr.Dataset(data_vars=var_names)
-    new_ds = new_ds.to_dask_dataframe()
-    new_ds = new_ds.dropna()
-    return new_ds
-
-
-def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
-    """
-    it_axis: :obj:`str`
-        Column over which to iterate / colourise
-    x_data: :obj:`xr.DataArray`
-        x-axis data
-    y_data: :obj:`xr.DataArray`
-        y-axis data
-    xds_table_obj: :obj:`xr.Dataset`
-        Daskms partition for this chunk of data
-
-    Returns
-    -------
-    xy_df: :obj:`dask.DataFrame`
-        Dask dataframe with the required category
-    cat_values: :obj:`np.array`
-        Array containing the unique identities of the iteration axis
-    """
-    # iteration key word: data column name
-
-    if it_axis in ['corr', 'chan']:
-        iter_data = xr.DataArray(da.arange(y_data[it_axis].size),
-                                 name=it_axis, dims=[it_axis])
-    elif it_axis == 'Baseline':
-        # should only be applicable to color axis
-        # get the data array over which to iterate and merge it to x and y
-        iter_data = create_bl_data_array(xds_table_obj)
-    else:
-        try:
-            iter_data = xds_table_obj[it_axis]
-        except:
-            logger.error("Specified data column not found.")
-
-    logger.info("Creating Dataframe")
-
-    xy_df = create_df(x_data, y_data, iter_data=iter_data)[[x_data.name,
-                                                            y_data.name,
-                                                            it_axis]]
-    cat_values = np.unique(iter_data.values)
-
-    xy_df = xy_df.astype({it_axis: 'category'})
-    xy_df[it_axis] = xy_df[it_axis].cat.as_known()
-
-    return xy_df, cat_values
-
-
-@time_wrapper
-def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
-    cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
-    logger.info("Datashader aggregation starting")
-
-    if cat:
-        with ProgressBar():
-            agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
-    else:
-        with ProgressBar():
-            agg = cvs.points(xy_df, x, y, ds.any())
-
-    logger.info("Aggregation done")
-
-    return agg
-
-
 def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
               color=None, i_labels=None, ph=PLOT_HEIGHT, pw=PLOT_WIDTH,
               x_axis_type="linear", x_name=None, x=None, xlab=None,
@@ -969,7 +609,7 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
             i_axis = list(chunk_attrs.keys())
             i_axis.remove("DATA_DESC_ID")
         else:
-            i_axis = List(chunk_attrs.keys())
+            i_axis = list(chunk_attrs.keys())
 
         h_tool = fig.select(name="p_htool")[0]
 
@@ -1159,74 +799,65 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
     return n_grid
 
 
-def validate_axis_inputs(inp):
-    """Check if the input axes tally with those that are available
+@time_wrapper
+def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
+    cvs = ds.Canvas(plot_width=w, plot_height=h, x_range=xr, y_range=yr)
+    logger.info("Datashader aggregation starting")
+
+    if cat:
+        with ProgressBar():
+            agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
+    else:
+        with ProgressBar():
+            agg = cvs.points(xy_df, x, y, ds.any())
+
+    logger.info("Aggregation done")
+
+    return agg
+
+
+def make_cbar(cats, category, cmap=None):
+    """Initiate a colorbar for categorical data
     Parameters
     ----------
-    inp: :obj:`str`
-        User's axis input
-    choices: :obj:`list`
-        Available choices for a specific axis
-    alts: :obj:`dict`
-        All the available altenatives for the various axes
+    cats: :obj:`np.ndarray`
+        Available category ids e.g scan_number, field id etc
+    category: :obj:`str`
+        Name of the categorizing axis
+    cmap: :obj:`matplotlib.cmap`
+        Matplotlib colormap
 
     Returns
     -------
-    inp: :obj:`str`
-        Validated string
+    cbar: :obj:`bokeh.models`
+        Colorbar instance
     """
-    alts = {}
-    alts['amp'] = alts['Amp'] = 'amplitude'
-    alts['ant1'] = alts['Antenna1'] = alts[
-        'Antenna'] = alts['ant'] = 'antenna1'
-    alts['ant2'] = alts['Antenna2'] = 'antenna2'
-    alts['ant'] = alts['Antenna'] = 'antenna'
-    alts['Baseline'] = alts['bl'] = 'baseline'
-    alts['chan'] = alts['Channel'] = 'channel'
-    alts['correlation'] = alts['Corr'] = 'corr'
-    alts['freq'] = alts['Frequency'] = 'frequency'
-    alts['Field'] = 'field'
-    alts['imaginary'] = alts['Imag'] = alts['imag'] = 'imaginary'
-    alts['Real'] = 'real'
-    alts['Scan'] = 'scan'
-    alts['Spw'] = 'spw'
-    alts['Time'] = 'time'
-    alts['Phase'] = 'phase'
-    alts['UVdist'] = alts['uvdist'] = 'uvdistance'
-    alts['uvdistl'] = alts['uvdist_l'] = alts['UVwave'] = 'uvwave'
-    alts['ant'] = alts['Antenna'] = 'antenna1'
+    lo = np.min(cats)
+    hi = np.max(cats)
+    cats = cats.astype(str)
+    category = category.capitalize()
+    ncats = cats.size
 
-    # convert to proper name if in other name
-    if inp in alts:
-        inp = alts[inp]
+    # format the cateogry name for cbar title
+    if "_" in category:
+        if category == "Data_desc_id":
+            category = "Spw"
+        else:
+            category = category.split("_")[0]
 
-    return inp
+    # not using categorical because we'll need to define our own colors
+    cmapper = LinearColorMapper(palette=cmap[:ncats], low=lo, high=hi)
+    b_ticker = BasicTicker(desired_num_ticks=ncats,
+                           num_minor_ticks=0)
 
+    cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
+                    border_line_color=None, ticker=b_ticker,
+                    location=(0, 0), title=category, title_standoff=5,
+                    title_text_font_size='10pt', title_text_align="left",
+                    title_text_font="monospace", minor_tick_line_width=0,
+                    title_text_font_style="normal")
 
-def corr_iter(subs):
-    """ Return a list containing iteration over corrs in respective SPWs
-    Parameters
-    ----------
-    subs: :obj:`list`
-        List containing subtables for the daskms grouped data
-
-    Returns
-    -------
-    outp: :obj:`list`
-        A list containing data for each individual corr. This list is 
-        ordered by corr and SPW.
-
-    #NOTE: can also be used for chan iteration. Will require name change
-    """
-    outp = []
-    n_corrs = subs[0].corr.size
-
-    for sub in subs:
-        for c in range(n_corrs):
-            nsub = sub.copy(deep=True).sel(corr=c)
-            nsub.attrs["Corr"] = c
-            outp.append(nsub)
-    return outp
+    return cbar
 
 
 def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
@@ -1437,6 +1068,7 @@ def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     return image, title
 
 
+###################### MS related functions ############################
 def antenna_iter(ms_name, columns, **kwargs):
     """ Return a list containing iteration over antennas in respective SPWs
     Parameters
@@ -1484,30 +1116,137 @@ def antenna_iter(ms_name, columns, **kwargs):
     return outp
 
 
-def get_colname(inp):
-    aliases = {
-        'antenna': 'antenna',
-        'antenna1': 'ANTENNA1',
-        'antenna2': 'ANTENNA2',
-        'baseline': 'Baseline',
-        # 'baseline': ["ANTENNA1", "ANTENNA2"],
-        'chan': 'chan',
-        'corr': 'corr',
-        'field': 'FIELD_ID',
-        'scan': 'SCAN_NUMBER',
-        'spw': 'DATA_DESC_ID',
-        'time': 'TIME'
-    }
-    if inp != None:
-        col_name = aliases[inp]
-    else:
-        col_name = None
-    return col_name
+def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='',
+               columns=None, chan=None, corr=None):
+    """ Perform MS averaging
+    Parameters
+    ----------
+    ms_name : :obj:`str`
+        Name of the input MS
+    tbin : :obj:`float`
+        Time bin in seconds
+    cbin : :obj:`int`
+        Number of channels to bin together
+    chunk_size : :obj:`dict` 
+        Size of resulting MS chunks. 
+    taql: :obj:`str`
+        TAQL clause to pass to xarrayms
+
+    Returns
+    -------
+    x_dataset: :obj:`list`
+        List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split by Spectral windows
+
+    """
+    from xova.apps.xova import averaging as av
+
+    if chunk_size is None:
+        chunk_size = dict(row=100000)
+    if tbin is None:
+        tbin = 1
+    if cbin is None:
+        cbin = 1
+
+    # must be grouped this way because of time averaging
+    ms_obj = xm.xds_from_ms(ms_name, group_cols=['DATA_DESC_ID',
+                                                 'FIELD_ID',
+                                                 'SCAN_NUMBER'],
+                            taql_where=taql)
+
+    # some channels have been selected
+    if chan is not None:
+        ms_obj = [_.sel(chan=chan) for _ in ms_obj]
+
+    # select a corr
+    if corr is not None:
+        ms_obj = [_.sel(corr=corr) for _ in ms_obj]
+
+    # unique ddids available
+    unique_spws = np.unique([ds.DATA_DESC_ID for ds in ms_obj])
+
+    logger.info("Averaging MAIN table")
+
+    # perform averaging to the MS
+    avg_mss = av.average_main(ms_obj, tbin, cbin, 100000, False)
+
+    x_datasets = []
+    spw_ds = []
+
+    logger.info("Creating averaged xarray Dataset")
+
+    for ams in avg_mss:
+        data_vars = OrderedDict()
+        coords = OrderedDict()
+
+        for k, v in sorted(ams.data_vars.items()):
+            if k in columns:
+                data_vars[k] = xr.DataArray(v,
+                                            dims=v.dims, attrs=v.attrs)
+        """
+        for k, v in sorted(ams.coords.items()):
+            if k in columns:
+                coords[k] = xr.DataArray(v,
+                                         dims=v.dims, attrs=v.attrs)
+        """
+
+        # create datasets and rename dimension "[uvw]"" to "uvw"
+        x_datasets.append(xr.Dataset(data_vars,
+                                     attrs=dict(ams.attrs),
+                                     coords=coords).rename_dims({"[uvw]":
+                                                                 "uvw"}))
+
+    # Separate datasets in different SPWs
+    for di in unique_spws:
+        spw_ds.append(
+            [x for x in x_datasets if x.DATA_DESC_ID[0] == di])
+
+    x_datasets = []
+    # produce multiple datasets incase of multiple SPWs
+    # previous step results in  list of the form [[spw1_data], [spw2_data]]
+    # for each spw
+    for spw in spw_ds:
+        # Compact averaged MS datasets into a single dataset for ragavi
+        ms_obj = xr.combine_nested(spw, concat_dim='row',
+                                   compat='no_conflicts', data_vars='all',
+                                   coords='different', join='outer')
+        # chunk the data as user wanted it
+        ms_obj = ms_obj.chunk(chunk_size)
+        x_datasets.append(ms_obj)
+
+    logger.info("Averaging completed.")
+
+    return x_datasets
+
+
+def corr_iter(subs):
+    """ Return a list containing iteration over corrs in respective SPWs
+    Parameters
+    ----------
+    subs: :obj:`list`
+        List containing subtables for the daskms grouped data
+
+    Returns
+    -------
+    outp: :obj:`list`
+        A list containing data for each individual corr. This list is 
+        ordered by corr and SPW.
+
+    #NOTE: can also be used for chan iteration. Will require name change
+    """
+    outp = []
+    n_corrs = subs[0].corr.size
+
+    for sub in subs:
+        for c in range(n_corrs):
+            nsub = sub.copy(deep=True).sel(corr=c)
+            nsub.attrs["Corr"] = c
+            outp.append(nsub)
+    return outp
 
 
 def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
            scan=None, where=None, cbin=None, tbin=None, chan_select=None,
-           corr_select=None, **kwargs):
+           corr_select=None, iter_axis=None):
     """Get xarray Dataset objects containing Measurement Set columns of the selected data
 
     Parameters
@@ -1538,8 +1277,6 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
     tab_objs: :obj:`list`
         A list containing the specified table objects as  :obj:`xarray.Dataset`
     """
-    iter_axis = kwargs.get("iter_axis", None)
-
     global SELECTION_ACTIVE
 
     group_cols = []
@@ -1567,7 +1304,7 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
         ms_schema[data_col] = ms_schema['DATA']
 
     if chunks is None:
-        chunks = dict(row=100000)
+        chunks = dict(row=10000)
     else:
         dims = ['row', 'chan', 'corr']
         chunks = {k: int(v) for k, v in zip(dims, chunks.split(','))}
@@ -1578,7 +1315,6 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
     else:
         where = [where]
 
-    sel_active = False
     if ddid is not None:
         where.append("DATA_DESC_ID IN {}".format(ddid))
         SELECTION_ACTIVE = True
@@ -1643,6 +1379,295 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
         sys.exit(-1)
 
 
+###################### DF related functions ############################
+def create_bl_data_array(xds_table_obj, bl_combos=False):
+    """Make a dataArray containing baseline numbers
+
+    Parameters
+    ----------
+    xds_table_obj: :obj:`xarray.Dataset`
+        Daskms dataset object
+    bl_combos: :obj:`Bool`
+        Whether to return only the available baseline combinations
+    Returns
+    -------
+    baseline: :obj:`xarray.DataArray`
+        DataArray containing baseline numbers
+    """
+    ant1 = xds_table_obj.ANTENNA1
+    ant2 = xds_table_obj.ANTENNA2
+
+    u_ants = da.unique(ant1.data).compute()
+    u_bls_combos = combinations(np.arange(u_ants.size + 1), 2)
+
+    if bl_combos:
+        return u_bls_combos
+
+    logger.info("Populating baseline data")
+
+    # create a baseline array of the same shape as antenna1
+    baseline = np.empty_like(ant1.values)
+    for bl, a in enumerate(u_bls_combos):
+        a1 = a[0]
+        a2 = a[-1]
+        baseline[(ant2.values == a2) & (ant1.values == a1)] = bl
+
+    baseline = da.asarray(a=baseline).rechunk(ant1.data.chunksize)
+    baseline = ant1.copy(deep=True, data=baseline)
+    baseline.name = 'Baseline'
+    return baseline
+
+
+def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
+    """
+    it_axis: :obj:`str`
+        Column over which to iterate / colourise
+    x_data: :obj:`xr.DataArray`
+        x-axis data
+    y_data: :obj:`xr.DataArray`
+        y-axis data
+    xds_table_obj: :obj:`xr.Dataset`
+        Daskms partition for this chunk of data
+
+    Returns
+    -------
+    xy_df: :obj:`dask.DataFrame`
+        Dask dataframe with the required category
+    cat_values: :obj:`np.array`
+        Array containing the unique identities of the iteration axis
+    """
+    # iteration key word: data column name
+
+    if it_axis in ['corr', 'chan']:
+        iter_data = xr.DataArray(da.arange(y_data[it_axis].size),
+                                 name=it_axis, dims=[it_axis])
+    elif it_axis == 'Baseline':
+        # should only be applicable to color axis
+        # get the data array over which to iterate and merge it to x and y
+        iter_data = create_bl_data_array(xds_table_obj)
+    else:
+        try:
+            iter_data = xds_table_obj[it_axis]
+        except:
+            logger.error("Specified data column not found.")
+
+    logger.info("Creating Dataframe")
+
+    xy_df = create_df(x_data, y_data, iter_data=iter_data)[[x_data.name,
+                                                            y_data.name,
+                                                            it_axis]]
+    cat_values = np.unique(iter_data.values)
+
+    xy_df = xy_df.astype({it_axis: 'category'})
+    xy_df[it_axis] = xy_df[it_axis].cat.as_known()
+
+    return xy_df, cat_values
+
+
+def create_df(x, y, iter_data=None):
+    """Create a dask dataframe from input x, y and iterate columns if 
+    available. This function flattens all the data into 1-D Arrays
+
+    Parameters
+    ----------
+    x: :obj:`dask.array`
+        Data for the x-axis
+    y: :obj:`dask.array`
+        Data for the y-axis
+    iter_ax: :obj:`dask.array`
+        iteration axis if possible
+
+    Returns
+    -------
+    new_ds: :obj:`dask.Dataframe`
+        Dataframe containing the required columns
+    """
+
+    x_name = x.name
+    y_name = y.name
+
+    # flatten and chunk the data accordingly
+    nx, ny = massage_data(x, y, get_y=True)
+
+    # declare variable names for the xarray dataset
+    var_names = {x_name: ('row', nx),
+                 y_name: ('row', ny)}
+
+    if iter_data is not None:
+        i_name = iter_data.name
+        iter_data = massage_data(iter_data, y, get_y=False, iter_ax=i_name)
+        var_names[i_name] = ('row', iter_data)
+
+    new_ds = xr.Dataset(data_vars=var_names)
+    new_ds = new_ds.to_dask_dataframe()
+    new_ds = new_ds.dropna()
+    return new_ds
+
+
+def massage_data(x, y, get_y=False, iter_ax=None):
+    """Massages x-data into a size similar to that of y-axis data via
+    the necessary repetitions. This function also flattens y-axis data
+    into 1-D.
+
+    Parameters
+    ----------
+    x: :obj:`xr.DataArray`
+        Data for the x-axis
+    y: :obj:`xr.DataArray`
+        Data for the y-axis
+    get_y: :obj:`bool`
+        Choose whether to return y-axis data or not
+
+    Returns
+    -------
+    x: :obj:`dask.array`
+        Data for the x-axis
+    y: :obj:`dask.array`
+        Data for the y-axis
+    """
+
+    iter_cols = ['ANTENNA1', 'ANTENNA2',
+                 'FIELD_ID', 'SCAN_NUMBER', 'DATA_DESC_ID', 'Baseline']
+    # can add 'chan','corr' to this list
+
+    # available dims in the x and y axes
+    y_dims = set(y.dims)
+    x_dims = set(x.dims)
+
+    # find dims that are not available in x and only avail in y
+    req_x_dims = y_dims - x_dims
+
+    if not isinstance(x.data, da.Array):
+        nx = da.asarray(x.data)
+    else:
+        nx = x.data
+
+    if x.ndim > 1:
+        nx = nx.ravel()
+
+    if len(req_x_dims) > 0:
+
+        sizes = []
+
+        # calculate dim sizes for repetion of x_axis
+        for item in req_x_dims:
+            sizes.append(y[item].size)
+
+        if iter_ax == "corr":
+            nx = nx.reshape(1, nx.size).repeat(np.prod(sizes), axis=0).ravel()
+            nx = nx.rechunk(y.data.ravel().chunks)
+
+        elif y.dims[0] == "chan" and iter_ax in iter_cols:
+            # Because data is transposed this must be done
+            nx = nx.reshape(1, nx.size).repeat(np.prod(sizes), axis=0).ravel()
+            nx = nx.rechunk(y.data.ravel().chunks)
+
+        else:
+            try:
+                nx = nx.map_blocks(np.repeat,
+                                   np.prod(sizes),
+                                   chunks=y.data.ravel().chunks)
+            except ValueError:
+                # for the non-xarray dask data
+                nx = nx.repeat(np.prod(sizes)).rechunk(y.data.ravel().chunks)
+    if get_y:
+        # flatten y data
+        # get_data also
+        ny = y.data.ravel()
+        return nx, ny
+    else:
+        return nx
+
+
+###################### Validation functions ############################
+def get_colname(inp):
+    aliases = {
+        'antenna': 'antenna',
+        'antenna1': 'ANTENNA1',
+        'antenna2': 'ANTENNA2',
+        'baseline': 'Baseline',
+        # 'baseline': ["ANTENNA1", "ANTENNA2"],
+        'chan': 'chan',
+        'corr': 'corr',
+        'field': 'FIELD_ID',
+        'scan': 'SCAN_NUMBER',
+        'spw': 'DATA_DESC_ID',
+        'time': 'TIME'
+    }
+    if inp != None:
+        col_name = aliases[inp]
+    else:
+        col_name = None
+    return col_name
+
+
+def validate_axis_inputs(inp):
+    """Check if the input axes tally with those that are available
+    Parameters
+    ----------
+    inp: :obj:`str`
+        User's axis input
+    choices: :obj:`list`
+        Available choices for a specific axis
+    alts: :obj:`dict`
+        All the available altenatives for the various axes
+
+    Returns
+    -------
+    inp: :obj:`str`
+        Validated string
+    """
+    alts = {}
+    alts['amp'] = alts['Amp'] = 'amplitude'
+    alts['ant1'] = alts['Antenna1'] = alts[
+        'Antenna'] = alts['ant'] = 'antenna1'
+    alts['ant2'] = alts['Antenna2'] = 'antenna2'
+    alts['ant'] = alts['Antenna'] = 'antenna'
+    alts['Baseline'] = alts['bl'] = 'baseline'
+    alts['chan'] = alts['Channel'] = 'channel'
+    alts['correlation'] = alts['Corr'] = 'corr'
+    alts['freq'] = alts['Frequency'] = 'frequency'
+    alts['Field'] = 'field'
+    alts['imaginary'] = alts['Imag'] = alts['imag'] = 'imaginary'
+    alts['Real'] = 'real'
+    alts['Scan'] = 'scan'
+    alts['Spw'] = 'spw'
+    alts['Time'] = 'time'
+    alts['Phase'] = 'phase'
+    alts['UVdist'] = alts['uvdist'] = 'uvdistance'
+    alts['uvdistl'] = alts['uvdist_l'] = alts['UVwave'] = 'uvwave'
+    alts['ant'] = alts['Antenna'] = 'antenna1'
+
+    # convert to proper name if in other name
+    if inp in alts:
+        inp = alts[inp]
+
+    return inp
+
+
+def link_grid_plots(plot_list):
+    """Link all the plots in the x and y
+
+    """
+    if not isinstance(plot_list[0], Plot):
+        plots = []
+        plot_list = plot_list[0].children
+        for item in plot_list:
+            plots.append(item[0])
+    else:
+        plots = plot_list
+
+    n_plots = len(plots)
+    init_xr = plots[0].x_range
+    init_yr = plots[0].y_range
+    for i in range(1, n_plots):
+        plots[i].x_range = init_xr
+        plots[i].y_range = init_yr
+
+    return 0
+
+
+############################## Main Function ###########################
 def main(**kwargs):
     """Main function that launches the visibilities plotter"""
 
@@ -1698,8 +1723,8 @@ def main(**kwargs):
         sys.exit(-1)
 
     for mytab in mytabs:
-        ####################################################################
-        ############## Form valid selection statements #####################
+        ################################################################
+        ############## Form valid selection statements #################
 
         if fields is not None:
             if '~' in fields or ':' in fields or fields.isdigit():
@@ -1728,8 +1753,8 @@ def main(**kwargs):
         # capture channels or correlations to be selected
         chan = vu.slice_data(chan)
 
-        ####################################################################
-        ################### Iterate over tables ############################
+        ################################################################
+        ################### Iterate over tables ########################
 
         # translate corr labels to indices if need be
         try:
@@ -1756,21 +1781,23 @@ def main(**kwargs):
                             tbin=tbin, cbin=cbin, chan_select=chan,
                             corr_select=corr, iter_axis=iter_axis)
 
-        if mycmap in cc.palette:
-            mycmap = cc.palette[mycmap]
+        if colour_axis:
+            if mycmap:
+                mycmap = vu.get_cmap(mycmap, fall_back="glasbey_bw",
+                                     src="colorcet")
+            else:
+                mycmap = vu.get_cmap("glasbey_bw", src="colorcet")
         else:
-            logger.info(
-                """Selected color not found in palette. Reverting to default""")
-            mycmap = cc.palette["blues"]
-
-        if colour_axis != None:
-            logger.info('Enforcing categorical colours for colour axis')
-            mycmap = cc.palette['glasbey_bw']
+            if mycmap:
+                mycmap = vu.get_cmap(mycmap, fall_back="blues",
+                                     src="colorcet")
+            else:
+                mycmap = vu.get_cmap("blues", src='colorcet')
 
         # configure number of rows and columns for grid
         n_partitions = len(partitions)
         n_rows = int(np.ceil(n_partitions / n_cols))
-        # n_cols known from above
+        # n_cols known from argparser
 
         pw = PLOT_WIDTH
         ph = PLOT_HEIGHT
@@ -1839,15 +1866,18 @@ def main(**kwargs):
                 # number of rows and columns attached to the model
                 n_cols, n_rows = oup_a[0].tags
 
+            # Link all the plots
+            link_grid_plots(oup_a)
+
             info_text = f"MS: {mytab}\nGrid size: {n_cols} x {n_rows}"
             pre = PreText(text=info_text, width=int(PLOT_WIDTH * 0.95),
                           height=50, align='start', margin=(0, 0, 0, 0))
-            oup_a = gridplot(children=oup_a, ncols=n_cols,
-                             sizing_mode="stretch_width")
+            final_plot = gridplot(children=oup_a, ncols=n_cols,
+                                  sizing_mode="stretch_width")
+            final_plot = column(children=[title_div, pre, final_plot])
 
-            oup_a = column(children=[title_div, pre, oup_a])
         else:
-            oup_a = oup_a[0]
+            final_plot = oup_a[0]
 
         logger.info("Plotting complete.")
 
@@ -1860,7 +1890,7 @@ def main(**kwargs):
                 mytab.split('/')[-1], yaxis, xaxis)
 
         output_file(fname, title=fname)
-        save(oup_a)
+        save(final_plot)
 
         logger.info("Rendered plot to: {}".format(fname))
         logger.info(wrapper.fill(",\n".join(
