@@ -2,8 +2,17 @@
 
 from ragavi.arguments import gains_argparser
 
+
+def catch_empty(options):
+    """Force all empty strings to None"""
+    for key, value in options.__dict__.items():
+        if value in ["", " "]:
+            options.__dict__[key] = None
+    return options
+
 parser = gains_argparser()
 options = parser.parse_args()
+options = catch_empty(options)
 
 if __name__ == "__main__":
     from ragavi.ragavi import main
