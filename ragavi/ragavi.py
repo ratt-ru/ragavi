@@ -1482,7 +1482,7 @@ def main(**kwargs):
         gain_types = options.gain_types
         html_name = options.html_name
         image_name = options.image_name
-        mycmap = options.mycmap
+        cmap = options.mycmap
         mytabs = options.mytabs
         plotants = options.plotants
         t0 = options.t0
@@ -1560,6 +1560,9 @@ def main(**kwargs):
         else:
             where = [where]
 
+        if options.mycmap is None:
+            cmap = "coolwarm"
+
         # perform a time selections
         if t0:
             where.append(f"TIME - {str(init_time)} >= {str(t0)}")
@@ -1616,7 +1619,7 @@ def main(**kwargs):
                         u"\u25BC", u"\u2B22"]
 
         # setting up colors for the antenna plot
-        cmap = vu.get_linear_cmap(options.mycmap, ant_ids.size)
+        cmap = vu.get_linear_cmap(cmap, ant_ids.size)
 
         for _y, yaxis in enumerate(y_axes, start=1):
             fig_glyphs = []
