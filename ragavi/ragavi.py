@@ -15,17 +15,17 @@ from dask import delayed, compute
 from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
                       save, show)
 from bokeh.layouts import column, grid, gridplot, layout, row
-from bokeh.models import (BasicTicker, Button, CheckboxGroup,
-                          ColumnDataSource, CustomJS, DataRange1d, HoverTool,
+from bokeh.models import (Button, CheckboxGroup,
+                          ColumnDataSource, CustomJS, HoverTool,
                           Legend, LinearAxis, Toolbar, PrintfTickFormatter,
-                          Range1d, Slider, Scatter, Toggle, Whisker)
+                          Slider, Scatter, Toggle, Whisker)
 
 from bokeh.models.widgets import DataTable, TableColumn, Div, PreText
 from pyrap.tables import table
 
 
 import ragavi.utils as vu
-from ragavi.plotting import create_bk_fig
+from ragavi.plotting import create_bk_fig, add_axis
 
 # defining some constants
 _FLAG_DATA_ = True
@@ -838,18 +838,13 @@ def legend_toggle_callback():
     code : :obj:`str`
     """
     code = """
-                let len = loax1.length;
+                //Show only the legend for the first item
                 if (cb_obj.active.includes(0)){
-                    for(let i=0; i<len; i++){
-                        loax1[i].visible = true;
-
-                    }
+                        legs[0].visible = true;
                 }
 
                 else{
-                    for(let i=0; i<len; i++){
-                        loax1[i].visible = false;
-                    }
+                        legs[0].visible = false;
                 }
 
            """
@@ -965,36 +960,6 @@ def save_selected_callback():
 
 
 ####################### Plot Related functions ########################
-
-def add_axis(fig, axis_range, ax_label, ax_name):
-    """Add an extra axis to the current figure
-
-    Parameters
-    ----------
-    fig : :obj:`bokeh.plotting.figure`
-        The figure onto which to add extra axis
-
-    axis_range : :obj:`float`, :obj:`float`
-        Starting and ending point for the range
-    ax_label : :obj:`str`
-        Label of the new axis
-    ax_name : :obj:`str`
-        Name of the new model for the extra axis incase of multiple spectral windows.
-
-    Returns
-    ------
-    fig : :obj:`bokeh.plotting.figure`
-        Figure containing the extra axis
-    """
-    fig.extra_x_ranges[ax_name] = Range1d(
-        start=axis_range[0], end=axis_range[-1])
-    linaxis = LinearAxis(x_range_name=ax_name, axis_label=ax_label,
-                         major_label_orientation="horizontal",
-                         ticker=BasicTicker(desired_num_ticks=12),
-                         axis_label_text_font_style="normal", name=ax_name)
-    fig.add_layout(linaxis, "above")
-    return fig
-
 
 def condense_legend_items(inlist):
     """Combine renderers of legend items with the same legend labels. Must be done in case there are groups of renderers which have the same label due to iterations, to avoid a case where there are two or more groups of renderers containing the same label name.
@@ -1482,7 +1447,6 @@ def main(**kwargs):
         gain_types = options.gain_types
         html_name = options.html_name
         image_name = options.image_name
-        cmap = options.mycmap
         mytabs = options.mytabs
         plotants = options.plotants
         t0 = options.t0
@@ -1562,6 +1526,8 @@ def main(**kwargs):
 
         if options.mycmap is None:
             cmap = "coolwarm"
+        else:
+            cmap = options.mycmap
 
         # perform a time selections
         if t0:
@@ -1790,8 +1756,7 @@ def main(**kwargs):
         if len(all_figures) > 1:
             all_fsources, all_ufsources = link_plots(
                 all_figures=all_figures, all_fsources=all_fsources,
-                all_ebars=all_ebars
-            )
+                all_ebars=all_ebars)
 
         ######################################################################
         ################ Defining widgets ###################################
@@ -1910,7 +1875,7 @@ def main(**kwargs):
             code=spw_select_callback()))
 
         legend_toggle.js_on_change("active", CustomJS(
-            args=dict(loax1=all_legends),
+            args=dict(legs=all_legends),
             code=legend_toggle_callback()))
 
         toggle_err.js_on_change("active", CustomJS(

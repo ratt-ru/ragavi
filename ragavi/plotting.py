@@ -53,8 +53,8 @@ def create_bk_fig(x=None, xlab=None, ylab=None, fh=None, fw=None,
     inc = 1.00
 
     # define the axes ranges
-    x_range = DataRange1d(name="p_x_range")
-    y_range = DataRange1d(name="p_y_range")
+    x_range = DataRange1d(name="p_x_range", only_visible=True)
+    y_range = DataRange1d(name="p_y_range", only_visible=True)
 
     # define items to add on the plot
     p_htool = HoverTool(tooltips=[(x_name, "$x"),
@@ -124,3 +124,45 @@ def create_bk_fig(x=None, xlab=None, ylab=None, fh=None, fw=None,
         p.add_layout(p_y_grid)
 
     return p
+
+
+def add_axis(fig, axis_range, ax_label, ax_name=None):
+    """Add an extra axis to the current figure
+
+    Parameters
+    ----------
+    fig: :obj:`bokeh.plotting.figure`
+        The figure onto which to add extra axis
+
+    axis_range: :obj:`list`, :obj:`tuple`
+        A range of sorted values or a tuple with 2 values containing or the
+        order (min, max). This can be any ordered iteraable that can be
+        indexed.
+
+    Returns
+    -------
+    fig : :obj:`bokeh.plotting.figure`
+        Bokeh figure with an extra axis added
+    """
+    if fig.extra_x_ranges is None:
+        fig.extra_x_ranges = {}
+
+    if ax_name is None:
+        ax_name = "p_extra_xaxis"
+
+    fig.extra_x_ranges[ax_name] = Range1d(start=axis_range[0],
+                                          end=axis_range[-1])
+
+    linaxis = LinearAxis(x_range_name=ax_name, axis_label=ax_label,
+                         axis_label_text_font="monospace",
+                         axis_label_text_font_style="normal",
+                         axis_label_text_font_size="8pt",
+                         major_tick_out=2,
+                         major_tick_in=2,
+                         major_label_text_font_size="8pt",
+                         minor_tick_line_width=0,
+                         major_label_orientation='horizontal',
+                         name=ax_name,
+                         ticker=BasicTicker(desired_num_ticks=8))
+    fig.add_layout(linaxis, 'above')
+    return fig
