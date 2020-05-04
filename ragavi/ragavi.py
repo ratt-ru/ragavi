@@ -21,6 +21,7 @@ from bokeh.models import (Button, CheckboxGroup,
                           Slider, Scatter, Toggle, Whisker)
 
 from bokeh.models.widgets import DataTable, TableColumn, Div, PreText
+from itertools import product
 from pyrap.tables import table
 
 
@@ -1596,77 +1597,75 @@ def main(**kwargs):
             ufsources = []
             fsources = []
 
-            for spw in spw_ids:
-                for fid in field_ids:
-                    fname = field_names[fid]
-                    for corr in corrs:
-                        stats = stats_display(
-                            tab_name=tab, yaxis=yaxis, gtype=gain,
-                            corr=corr, field=fid, flag=_FLAG_DATA_,
-                            f_names=field_names, spwid=str(spw))
-                        if stats:
-                            fig_stats.append(stats)
+            iters = product(spw_ids, field_ids, corrs)
 
-                        logger.info(f"Spw: {spw}, Field: {fname}, Corr: {corr} {yaxis}")
+            for spw, fid, corr in iters:
+                fname = field_names[fid]
+                stats = stats_display(tab_name=tab, yaxis=yaxis, gtype=gain,
+                                      corr=corr, field=fid, flag=_FLAG_DATA_,
+                                      f_names=field_names, spwid=str(spw))
+                if stats:
+                    fig_stats.append(stats)
 
-                        for _a, ant in enumerate(ant_ids):
-                            legend = ant_names[ant]
-                            colour = cmap[_a]
-                            for sub in subs:
-                                if (sub.SPECTRAL_WINDOW_ID == spw and
-                                        sub.FIELD_ID == fid and
-                                        sub.ANTENNA1 == ant):
-                                    # for tooltips
-                                    spw_id, scan = get_tooltip_data(sub, gain,
-                                                                    freqs)
-                                    source = ColumnDataSource(
-                                        data={"scanid": scan,
-                                              "corr": [corr] * scan.size,
-                                              "field": [fname] * scan.size,
-                                              "spw": spw_id,
-                                              "antname": [legend] * scan.size
-                                              })
-                                    inv_source = ColumnDataSource(data={})
+                logger.info(f"Spw: {spw}, Field: {fname}, Corr: {corr} {yaxis}")
 
-                                    data_obj = DataCoreProcessor(
-                                        sub, tab, gain, fid=fid, yaxis=yaxis,
-                                        corr=corr, flag=_FLAG_DATA_,
-                                        kx=options.kx, ddid=spw)
-                                    data = data_obj.act()
-                                    xaxis = data_obj.xaxis
+                for _a, ant in enumerate(ant_ids):
+                    legend = ant_names[ant]
+                    colour = cmap[_a]
+                    for sub in subs:
+                        if (sub.SPECTRAL_WINDOW_ID == spw and
+                                sub.FIELD_ID == fid and
+                                sub.ANTENNA1 == ant):
+                            # for tooltips
+                            spw_id, scan = get_tooltip_data(sub, gain, freqs)
+                            source = ColumnDataSource(
+                                data={"scanid": scan,
+                                      "corr": [corr] * scan.size,
+                                      "field": [fname] * scan.size,
+                                      "spw": spw_id,
+                                      "antname": [legend] * scan.size
+                                      })
+                            inv_source = ColumnDataSource(data={})
 
-                                    infl_data = DataCoreProcessor(
-                                        sub, tab, gain, fid=fid, yaxis=yaxis,
-                                        corr=corr, flag=not _FLAG_DATA_,
-                                        kx=options.kx, ddid=spw).act()
+                            data_obj = DataCoreProcessor(
+                                sub, tab, gain,
+                                fid=fid, yaxis=yaxis, corr=corr,
+                                flag=_FLAG_DATA_, kx=options.kx, ddid=spw)
+                            data = data_obj.act()
+                            xaxis = data_obj.xaxis
 
-                                    x = data.x
-                                    x_label = data.x_label
+                            infl_data = DataCoreProcessor(
+                                sub, tab, gain, fid=fid, yaxis=yaxis,
+                                corr=corr, flag=not _FLAG_DATA_,
+                                kx=options.kx, ddid=spw).act()
 
-                                    y = data.y
-                                    y_err = data.y_err
-                                    y_label = data.y_label
+                            x = data.x
+                            x_label = data.x_label
 
-                                    iy = infl_data.y
+                            y = data.y
+                            y_err = data.y_err
+                            y_label = data.y_label
 
-                                    source.add(x, name='x')
-                                    source.add(y, name=f"y{_y}")
+                            iy = infl_data.y
 
-                                    inv_source.add(y, name=f"y{_y}")
-                                    inv_source.add(iy, name=f"iy{_y}")
+                            source.add(x, name='x')
+                            source.add(y, name=f"y{_y}")
 
-                                    ufsources.append(source)
-                                    fsources.append(inv_source)
+                            inv_source.add(y, name=f"y{_y}")
+                            inv_source.add(iy, name=f"iy{_y}")
 
-                                    glyphs, bars = make_plots(source=source,
-                                                              color=colour,
-                                                              fid=fid,
-                                                              yerr=y_err,
-                                                              yidx=_y)
+                            ufsources.append(source)
+                            fsources.append(inv_source)
 
-                                    fig_glyphs.append(glyphs)
-                                    fig_legends.append((legend, []))
-                                    fig_ebars.append(bars)
+                            glyphs, bars = make_plots(source=source,
+                                                      color=colour,
+                                                      fid=fid,
+                                                      yerr=y_err,
+                                                      yidx=_y)
+
+                            fig_glyphs.append(glyphs)
+                            fig_legends.append((legend, []))
+                            fig_ebars.append(bars)
 
             title = f"{yaxis.capitalize()} vs {xaxis.capitalize()}"
             fig = create_bk_fig(xlab=x_label, ylab=y_label, title=title,
