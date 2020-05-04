@@ -150,8 +150,8 @@ def add_axis(fig, axis_range, ax_label, ax_name=None):
     if ax_name is None:
         ax_name = "p_extra_xaxis"
 
-    fig.extra_x_ranges[ax_name] = Range1d(start=axis_range[0],
-                                          end=axis_range[-1])
+    fig.extra_x_ranges[ax_name] = DataRange1d(  # start=axis_range[0],
+        end=axis_range[-1])
 
     linaxis = LinearAxis(x_range_name=ax_name, axis_label=ax_label,
                          axis_label_text_font="monospace",
@@ -160,7 +160,7 @@ def add_axis(fig, axis_range, ax_label, ax_name=None):
                          major_tick_out=2,
                          major_tick_in=2,
                          major_label_text_font_size="8pt",
-                         minor_tick_line_width=0,
+                         minor_tick_line_width=1,
                          major_label_orientation='horizontal',
                          name=ax_name,
                          ticker=BasicTicker(desired_num_ticks=8))
