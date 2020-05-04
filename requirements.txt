@@ -1,9 +1,9 @@
 bokeh
+codex-africanus[dask]
 dask[complete]
 dask-ms[xarray]
 datashader
 future
-numpy>=1.14
+numpy>=1.15
 python-casacore
 xarray
-xova
