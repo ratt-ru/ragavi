@@ -23,14 +23,16 @@ from bokeh.layouts import column, gridplot, row, grid
 from bokeh.io import (output_file, output_notebook, show, save, curdoc)
 from bokeh.models import (BasicTicker, ColorBar, ColumnDataSource,  CustomJS,
                           DatetimeTickFormatter, Div, Grid, ImageRGBA,
-                          LinearAxis, LinearColorMapper, LinearScale,
-                          LogScale, PrintfTickFormatter, Plot, PreText,
+                          LinearAxis, LinearColorMapper,
+                          PrintfTickFormatter, Plot, PreText,
                           Range1d, Text, Title, Toolbar)
 from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
                                 WheelZoomTool, SaveTool)
 
+
+from ragavi.averaging import get_averaged_ms
+from ragavi.plotting import create_bk_fig, add_axis
 import ragavi.utils as vu
-from ipdb import set_trace
 
 from dask.distributed import Client, LocalCluster
 
@@ -44,14 +46,10 @@ wrapper = vu.textwrap.TextWrapper(initial_indent='',
 
 # some variables
 PLOT_WIDTH = int(1920 * 0.95)
-PLOT_HEIGHT = int(1080 * 0.9)
-
-# selection token to be passed around because of daskms incompatibility with
-# TAQL where and group_cols
-SELECTION_ACTIVE = False
+PLOT_HEIGHT = int(1080 * 0.85)
 
 
-class DataCoreProcessor(object):
+class DataCoreProcessor:
     """Process Measurement Set data into forms desirable for visualisation.
 
     Parameters
@@ -80,7 +78,7 @@ class DataCoreProcessor(object):
 
     def __init__(self, xds_table_obj, ms_name, xaxis, yaxis,
                  chan=None, corr=None, cbin=None,
-                 ddid=int, datacol='DATA', flag=True):
+                 ddid=int, datacol="DATA", flag=True):
 
         self.xds_table_obj = xds_table_obj
         self.ms_name = ms_name
@@ -93,7 +91,154 @@ class DataCoreProcessor(object):
         self.flag = flag
         self.cbin = cbin
 
-    def process_data(self, ydata, yaxis, wrap=True):
+    def get_xaxis_data(self):
+        """Get x-axis data. This function also returns the relevant x-axis label.
+        Returns
+        -------
+        xdata : :obj:`xarray.DataArray`
+            X-axis data depending  x-axis selected.
+        x_label : :obj:`str`
+            Label to appear on the x-axis of the plots.
+        """
+
+        if self.xaxis == "antenna1":
+            xdata = self.xds_table_obj.ANTENNA1
+            x_label = "Antenna1"
+        elif self.xaxis == "antenna2":
+            xdata = self.xds_table_obj.ANTENNA2
+            x_label = "Antenna2"
+        elif self.xaxis == "amplitude":
+            xdata = self.xds_table_obj[self.datacol]
+            x_label = "Amplitude"
+        elif self.xaxis == "frequency" or self.xaxis == "channel":
+            xdata = vu.get_frequencies(self.ms_name, spwid=self.ddid,
+                                       chan=self.chan, cbin=self.cbin)
+            x_label = "Frequency GHz"
+        elif self.xaxis == "imaginary":
+            xdata = self.xds_table_obj[self.datacol]
+            x_label = "Imaginary"
+        elif self.xaxis == "phase":
+            xdata = self.xds_table_obj[self.datacol]
+            x_label = "Phase [deg]"
+        elif self.xaxis == "real":
+            xdata = self.xds_table_obj[self.datacol]
+            x_label = "Real"
+        elif self.xaxis == "scan":
+            xdata = self.xds_table_obj.SCAN_NUMBER
+            x_label = "Scan"
+        elif self.xaxis == "time":
+            xdata = self.xds_table_obj.TIME
+            x_label = "Time [s]"
+        elif self.xaxis == "uvdistance":
+            xdata = self.xds_table_obj.UVW
+            x_label = "UV Distance [m]"
+        elif self.xaxis == "uvwave":
+            xdata = self.xds_table_obj.UVW
+            try:
+                x_label = "UV Wave [K{}]".format(u"\u03bb")
+            except UnicodeEncodeError:
+                x_label = "UV Wave [K{}]".format(u"\u03bb".encode("utf-8"))
+        else:
+            logger.error("Invalid xaxis name")
+            return
+
+        return xdata, x_label
+
+    def get_yaxis_data(self):
+        """Extract the required column for the y-axis data.
+
+        Returns
+        -------
+        ydata: :obj:`xarray.DataArray`
+            y-axis data depending  y-axis selected.
+        y_label: :obj:`str`
+            Label to appear on the y-axis of the plots.
+        """
+        if self.yaxis == "amplitude":
+            y_label = "Amplitude"
+        elif self.yaxis == "imaginary":
+            y_label = "Imaginary"
+        elif self.yaxis == "phase":
+            y_label = "Phase [deg]"
+        elif self.yaxis == "real":
+            y_label = "Real"
+
+        try:
+            ydata = self.xds_table_obj[self.datacol]
+        except KeyError:
+            logger.exception("Column '{}' not Found".format(self.datacol))
+            return sys.exit(-1)
+
+        return ydata, y_label
+
+    def prep_xaxis_data(self, xdata, freq=None):
+        """Prepare the x-axis data for plotting. Selections also performed here.
+
+        Parameters
+        ----------
+        xdata: :obj:`xarray.DataArray`
+            x-axis data depending  x-axis selected
+        freq: :obj:`xarray.DataArray` or :obj:`float`
+            Frequency(ies) from which corresponding wavelength will be obtained.
+            Note
+            ----
+                Only required when xaxis specified is 'uvwave'
+
+        Returns
+        -------
+        prepdx: :obj:`xarray.DataArray`
+            Prepared :attr:`xdata`
+        """
+        if self.xaxis == "channel" or self.xaxis == "frequency":
+            prepdx = xdata / 1e9
+        elif self.xaxis in ["phase", "amplitude", "real", "imaginary"]:
+            prepdx = xdata
+        elif self.xaxis == "time":
+            prepdx = vu.time_convert(xdata)
+        elif self.xaxis == "uvdistance":
+            prepdx = vu.calc_uvdist(xdata)
+        elif self.xaxis == "uvwave":
+            prepdx = vu.calc_uvwave(xdata, freq) / 1e3
+        elif self.xaxis == "antenna1" or self.xaxis == "antenna2" or self.xaxis == "scan":
+            prepdx = xdata
+        return prepdx
+
+    def prep_yaxis_data(self, ydata, yaxis=None):
+        """Process data for the y-axis.
+        This includes:
+
+            * Flagging
+            * Conversion form complex to the required form
+
+        Data selection and flagging are done by this function itself
+
+        Parameters
+        ----------
+        ydata: :obj:`xarray.DataArray`
+            y-axis data to be processed
+
+        Returns
+        -------
+        y: :obj:`xarray.DataArray`
+           Processed :attr:`ydata` data.
+        """
+        flags = vu.get_flags(self.xds_table_obj)
+
+        # Doing this because some of xaxis data must be processed here
+        if yaxis is None:
+            yaxis = self.yaxis
+
+        # if flagging enabled return a list of DataArrays otherwise return a
+        # single dataarray
+        if self.flag:
+            processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
+            y = processed.where(flags == False)
+        else:
+            y = self.process_data(ydata, yaxis=yaxis)
+
+        return y
+
+    def process_data(self, ydata, wrap=True, yaxis=None):
         """Abstraction for processing y-data passes it to the processing function.
 
         Parameters
@@ -108,211 +253,25 @@ class DataCoreProcessor(object):
         y : :obj:`xarray.DataArray`
            Processed :obj:`ydata`
         """
-        if yaxis == 'amplitude':
+        if yaxis is None:
+            yaxis = self.yaxis
+        if yaxis == "amplitude":
             y = vu.calc_amplitude(ydata)
-        elif yaxis == 'imaginary':
+        elif yaxis == "imaginary":
             y = vu.calc_imaginary(ydata)
-        elif yaxis == 'phase':
+        elif yaxis == "phase":
             y = vu.calc_phase(ydata, wrap=wrap)
-        elif yaxis == 'real':
+        elif yaxis == "real":
             y = vu.calc_real(ydata)
         return y
 
-    def get_xaxis_data(self, xds_table_obj, ms_name, xaxis, datacol='DATA', ddid=0, cbin=None, chan=None):
-        """Get x-axis data. This function also returns the relevant x-axis label.
-
-        Parameters
-        ----------
-        ms_name : :obj:`str`
-            Name of Measurement Set
-        xaxis : :obj:`str`
-            Name of xaxis
-        xds_table_obj: :obj:`xarray.Dataset`
-            MS as xarray dataset from xarrayms
-
-        Returns
-        -------
-        xdata : :obj:`xarray.DataArray`
-            X-axis data depending  x-axis selected.
-        x_label : :obj:`str`
-            Label to appear on the x-axis of the plots.
-        """
-
-        if xaxis == 'antenna1':
-            xdata = xds_table_obj.ANTENNA1
-            x_label = 'Antenna1'
-        elif xaxis == 'antenna2':
-            xdata = xds_table_obj.ANTENNA2
-            x_label = 'Antenna2'
-        elif xaxis == 'amplitude':
-            xdata = xds_table_obj[datacol]
-            x_label = 'Amplitude'
-        elif xaxis == 'frequency' or xaxis == 'channel':
-            xdata = vu.get_frequencies(ms_name, spwid=ddid, chan=chan,
-                                       cbin=cbin)
-            x_label = 'Frequency GHz'
-        elif xaxis == 'imaginary':
-            xdata = xds_table_obj[datacol]
-            x_label = 'Imaginary'
-        elif xaxis == 'phase':
-            xdata = xds_table_obj[datacol]
-            x_label = 'Phase [deg]'
-        elif xaxis == 'real':
-            xdata = xds_table_obj[datacol]
-            x_label = 'Real'
-        elif xaxis == 'scan':
-            xdata = xds_table_obj.SCAN_NUMBER
-            x_label = 'Scan'
-        elif xaxis == 'time':
-            xdata = xds_table_obj.TIME
-            x_label = 'Time [s]'
-        elif xaxis == 'uvdistance':
-            xdata = xds_table_obj.UVW
-            x_label = 'UV Distance [m]'
-        elif xaxis == 'uvwave':
-            xdata = xds_table_obj.UVW
-            try:
-                x_label = 'UV Wave [K{}]'.format(u'\u03bb')
-            except UnicodeEncodeError:
-                x_label = 'UV Wave [K{}]'.format(u'\u03bb'.encode('utf-8'))
-        else:
-            logger.error("Invalid xaxis name")
-            return
-
-        return xdata, x_label
-
-    def get_yaxis_data(self, xds_table_obj, ms_name, yaxis, datacol='DATA'):
-        """Extract the required column for the y-axis data.
-
-        Parameters
-        ----------
-        datacol: :obj:`str`
-            Data column to be selected. Defaults to DATA
-        ms_name: :obj:`str`
-            Name of measurement set.
-        xds_table_obj: :obj:`xarray.Dataset`
-            MS as xarray dataset from xarrayms
-        yaxis: :obj:`str`
-            yaxis to plot.
-
-        Returns
-        -------
-        ydata: :obj:`xarray.DataArray`
-            y-axis data depending  y-axis selected.
-        y_label: :obj:`str`
-            Label to appear on the y-axis of the plots.
-        """
-        if yaxis == 'amplitude':
-            y_label = 'Amplitude'
-        elif yaxis == 'imaginary':
-            y_label = 'Imaginary'
-        elif yaxis == 'phase':
-            y_label = 'Phase [deg]'
-        elif yaxis == 'real':
-            y_label = 'Real'
-
-        try:
-            ydata = xds_table_obj[datacol]
-        except KeyError:
-            logger.exception('Column "{}" not Found'.format(datacol))
-            return sys.exit(-1)
-
-        return ydata, y_label
-
-    def prep_xaxis_data(self, xdata, freq=None,
-                        xaxis='time'):
-        """Prepare the x-axis data for plotting. Selections also performed here.
-
-        Parameters
-        ----------
-        xdata: :obj:`xarray.DataArray`
-            x-axis data depending  x-axis selected
-        xaxis: :obj:`str`
-            xaxis to plot
-
-        freq: :obj:`xarray.DataArray` or :obj:`float`
-            Frequency(ies) from which corresponding wavelength will be obtained.
-            Note
-            ----
-                Only required when xaxis specified is 'uvwave'
-
-        Returns
-        -------
-        prepdx: :obj:`xarray.DataArray`
-            Prepared :attr:`xdata`
-        """
-        if xaxis == 'channel' or xaxis == 'frequency':
-            prepdx = xdata / 1e9
-        elif xaxis in ['phase', 'amplitude', 'real', 'imaginary']:
-            prepdx = xdata
-        elif xaxis == 'time':
-            prepdx = vu.time_convert(xdata)
-        elif xaxis == 'uvdistance':
-            prepdx = vu.calc_uvdist(xdata)
-        elif xaxis == 'uvwave':
-            prepdx = vu.calc_uvwave(xdata, freq) / 1e3
-        elif xaxis == 'antenna1' or xaxis == 'antenna2' or xaxis == 'scan':
-            prepdx = xdata
-        return prepdx
-
-    def prep_yaxis_data(self, xds_table_obj, ms_name, ydata,
-                        corr=None, flag=True, yaxis='amplitude'):
-        """Process data for the y-axis.
-        This includes:
-
-            * Correlation selection
-            * Channel selection is now done as during MS acquisition
-            * Flagging
-            * Conversion form complex to the required form
-
-        Data selection and flagging are done by this function itself, however ap and ri conversion are handled by :meth:`ragavi.ragavi.DataCoreProcessor.compute_ydata`
-
-        Parameters
-        ----------
-        corr: :obj:`int`
-            Correlation number to select
-        flag: :obj:`bool`
-            Option on whether to flag the data or not. Defaults to True
-        ms_name: :obj:`str`
-            Name of measurement set.
-        xds_table_obj: :obj:`xarray.Dataset`
-            MS as xarray dataset from xarrayms
-        yaxis: :obj:`str`
-            selected y-axis
-        ydata: :obj:`xarray.DataArray`
-            y-axis data to be processed
-
-        Returns
-        -------
-        y: :obj:`xarray.DataArray`
-           Processed :attr:`ydata` data.
-        """
-        flags = vu.get_flags(xds_table_obj)
-        # if corr is not None:
-        #     ydata = ydata.sel(dict(corr=corr))
-        #     flags = flags.sel(dict(corr=corr))
-
-        # if flagging enabled return a list of DataArrays otherwise return a
-        # single dataarray
-        if flag:
-            processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
-            y = processed.where(flags == False)
-        else:
-            y = self.process_data(ydata, yaxis=yaxis)
-
-        return y
-
-    def blackbox(self, xds_table_obj, ms_name, xaxis, yaxis, cbin=None,
-                 chan=None, corr=None, datacol='DATA', ddid=None,
-                 flag=True):
-        """Get raw input data and churn out processed data.
+    def blackbox(self):
+        """Get raw input data and churn out processed x and y data.
 
         This function incorporates all function in the class to get the desired result. Takes in all inputs from the instance initialising object. It performs:
 
-            - xaxis data and error data acquisition
-            - xaxis data and error preparation and processing
-            - yaxis data and error data acquisition
-            - yaxis data and error preparation and processing
+            - xaxis data preparation and processing
+            - yaxis data preparation and processing
 
         Returns
         -------
@@ -320,22 +279,20 @@ class DataCoreProcessor(object):
             A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
         """
 
-        Data = namedtuple('Data', "x xlabel y ylabel")
+        Data = namedtuple("Data", "x xlabel y ylabel")
 
-        xs = self.x_only(xds_table_obj, ms_name, xaxis, corr=corr, chan=chan,
-                         ddid=ddid, flag=flag, datacol=datacol, cbin=cbin)
+        xs = self.x_only()
 
-        ys = self.y_only(xds_table_obj, ms_name, yaxis, corr=corr, flag=flag,
-                         datacol=datacol)
+        ys = self.y_only()
 
         x_prepd = xs.x
         xlabel = xs.xlabel
         y_prepd = ys.y
         ylabel = ys.ylabel
 
-        if xaxis == 'channel' or xaxis == 'frequency':
+        if self.xaxis == "channel" or self.xaxis == "frequency":
             if y_prepd.ndim == 3:
-                y_prepd = y_prepd.transpose('chan', 'row', 'corr')
+                y_prepd = y_prepd.transpose("chan", "row", "corr")
             else:
                 y_prepd = y_prepd.T
 
@@ -349,13 +306,9 @@ class DataCoreProcessor(object):
     def act(self):
         """Activate the :meth:`ragavi.ragavi.DataCoreProcessor.blackbox`
         """
-        return self.blackbox(self.xds_table_obj, self.ms_name, self.xaxis,
-                             self.yaxis, chan=self.chan, corr=self.corr,
-                             datacol=self.datacol, ddid=self.ddid,
-                             flag=self.flag, cbin=self.cbin)
+        return self.blackbox()
 
-    def x_only(self, xds_table_obj, ms_name, xaxis, flag=True, corr=None,
-               chan=None, ddid=0, datacol='DATA', cbin=None):
+    def x_only(self):
         """Return only x-axis data and label
 
         Returns
@@ -363,30 +316,28 @@ class DataCoreProcessor(object):
         d : :obj:`collections.namedtuple`
             Named tuple containing x-axis data and x-axis label. Items in the tuple can be accessed by using the dot notation.
         """
-        Data = namedtuple('Data', 'x xlabel')
+        Data = namedtuple("Data", "x xlabel")
 
-        x_data, xlabel = self.get_xaxis_data(xds_table_obj, ms_name, xaxis,
-                                             datacol=datacol, chan=chan,
-                                             cbin=cbin)
-        if xaxis == 'uvwave':
+        x_data, xlabel = self.get_xaxis_data()
+        if self.xaxis == "uvwave":
             # compute uvwave using the available selected frequencies
-            freqs = vu.get_frequencies(ms_name, spwid=ddid,
-                                       chan=chan, cbin=cbin).compute()
+            freqs = vu.get_frequencies(self.ms_name, spwid=self.ddid,
+                                       chan=self.chan,
+                                       cbin=self.cbin).values()
 
-            x = self.prep_xaxis_data(x_data, xaxis=xaxis, freq=freqs)
+            x = self.prep_xaxis_data(x_data, freq=freqs)
 
         # if we have x-axes corresponding to ydata
-        elif xaxis in ['phase', 'amplitude', 'real', 'imaginary']:
-            x = self.prep_yaxis_data(xds_table_obj, ms_name, x_data,
-                                     yaxis=xaxis, corr=corr, flag=flag)
+        elif self.xaxis in ["phase", "amplitude", "real", "imaginary"]:
+            x = self.prep_yaxis_data(x_data, yaxis=self.xaxis)
         else:
-            x = self.prep_xaxis_data(x_data, xaxis=xaxis)
+            x = self.prep_xaxis_data(x_data)
 
         d = Data(x=x, xlabel=xlabel)
 
         return d
 
-    def y_only(self, xds_table_obj, ms_name, yaxis, corr=None, datacol='DATA', flag=True):
+    def y_only(self):
         """Return only y-axis data and label
 
         Returns
@@ -395,12 +346,10 @@ class DataCoreProcessor(object):
             Named tuple containing x-axis data and x-axis label. Items in the tuple can be accessed by using the dot notation.
         """
 
-        Data = namedtuple('Data', 'y ylabel')
-        y_data, ylabel = self.get_yaxis_data(xds_table_obj, ms_name, yaxis,
-                                             datacol=datacol)
+        Data = namedtuple("Data", "y ylabel")
+        y_data, ylabel = self.get_yaxis_data()
 
-        y = self.prep_yaxis_data(xds_table_obj, ms_name, y_data, yaxis=yaxis,
-                                 corr=corr, flag=flag)
+        y = self.prep_yaxis_data(y_data)
 
         d = Data(y=y, ylabel=ylabel)
 
@@ -408,133 +357,6 @@ class DataCoreProcessor(object):
 
 
 ##################### Plot related functions ###########################
-def add_axis(fig, axis_range, ax_label):
-    """Add an extra axis to the current figure
-
-    Parameters
-    ----------
-    fig: :obj:`bokeh.plotting.figure`
-        The figure onto which to add extra axis
-
-    axis_range: :obj:`list`, :obj:`tuple`
-        A range of sorted values or a tuple with 2 values containing or the
-        order (min, max). This can be any ordered iteraable that can be
-        indexed.
-
-    Returns
-    -------
-    fig : :obj:`bokeh.plotting.figure`
-        Bokeh figure with an extra axis added
-    """
-    if fig.extra_x_ranges is None:
-        fig.extra_x_ranges = {}
-    fig.extra_x_ranges["fxtra"] = Range1d(start=axis_range[0],
-                                          end=axis_range[-1])
-
-    linaxis = LinearAxis(x_range_name="fxtra", axis_label=ax_label,
-                         axis_label_text_font="monospace",
-                         axis_label_text_font_style="normal",
-                         axis_label_text_font_size="8pt",
-                         major_tick_out=2,
-                         major_tick_in=2,
-                         major_label_text_font_size="8pt",
-                         minor_tick_line_width=0, name="p_extra_xaxis",
-                         major_label_orientation='horizontal',
-                         ticker=BasicTicker(desired_num_ticks=6))
-    fig.add_layout(linaxis, 'above')
-    return fig
-
-
-def create_bk_fig(x_range, y_range, x=None, xlab=None, ylab=None,
-                  title=None, pw=1920, ph=1080, x_axis_type='linear',
-                  y_axis_type='linear', x_name=None, y_name=None, **kwargs):
-
-    plot_specs = dict(background="white", border_fill_alpha=0.1,
-                      border_fill_color="white", min_border=3,
-                      name="plot", outline_line_dash="solid",
-                      outline_line_width=2, outline_line_color="#017afe",
-                      outline_line_alpha=0.4, output_backend="svg",
-                      sizing_mode="stretch_width", title_location="above",
-                      toolbar_location="right")
-
-    axis_specs = dict(minor_tick_line_alpha=0, axis_label_text_align="center",
-                      axis_label_text_font="monospace",
-                      axis_label_text_font_size="10px",
-                      axis_label_text_font_style="normal",
-                      major_label_orientation='horizontal')
-
-    add_grid = kwargs.get("add_grid", False)
-    add_title = kwargs.get("add_title", True)
-    add_xaxis = kwargs.get("add_xaxis", False)
-    add_yaxis = kwargs.get("add_yaxis", False)
-
-    # Define frame width and height
-    # This is the actual size of the plot without the titles et al
-    fw = int(0.98 * pw)
-    fh = int(0.93 * ph)
-
-    x_min, x_max = x_range
-    y_min, y_max = y_range
-
-    # percentage increase in axis ranges
-    inc = 1.00
-
-    # define the axes ranges
-    x_range = Range1d(start=(inc * x_min), end=(inc * x_max),
-                      name="p_x_range")
-    y_range = Range1d(start=(inc * y_min), end=(inc * y_max),
-                      name="p_y_range")
-    # select the axis scales for x and y
-    if x_axis_type == "linear" or x_axis_type == "datetime":
-        x_scale = LinearScale(name="p_x_scale")
-    elif x_axis_type == "log":
-        x_scale = LogScale(name="p_x_scale")
-
-    if y_axis_type == "linear":
-        y_scale = LinearScale(name="p_y_scale")
-    elif y_axis_type == "log":
-        y_scale = LogScale(name="p_y_scale")
-
-    # define items to add on the plot
-    p_htool = HoverTool(tooltips=[(x_name, '$x'),
-                                  (y_name, '$y')],
-                        name="p_htool", point_policy='snap_to_data')
-
-    p_toolbar = Toolbar(name="p_toolbar",
-                        tools=[p_htool, BoxZoomTool(), PanTool(), ResetTool(),
-                               WheelZoomTool(), SaveTool()])
-    p_ticker = BasicTicker(desired_num_ticks=5, name="p_ticker")
-
-    # Create the plot object
-    p = Plot(plot_width=pw, plot_height=ph, frame_height=fh, frame_width=fw,
-             toolbar=p_toolbar, x_range=x_range, x_scale=x_scale,
-             y_range=y_range, y_scale=y_scale, **plot_specs)
-
-    if add_title:
-        p_title = Title(align="center", name="p_title", text=title, text_font_size="24px",
-                        text_font="monospace", text_font_style="bold",)
-        p.title = p_title
-
-    if add_xaxis:
-        # define the axes and tickers
-        p_x_axis = LinearAxis(axis_label=xlab, name="p_x_axis",
-                              ticker=p_ticker, **axis_specs)
-        p.add_layout(p_x_axis, "below")
-
-    if add_yaxis:
-        # define the axes and tickers
-        p_y_axis = LinearAxis(axis_label=ylab, name="p_y_axis",
-                              ticker=p_ticker, **axis_specs)
-        p.add_layout(p_y_axis, "left")
-
-    if add_grid:
-        p_x_grid = Grid(dimension=0, ticker=p_ticker)
-        p_y_grid = Grid(dimension=1, ticker=p_ticker)
-        p.add_layout(p_x_grid)
-        p.add_layout(p_y_grid)
-
-    return p
-
 
 def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
               color=None, i_labels=None, ph=PLOT_HEIGHT, pw=PLOT_WIDTH,
@@ -562,40 +384,45 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
                          x=x_name, y=y_name, cat=cat)
 
     logger.info("Creating Bokeh Figure")
-    fig = create_bk_fig(x_range=(x_min, x_max), y_range=(y_min, y_max),
-                        xlab=xlab, ylab=ylab, title=title,
+    fig = create_bk_fig(xlab=xlab, ylab=ylab, title=title, x_min=x_min,
+                        x_max=x_max,
                         x_axis_type=x_axis_type, x_name=x_name, y_name=y_name,
                         pw=pw, ph=ph, add_title=add_title,
-                        add_xaxis=add_xaxis, add_yaxis=add_yaxis)
+                        add_xaxis=add_xaxis, add_yaxis=add_yaxis,
+                        fix_plotsize=True)
 
     if cat:
         img = tf.shade(agg, color_key=color[:agg[cat].size])
         if add_cbar:
             cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size])
-            fig.add_layout(cbar, 'right')
+            fig.add_layout(cbar, "right")
     else:
         img = tf.shade(agg, cmap=color)
 
     cds = ColumnDataSource(data=dict(image=[img.data], x=[x_min],
                                      y=[y_min], dw=[dw], dh=[dh]))
 
-    image_glyph = ImageRGBA(image='image', x='x', y='y', dw='dw', dh='dh',
+    image_glyph = ImageRGBA(image="image", x='x', y='y', dw="dw", dh="dh",
                             dilate=False)
 
     if add_xaxis:
         # some formatting on the x and y axes
-        if x_name.lower() in ['channel', 'frequency']:
+        if x_name.lower() in ["channel", "frequency"]:
+            p_title = fig.above.pop()
             fig = add_axis(fig=fig, axis_range=x.chan.values,
-                           ax_label='Channel')
+                           ax_label="Channel")
+            fig.extra_x_ranges["p_extra_xaxis"].bounds = (None, x_max)
+            if p_title:
+                fig.add_layout(p_title, "above")
         elif x_name.lower() == "time":
             xaxis = fig.select(name="p_x_axis")[0]
-            xaxis.formatter = DatetimeTickFormatter(hourmin=['%H:%M'])
+            xaxis.formatter = DatetimeTickFormatter(hourmin=["%H:%M"])
         elif x_name.lower() == "phase":
             xaxis = fig.select(name="p_x_axis")[0]
             xaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
     if add_yaxis:
-        if y_name.lower() == 'phase':
+        if y_name.lower() == "phase":
             yaxis = fig.select(name="p_y_axis")[0]
             yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
@@ -623,7 +450,7 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
             # Only in the case of a baseline
             if ["ANTENNA1", "ANTENNA2"] in i_axis:
                 p_txtt_src.add(
-                    [f"""{i_labels[chunk_attrs.get(i_axis[0])]}, 
+                    [f"""{i_labels[chunk_attrs.get(i_axis[0])]},
                         {i_labels[chunk_attrs.get(i_axis[1])]}"""],
                     name="text")
                 i_axis_data = f"""{ i_labels[chunk_attrs[i_axis[0]]] },
@@ -737,7 +564,7 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
                                           y=[y_min], dw=[dw], dh=[dh]))
         s_ds.add(i_axis_data, "i_axis")
 
-        ir = ImageRGBA(image='image', x='x', y='y', dw='dw', dh='dh',
+        ir = ImageRGBA(image="image", x='x', y='y', dw="dw", dh="dh",
                        dilate=False)
 
         # Add x-axis to all items in the last row
@@ -752,10 +579,10 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
         else:
             add_yaxis = False
 
-        f = create_bk_fig(x_range=x_range, y_range=y_range,
-                          xlab=xlab, ylab=ylab, title=title,
+        f = create_bk_fig(xlab=xlab, ylab=ylab, title=title, x_min=x_min,
+                          x_max=x_max,
                           x_axis_type=x_axis_type, x_name=x_name,
-                          y_name=y_name,
+                          y_name=y_name, fix_plotsize=True,
                           pw=pw, ph=ph, add_title=False, add_xaxis=add_xaxis,
                           add_yaxis=add_yaxis)
 
@@ -764,22 +591,22 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
 
         # Add some information on the tooltip
         h_tool = f.select(name="p_htool")[0]
-        h_tool.tooltips.append((cat, '@i_axis'))
+        h_tool.tooltips.append((cat, "@i_axis"))
 
         if add_xaxis:
-            if x_name.lower() in ['channel', 'frequency']:
+            if x_name.lower() in ["channel", "frequency"]:
                 f = add_axis(fig=f, axis_range=x.chan.values,
-                             ax_label='Channel')
+                             ax_label="Channel")
             elif x_name.lower() == "time":
                 xaxis = f.select(name="p_x_axis")[0]
-                xaxis.formatter = DatetimeTickFormatter(hourmin=['%H:%M'])
+                xaxis.formatter = DatetimeTickFormatter(hourmin=["%H:%M"])
             elif x_name.lower() == "phase":
                 xaxis = f.select(name="p_x_axis")[0]
                 xaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
         if add_yaxis:
             # Set formating if yaxis is phase
-            if y_name.lower() == 'phase':
+            if y_name.lower() == "phase":
                 yaxis = f.select(name="p_y_axis")[0]
                 yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
@@ -853,15 +680,15 @@ def make_cbar(cats, category, cmap=None):
     cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
                     border_line_color=None, ticker=b_ticker,
                     location=(0, 0), title=category, title_standoff=5,
-                    title_text_font_size='10pt', title_text_align="left",
+                    title_text_font_size="10pt", title_text_align="left",
                     title_text_font="monospace", minor_tick_line_width=0,
                     title_text_font_style="normal")
 
     return cbar
 
 
-def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
-            c_height=None, c_width=None, chunk_no=None, color='blue',
+def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
+            c_height=None, c_width=None, chunk_no=None, color="blue",
             colour_axis=None, i_labels=None, iter_axis=None, ms_name=None,
             ncols=9, nrows=None, plot_height=None, plot_width=None,
             x_min=None, x_max=None, y_min=None, y_max=None,
@@ -919,9 +746,7 @@ def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     """
 
     # change xaxis name to frequency if xaxis is channel. For df purpose
-    xaxis = 'frequency' if xaxis == 'channel' else xaxis
-
-    sel_active = SELECTION_ACTIVE
+    xaxis = "frequency" if xaxis == "channel" else xaxis
 
     # changing the Name of the dataArray to the name provided as xaxis
     x.name = xaxis.capitalize()
@@ -930,17 +755,17 @@ def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     # set plot title name
     title = f"{y.name} vs {x.name}"
 
-    if xaxis == 'time':
+    if xaxis == "time":
         # bounds for x
         bds = np.array([np.nanmin(x), np.nanmax(x)]).astype(datetime)
         # creating the x-xaxis label
         xlab = "Time {} to {}".format(bds[0].strftime("%Y-%m-%d %H:%M:%S"),
                                       bds[-1].strftime("%Y-%m-%d %H:%M:%S"))
         # convert to milliseconds from epoch for bokeh
-        x = x.astype('float64') * 1000
+        x = x.astype("float64") * 1000
         x_axis_type = "datetime"
     else:
-        x_axis_type = 'linear'
+        x_axis_type = "linear"
 
     # setting maximum and minimums if they are not user defined
     if x_min == None:
@@ -949,16 +774,30 @@ def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
     if x_max == None:
         x_max = x.max().data
 
+    if x_min == x_max:
+        x_max += 1
+
     if y_min == None:
         y_min = y.min().data
 
     if y_max == None:
         y_max = y.max().data
 
+    if y_min == y_max:
+        y_max += 1
+
     logger.info("Calculating x and y Min and Max ranges")
     with ProgressBar():
         x_min, x_max, y_min, y_max = compute(x_min, x_max, y_min, y_max)
     logger.info("Done")
+
+    # inputs to gen image
+    im_inputs = dict(c_height=c_height, c_width=c_width,
+                     chunk_no=chunk_no, color=color, i_labels=i_labels,
+                     title=title, x=x, x_axis_type=x_axis_type, xlab=xlab,
+                     x_name=x.name, y_name=y.name, ylab=ylab,
+                     xds_table_obj=xds_table_obj, fix_plotsize=True,
+                     add_grid=True, add_subtitle=True, add_title=False)
 
     if iter_axis and colour_axis:
         # NOTE!!!
@@ -982,14 +821,9 @@ def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
 
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max,
-                          c_height=c_height, c_width=c_width, cat=colour_axis,
-                          chunk_no=chunk_no, color=color, i_labels=i_labels,
-                          ph=plot_height, pw=plot_width, title=title, x=x,
-                          x_axis_type=x_axis_type, xlab=xlab, x_name=x.name,
-                          y_name=y.name, ylab=ylab,
-                          xds_table_obj=xds_table_obj, add_grid=True,
-                          add_cbar=False, add_subtitle=True, add_title=False,
-                          add_xaxis=add_xaxis, add_yaxis=add_yaxis)
+                          cat=colour_axis, ph=plot_height, pw=plot_width,
+                          add_cbar=False, add_xaxis=add_xaxis,
+                          add_yaxis=add_yaxis, **im_inputs)
 
     elif iter_axis:
         # NOTE!!!
@@ -1007,31 +841,12 @@ def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
         else:
             add_yaxis = False
 
-        if sel_active:
-            xy_df, cat_values = create_categorical_df(iter_axis, x, y,
-                                                      xds_table_obj)
-            image = gen_grid(xy_df, x_min, x_max, y_min, y_max,
-                             c_height=c_height, c_width=c_width,
-                             cat=iter_axis, cat_vals=cat_values, color=color,
-                             ms_name=ms_name, ncols=ncols, pw=plot_width,
-                             ph=plot_height,
-                             title=None, x=x, x_axis_type=x_axis_type,
-                             x_name=x.name, xlab=xlab, y_name=y.name,
-                             ylab=ylab, xds_table_obj=xds_table_obj)
+        xy_df = create_df(x, y, iter_data=None)
 
-        else:
-            xy_df = create_df(x, y, iter_data=None)
-
-            image = gen_image(xy_df, x_min, x_max, y_min, y_max,
-                              c_height=c_height, c_width=c_width, cat=None,
-                              chunk_no=chunk_no, color=color,
-                              i_labels=i_labels, ph=plot_height,
-                              pw=plot_width, title=title, x=x,
-                              x_axis_type=x_axis_type, xlab=xlab,
-                              x_name=x.name, y_name=y.name, ylab=ylab,
-                              xds_table_obj=xds_table_obj, add_grid=True,
-                              add_cbar=False, add_subtitle=True, add_title=False,
-                              add_xaxis=add_xaxis, add_yaxis=add_yaxis)
+        image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
+                          ph=plot_height, pw=plot_width, add_cbar=False,
+                          add_xaxis=add_xaxis, add_yaxis=add_yaxis,
+                          **im_inputs)
 
     elif colour_axis:
         title += f" Colourised By: {colour_axis.capitalize()}"
@@ -1040,30 +855,19 @@ def plotter(x, y, xaxis, xlab='', yaxis='amplitude', ylab='',
                                                   xds_table_obj)
 
         # generate resulting image
-        image = gen_image(xy_df, x_min, x_max, y_min, y_max,
-                          c_height=c_height, c_width=c_width, cat=colour_axis,
-                          chunk_no=chunk_no, color=color, i_labels=None,
-                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, title=title, x=x,
-                          x_axis_type=x_axis_type, xlab=xlab, x_name=x.name,
-                          y_name=y.name, ylab=ylab,
-                          xds_table_obj=xds_table_obj,
-                          add_cbar=False, add_grid=True, add_subtitle=True,
-                          add_title=False, add_xaxis=True, add_yaxis=True)
+        image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=colour_axis,
+                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=False,
+                          add_xaxis=True, add_yaxis=True, **im_inputs)
 
     else:
         logger.info("Creating Dataframe")
         xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
 
         # generate resulting image
-        image = gen_image(xy_df, x_min, x_max, y_min, y_max,
-                          c_height=c_height, c_width=c_width, cat=None,
-                          chunk_no=None, color=color, i_labels=None,
-                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, title=title, x=x,
-                          x_axis_type=x_axis_type, xlab=xlab, x_name=x.name,
-                          y_name=y.name, ylab=ylab,
-                          xds_table_obj=xds_table_obj,
-                          add_cbar=False, add_grid=True, add_subtitle=False,
-                          add_title=True, add_xaxis=True, add_yaxis=True)
+        im_inputs.update(dict(add_subtitle=False, add_title=True))
+        image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
+                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=False,
+                          add_xaxis=True, add_yaxis=True, **im_inputs)
 
     return image, title
 
@@ -1079,7 +883,7 @@ def antenna_iter(ms_name, columns, **kwargs):
     Returns
     -------
     outp: :obj:`list`
-        A list containing data for each individual antenna. This list is 
+        A list containing data for each individual antenna. This list is
         ordered by antenna and SPW.
     """
 
@@ -1116,108 +920,6 @@ def antenna_iter(ms_name, columns, **kwargs):
     return outp
 
 
-def average_ms(ms_name, tbin=None, cbin=None, chunk_size=None, taql='',
-               columns=None, chan=None, corr=None):
-    """ Perform MS averaging
-    Parameters
-    ----------
-    ms_name : :obj:`str`
-        Name of the input MS
-    tbin : :obj:`float`
-        Time bin in seconds
-    cbin : :obj:`int`
-        Number of channels to bin together
-    chunk_size : :obj:`dict` 
-        Size of resulting MS chunks. 
-    taql: :obj:`str`
-        TAQL clause to pass to xarrayms
-
-    Returns
-    -------
-    x_dataset: :obj:`list`
-        List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split by Spectral windows
-
-    """
-    from xova.apps.xova import averaging as av
-
-    if chunk_size is None:
-        chunk_size = dict(row=100000)
-    if tbin is None:
-        tbin = 1
-    if cbin is None:
-        cbin = 1
-
-    # must be grouped this way because of time averaging
-    ms_obj = xm.xds_from_ms(ms_name, group_cols=['DATA_DESC_ID',
-                                                 'FIELD_ID',
-                                                 'SCAN_NUMBER'],
-                            taql_where=taql)
-
-    # some channels have been selected
-    if chan is not None:
-        ms_obj = [_.sel(chan=chan) for _ in ms_obj]
-
-    # select a corr
-    if corr is not None:
-        ms_obj = [_.sel(corr=corr) for _ in ms_obj]
-
-    # unique ddids available
-    unique_spws = np.unique([ds.DATA_DESC_ID for ds in ms_obj])
-
-    logger.info("Averaging MAIN table")
-
-    # perform averaging to the MS
-    avg_mss = av.average_main(ms_obj, tbin, cbin, 100000, False)
-
-    x_datasets = []
-    spw_ds = []
-
-    logger.info("Creating averaged xarray Dataset")
-
-    for ams in avg_mss:
-        data_vars = OrderedDict()
-        coords = OrderedDict()
-
-        for k, v in sorted(ams.data_vars.items()):
-            if k in columns:
-                data_vars[k] = xr.DataArray(v,
-                                            dims=v.dims, attrs=v.attrs)
-        """
-        for k, v in sorted(ams.coords.items()):
-            if k in columns:
-                coords[k] = xr.DataArray(v,
-                                         dims=v.dims, attrs=v.attrs)
-        """
-
-        # create datasets and rename dimension "[uvw]"" to "uvw"
-        x_datasets.append(xr.Dataset(data_vars,
-                                     attrs=dict(ams.attrs),
-                                     coords=coords).rename_dims({"[uvw]":
-                                                                 "uvw"}))
-
-    # Separate datasets in different SPWs
-    for di in unique_spws:
-        spw_ds.append(
-            [x for x in x_datasets if x.DATA_DESC_ID[0] == di])
-
-    x_datasets = []
-    # produce multiple datasets incase of multiple SPWs
-    # previous step results in  list of the form [[spw1_data], [spw2_data]]
-    # for each spw
-    for spw in spw_ds:
-        # Compact averaged MS datasets into a single dataset for ragavi
-        ms_obj = xr.combine_nested(spw, concat_dim='row',
-                                   compat='no_conflicts', data_vars='all',
-                                   coords='different', join='outer')
-        # chunk the data as user wanted it
-        ms_obj = ms_obj.chunk(chunk_size)
-        x_datasets.append(ms_obj)
-
-    logger.info("Averaging completed.")
-
-    return x_datasets
-
-
 def corr_iter(subs):
     """ Return a list containing iteration over corrs in respective SPWs
     Parameters
@@ -1228,10 +930,10 @@ def corr_iter(subs):
     Returns
     -------
     outp: :obj:`list`
-        A list containing data for each individual corr. This list is 
+        A list containing data for each individual corr. This list is
         ordered by corr and SPW.
 
-    #NOTE: can also be used for chan iteration. Will require name change
+    # NOTE: can also be used for chan iteration. Will require name change
     """
     outp = []
     n_corrs = subs[0].corr.size
@@ -1244,9 +946,10 @@ def corr_iter(subs):
     return outp
 
 
-def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
-           scan=None, where=None, cbin=None, tbin=None, chan_select=None,
-           corr_select=None, iter_axis=None):
+def get_ms(ms_name,  cbin=None, chan_select=None, chunks=None,
+           corr_select=None, colour_axis=None, data_col="DATA", ddid=None,
+           fid=None, iter_axis=None, scan=None, tbin=None,  where=None,
+           x_axis=None):
     """Get xarray Dataset objects containing Measurement Set columns of the selected data
 
     Parameters
@@ -1277,87 +980,85 @@ def get_ms(ms_name, chunks=None, data_col='DATA', ddid=None, fid=None,
     tab_objs: :obj:`list`
         A list containing the specified table objects as  :obj:`xarray.Dataset`
     """
-    global SELECTION_ACTIVE
+    group_cols = set()
 
-    group_cols = []
+    # Always group by DDID
+    group_cols.update({"DATA_DESC_ID"})
+
+    sel_cols = {"FLAG"}
 
     if iter_axis and iter_axis not in ["corr", "antenna"]:
         if iter_axis == "Baseline":
-            group_cols.extend(["ANTENNA1", "ANTENNA2"])
+            group_cols.update({"ANTENNA1", "ANTENNA2"})
         else:
-            group_cols.append(iter_axis)
+            group_cols.update({iter_axis})
 
-    # Always group by DDID
-    if "DATA_DESC_ID" not in group_cols:
-        group_cols.append("DATA_DESC_ID")
+    sel_cols.add(data_col)
+    sel_cols.update(group_cols)
 
-    sel_cols = ["ANTENNA1", "ANTENNA2",
-                "UVW", "TIME", "FIELD_ID",
-                "FLAG", "SCAN_NUMBER", "DATA_DESC_ID"]
-    sel_cols.append(data_col)
+    if colour_axis:
+        sel_cols.update(colour_axis)
+
+    if x_axis in ["channel", "chan", "corr"]:
+        x_axis = data_col
+    else:
+        x_axis = get_colname(x_axis)
+    sel_cols.add(x_axis)
 
     ms_schema = MS_SCHEMA.copy()
-    ms_schema['WEIGHT_SPECTRUM'] = ms_schema['DATA']
+    ms_schema["WEIGHT_SPECTRUM"] = ms_schema["DATA"]
 
     # defining part of the gain table schema
-    if data_col not in ['DATA', 'CORRECTED_DATA']:
-        ms_schema[data_col] = ms_schema['DATA']
+    if data_col not in ["DATA", "CORRECTED_DATA"]:
+        ms_schema[data_col] = ms_schema["DATA"]
 
     if chunks is None:
         chunks = dict(row=10000)
     else:
-        dims = ['row', 'chan', 'corr']
+        dims = ["row", "chan", "corr"]
         chunks = {k: int(v) for k, v in zip(dims, chunks.split(','))}
 
     # always ensure that where stores something
-    if where == None:
+    if where is None:
         where = []
     else:
         where = [where]
 
     if ddid is not None:
         where.append("DATA_DESC_ID IN {}".format(ddid))
-        SELECTION_ACTIVE = True
-        group_cols = []
     if fid is not None:
         where.append("FIELD_ID IN {}".format(fid))
-        SELECTION_ACTIVE = True
-        group_cols = []
     if scan is not None:
         where.append("SCAN_NUMBER IN {}".format(scan))
-        SELECTION_ACTIVE = True
-        group_cols = []
     # combine the strings to form the where clause
     where = " && ".join(where)
 
+    sel_cols = list(sel_cols)
+    group_cols = list(group_cols)
+
+    xds_inputs = dict(chunks=chunks, taql_where=where,
+                      columns=sel_cols, group_cols=group_cols,
+                      table_schema=ms_schema)
     try:
         if cbin or tbin:
             logger.info("Averaging active")
-            sel_cols.append("INTERVAL")
-            # automatically groups data into spectral windows
-            tab_objs = average_ms(ms_name, tbin=tbin, cbin=cbin,
-                                  chunk_size=None, taql=where,
-                                  columns=sel_cols, chan=chan_select,
-                                  corr=corr_select)
+            xds_inputs.update(dict(columns=sel_cols))
+            del xds_inputs["table_schema"]
+            tab_objs = get_averaged_ms(ms_name, tbin=tbin, cbin=cbin,
+                                       chan=chan_select, corr=corr_select,
+                                       data_col=data_col, iter_axis=iter_axis,
+                                       **xds_inputs)
+            if iter_axis == "corr":
+                corr_select = None
+                tab_objs = corr_iter(tab_objs)
         else:
             if iter_axis == "antenna":
-                tab_objs = antenna_iter(ms_name, taql_where=where,
-                                        table_schema=ms_schema,
-                                        chunks=chunks, columns=sel_cols)
-            elif iter_axis == "corr" and not SELECTION_ACTIVE:
-                corr_select = None
-                tab_objs = xm.xds_from_ms(ms_name, taql_where=where,
-                                          table_schema=ms_schema,
-                                          group_cols=group_cols,
-                                          chunks=chunks,
-                                          columns=sel_cols)
-                tab_objs = corr_iter(tab_objs)
+                tab_objs = antenna_iter(ms_name, **xds_inputs)
             else:
-                tab_objs = xm.xds_from_ms(ms_name, taql_where=where,
-                                          table_schema=ms_schema,
-                                          group_cols=group_cols,
-                                          chunks=chunks,
-                                          columns=sel_cols)
+                tab_objs = xm.xds_from_ms(ms_name, **xds_inputs)
+                corr_select = None
+                if iter_axis == "corr":
+                    tab_objs = corr_iter(tab_objs)
             # select channels
             if chan_select is not None:
                 tab_objs = [_.sel(chan=chan_select) for _ in tab_objs]
@@ -1414,7 +1115,7 @@ def create_bl_data_array(xds_table_obj, bl_combos=False):
 
     baseline = da.asarray(a=baseline).rechunk(ant1.data.chunksize)
     baseline = ant1.copy(deep=True, data=baseline)
-    baseline.name = 'Baseline'
+    baseline.name = "Baseline"
     return baseline
 
 
@@ -1438,10 +1139,10 @@ def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
     """
     # iteration key word: data column name
 
-    if it_axis in ['corr', 'chan']:
+    if it_axis in ["corr", "chan"]:
         iter_data = xr.DataArray(da.arange(y_data[it_axis].size),
                                  name=it_axis, dims=[it_axis])
-    elif it_axis == 'Baseline':
+    elif it_axis == "Baseline":
         # should only be applicable to color axis
         # get the data array over which to iterate and merge it to x and y
         iter_data = create_bl_data_array(xds_table_obj)
@@ -1458,7 +1159,7 @@ def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
                                                             it_axis]]
     cat_values = np.unique(iter_data.values)
 
-    xy_df = xy_df.astype({it_axis: 'category'})
+    xy_df = xy_df.astype({it_axis: "category"})
     xy_df[it_axis] = xy_df[it_axis].cat.as_known()
 
     return xy_df, cat_values
@@ -1490,14 +1191,15 @@ def create_df(x, y, iter_data=None):
     nx, ny = massage_data(x, y, get_y=True)
 
     # declare variable names for the xarray dataset
-    var_names = {x_name: ('row', nx),
-                 y_name: ('row', ny)}
+    var_names = {x_name: ("row", nx),
+                 y_name: ("row", ny)}
 
     if iter_data is not None:
         i_name = iter_data.name
         iter_data = massage_data(iter_data, y, get_y=False, iter_ax=i_name)
-        var_names[i_name] = ('row', iter_data)
+        var_names[i_name] = ("row", iter_data)
 
+    logger.info("Creating dataframe")
     new_ds = xr.Dataset(data_vars=var_names)
     new_ds = new_ds.to_dask_dataframe()
     new_ds = new_ds.dropna()
@@ -1526,8 +1228,8 @@ def massage_data(x, y, get_y=False, iter_ax=None):
         Data for the y-axis
     """
 
-    iter_cols = ['ANTENNA1', 'ANTENNA2',
-                 'FIELD_ID', 'SCAN_NUMBER', 'DATA_DESC_ID', 'Baseline']
+    iter_cols = ["ANTENNA1", "ANTENNA2", "FIELD_ID", "SCAN_NUMBER",
+                 "DATA_DESC_ID", "Baseline"]
     # can add 'chan','corr' to this list
 
     # available dims in the x and y axes
@@ -1582,17 +1284,19 @@ def massage_data(x, y, get_y=False, iter_ax=None):
 ###################### Validation functions ############################
 def get_colname(inp):
     aliases = {
-        'antenna': 'antenna',
-        'antenna1': 'ANTENNA1',
-        'antenna2': 'ANTENNA2',
-        'baseline': 'Baseline',
-        # 'baseline': ["ANTENNA1", "ANTENNA2"],
-        'chan': 'chan',
-        'corr': 'corr',
-        'field': 'FIELD_ID',
-        'scan': 'SCAN_NUMBER',
-        'spw': 'DATA_DESC_ID',
-        'time': 'TIME'
+        "antenna": "antenna",
+        "antenna1": "ANTENNA1",
+        "antenna2": "ANTENNA2",
+        "baseline": "Baseline",
+        # "baseline": ["ANTENNA1", "ANTENNA2"],
+        "chan": "chan",
+        "corr": "corr",
+        "field": "FIELD_ID",
+        "scan": "SCAN_NUMBER",
+        "spw": "DATA_DESC_ID",
+        "time": "TIME",
+        "uvdistance": "UVW",
+        "uvwave": "UVW"
     }
     if inp != None:
         col_name = aliases[inp]
@@ -1618,25 +1322,25 @@ def validate_axis_inputs(inp):
         Validated string
     """
     alts = {}
-    alts['amp'] = alts['Amp'] = 'amplitude'
-    alts['ant1'] = alts['Antenna1'] = alts[
-        'Antenna'] = alts['ant'] = 'antenna1'
-    alts['ant2'] = alts['Antenna2'] = 'antenna2'
-    alts['ant'] = alts['Antenna'] = 'antenna'
-    alts['Baseline'] = alts['bl'] = 'baseline'
-    alts['chan'] = alts['Channel'] = 'channel'
-    alts['correlation'] = alts['Corr'] = 'corr'
-    alts['freq'] = alts['Frequency'] = 'frequency'
-    alts['Field'] = 'field'
-    alts['imaginary'] = alts['Imag'] = alts['imag'] = 'imaginary'
-    alts['Real'] = 'real'
-    alts['Scan'] = 'scan'
-    alts['Spw'] = 'spw'
-    alts['Time'] = 'time'
-    alts['Phase'] = 'phase'
-    alts['UVdist'] = alts['uvdist'] = 'uvdistance'
-    alts['uvdistl'] = alts['uvdist_l'] = alts['UVwave'] = 'uvwave'
-    alts['ant'] = alts['Antenna'] = 'antenna1'
+    alts["amp"] = alts["Amp"] = "amplitude"
+    alts["ant1"] = alts["Antenna1"] = alts[
+        "Antenna"] = alts["ant"] = "antenna1"
+    alts["ant2"] = alts["Antenna2"] = "antenna2"
+    alts["ant"] = alts["Antenna"] = "antenna"
+    alts["Baseline"] = alts["bl"] = "baseline"
+    alts["chan"] = alts["Channel"] = "channel"
+    alts["correlation"] = alts["Corr"] = "corr"
+    alts["freq"] = alts["Frequency"] = "frequency"
+    alts["Field"] = "field"
+    alts["imaginary"] = alts["Imag"] = alts["imag"] = "imaginary"
+    alts["Real"] = "real"
+    alts["Scan"] = "scan"
+    alts["Spw"] = "spw"
+    alts["Time"] = "time"
+    alts["Phase"] = "phase"
+    alts["UVdist"] = alts["uvdist"] = "uvdistance"
+    alts["uvdistl"] = alts["uvdist_l"] = alts["UVwave"] = "uvwave"
+    alts["ant"] = alts["Antenna"] = "antenna1"
 
     # convert to proper name if in other name
     if inp in alts:
@@ -1671,9 +1375,9 @@ def link_grid_plots(plot_list):
 def main(**kwargs):
     """Main function that launches the visibilities plotter"""
 
-    if 'options' in kwargs:
+    if "options" in kwargs:
         NB_RENDER = False
-        options = kwargs.get('options', None)
+        options = kwargs.get("options", None)
         chan = options.chan
         chunks = options.chunks
         c_width = options.c_width
@@ -1712,7 +1416,7 @@ def main(**kwargs):
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
     else:
-        logger.error('ragavi exited: No Measurement set specified.')
+        logger.error("ragavi exited: No Measurement set specified.")
         sys.exit(-1)
 
     # ensure that x and y axes are not the same
@@ -1754,7 +1458,7 @@ def main(**kwargs):
         chan = vu.slice_data(chan)
 
         ################################################################
-        ################### Iterate over tables ########################
+        ################### Iterate over subtables #####################
 
         # translate corr labels to indices if need be
         try:
@@ -1776,10 +1480,11 @@ def main(**kwargs):
             i_labels = None
 
         # open MS perform averaging and select desired fields, scans and spws
-        partitions = get_ms(mytab, data_col=data_column, ddid=ddid,
-                            fid=fields, scan=scan, where=where, chunks=chunks,
-                            tbin=tbin, cbin=cbin, chan_select=chan,
-                            corr_select=corr, iter_axis=iter_axis)
+        partitions = get_ms(mytab, cbin=cbin, chan_select=chan, chunks=chunks,
+                            colour_axis=colour_axis, corr_select=corr,
+                            data_col=data_column, ddid=ddid, fid=fields,
+                            iter_axis=iter_axis, scan=scan, tbin=tbin,
+                            where=where, x_axis=xaxis)
 
         if colour_axis:
             if mycmap:
@@ -1792,7 +1497,7 @@ def main(**kwargs):
                 mycmap = vu.get_cmap(mycmap, fall_back="blues",
                                      src="colorcet")
             else:
-                mycmap = vu.get_cmap("blues", src='colorcet')
+                mycmap = vu.get_cmap("blues", src="colorcet")
 
         # configure number of rows and columns for grid
         n_partitions = len(partitions)
@@ -1806,16 +1511,26 @@ def main(**kwargs):
             # my ideal case is 9 columns and for this, the ideal width is 205
             pw = int((205 * 9) / n_cols)
             ph = int(0.83 * pw)
+            if not c_width:
+                c_width = 200
+                logger.info(
+                    "Shrinking canvas width {} for iteration".format(c_width))
+            if not c_height:
+                c_height = 200
+                logger.info(
+                    "Shrinking canvas height to {} for iteration".format(c_height))
+        else:
+            if not c_width:
+                c_width = 1080
+            if not c_height:
+                c_height = 720
 
         # if there are more columns than there are items
         if n_cols > n_partitions:
-            # pw = int(PLOT_WIDTH / n_partitions)
             pw = int((pw * n_cols) / n_partitions)
             ph = int(PLOT_HEIGHT * 0.90)
-
             # because the grid is not generated by daskms iteration
-            if not SELECTION_ACTIVE:
-                n_cols = n_partitions
+            n_cols = n_partitions
 
         # If there is still space extend height
         if (n_rows * ph) < (PLOT_HEIGHT * 0.85):
@@ -1862,16 +1577,12 @@ def main(**kwargs):
                                    "font-family": "monospace"},
                             sizing_mode="stretch_width")
 
-            if SELECTION_ACTIVE:
-                # number of rows and columns attached to the model
-                n_cols, n_rows = oup_a[0].tags
-
             # Link all the plots
             link_grid_plots(oup_a)
 
             info_text = f"MS: {mytab}\nGrid size: {n_cols} x {n_rows}"
             pre = PreText(text=info_text, width=int(PLOT_WIDTH * 0.95),
-                          height=50, align='start', margin=(0, 0, 0, 0))
+                          height=50, align="start", margin=(0, 0, 0, 0))
             final_plot = gridplot(children=oup_a, ncols=n_cols,
                                   sizing_mode="stretch_width")
             final_plot = column(children=[title_div, pre, final_plot])
@@ -1882,8 +1593,8 @@ def main(**kwargs):
         logger.info("Plotting complete.")
 
         if html_name:
-            if 'html' not in html_name:
-                html_name += '.html'
+            if "html" not in html_name:
+                html_name += ".html"
             fname = html_name
         else:
             fname = "{}_{}_{}.html".format(
