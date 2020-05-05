@@ -7,4 +7,4 @@ future
 numpy>=1.15
 python-casacore
 xarray
-numba==0.48.0
+numba<=0.48.0
