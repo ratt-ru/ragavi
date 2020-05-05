@@ -1631,13 +1631,16 @@ def main(**kwargs):
                                 sub, tab, gain,
                                 fid=fid, yaxis=yaxis, corr=corr,
                                 flag=_FLAG_DATA_, kx=options.kx, ddid=spw)
+
                             data = data_obj.act()
                             xaxis = data_obj.xaxis
 
                             infl_data = DataCoreProcessor(
                                 sub, tab, gain, fid=fid, yaxis=yaxis,
                                 corr=corr, flag=not _FLAG_DATA_,
-                                kx=options.kx, ddid=spw).act()
+                                kx=options.kx, ddid=spw)
+
+                            infl_data = infl_data.act()
 
                             x = data.x
                             x_label = data.x_label
@@ -1669,6 +1672,7 @@ def main(**kwargs):
 
             title = f"{yaxis.capitalize()} vs {xaxis.capitalize()}"
             fig = create_bk_fig(xlab=x_label, ylab=y_label, title=title,
+                                x_min=x.min(), x_max=x.max(),
                                 x_axis_type=x_axis_type, x_name=xaxis,
                                 y_name=yaxis, pw=_PLOT_WIDTH_,
                                 ph=_PLOT_HEIGHT_, add_grid=True,

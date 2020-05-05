@@ -8,7 +8,8 @@ from bokeh.models.tools import (BoxEditTool, BoxSelectTool, BoxZoomTool,
                                 WheelZoomTool)
 
 
-def create_bk_fig(x=None, xlab=None, ylab=None, fh=None, fw=None,
+def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
+                  ylab=None, fh=None, fw=None,
                   title=None, pw=None, ph=None, x_axis_type="linear",
                   y_axis_type="linear", x_name=None, y_name=None, **kwargs):
 
@@ -54,6 +55,10 @@ def create_bk_fig(x=None, xlab=None, ylab=None, fh=None, fw=None,
 
     # define the axes ranges
     x_range = DataRange1d(name="p_x_range", only_visible=True)
+
+    if x_min != None and x_max != None:
+        x_range = Range1d(name="p_x_range", start=x_min, end=x_max)
+
     y_range = DataRange1d(name="p_y_range", only_visible=True)
 
     # define items to add on the plot
@@ -150,8 +155,8 @@ def add_axis(fig, axis_range, ax_label, ax_name=None):
     if ax_name is None:
         ax_name = "p_extra_xaxis"
 
-    fig.extra_x_ranges[ax_name] = DataRange1d(  # start=axis_range[0],
-        end=axis_range[-1])
+    fig.extra_x_ranges[ax_name] = Range1d(start=axis_range[0],
+                                          end=axis_range[-1])
 
     linaxis = LinearAxis(x_range_name=ax_name, axis_label=ax_label,
                          axis_label_text_font="monospace",
