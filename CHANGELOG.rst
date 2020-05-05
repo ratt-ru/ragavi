@@ -7,6 +7,7 @@
   - Allowed selection of correlations via respective labels
   - All valid y-axis names are also valid in the x-axis
   - Changed UVWave scale from Lambda to Kilo Lambda
+  - Improved averaging speed
 
 - **ragavi-gains**
 
