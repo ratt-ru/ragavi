@@ -140,10 +140,9 @@ def calc_uvwave(uvw, freq):
     wavelength = (C / freq)
 
     # add extra dimension
-    wavelength = wavelength
     uvdist = calc_uvdist(uvw)
     uvdist = uvdist.expand_dims({"chan": 1}, axis=1)
-    uvwave = uvdist / wavelength.values
+    uvwave = uvdist / wavelength
     return uvwave
 
 
