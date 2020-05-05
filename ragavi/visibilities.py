@@ -296,9 +296,6 @@ class DataCoreProcessor:
             else:
                 y_prepd = y_prepd.T
 
-            # remove the row dim because of compatibility with merge issues
-            x_prepd = x_prepd.sel(row=0)
-
         d = Data(x=x_prepd, xlabel=xlabel, y=y_prepd, ylabel=ylabel)
 
         return d
@@ -323,7 +320,7 @@ class DataCoreProcessor:
             # compute uvwave using the available selected frequencies
             freqs = vu.get_frequencies(self.ms_name, spwid=self.ddid,
                                        chan=self.chan,
-                                       cbin=self.cbin).values()
+                                       cbin=self.cbin).values
 
             x = self.prep_xaxis_data(x_data, freq=freqs)
 
@@ -466,7 +463,7 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
 
         else:
             # only get the associated ID
-            p_txtt_src.add([f"{chunk_attrs[i_axis[0]].capitalize()}"],
+            p_txtt_src.add([f"{i_axis[0].capitalize()}"],
                            name="text")
             i_axis_data = chunk_attrs[i_axis[0]]
             h_tool.tooltips.append((f"{i_axis[0].capitalize()}", "@i_axis"))
@@ -1002,7 +999,7 @@ def get_ms(ms_name,  cbin=None, chan_select=None, chunks=None,
     if x_axis in ["channel", "chan", "corr"]:
         x_axis = data_col
     else:
-        x_axis = get_colname(x_axis)
+        x_axis = get_colname(x_axis, data_col=data_col)
     sel_cols.add(x_axis)
 
     ms_schema = MS_SCHEMA.copy()
@@ -1282,8 +1279,9 @@ def massage_data(x, y, get_y=False, iter_ax=None):
 
 
 ###################### Validation functions ############################
-def get_colname(inp):
+def get_colname(inp, data_col=None):
     aliases = {
+        "amplitude": data_col,
         "antenna": "antenna",
         "antenna1": "ANTENNA1",
         "antenna2": "ANTENNA2",
@@ -1292,6 +1290,9 @@ def get_colname(inp):
         "chan": "chan",
         "corr": "corr",
         "field": "FIELD_ID",
+        "imaginary": data_col,
+        "phase": data_col,
+        "real": data_col,
         "scan": "SCAN_NUMBER",
         "spw": "DATA_DESC_ID",
         "time": "TIME",
