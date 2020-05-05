@@ -56,7 +56,7 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
     # define the axes ranges
     x_range = DataRange1d(name="p_x_range", only_visible=True)
 
-    if x_min != None and x_max != None:
+    if x_min != None and x_max != None and x_name in ["channel", "frequency"]:
         x_range = Range1d(name="p_x_range", start=x_min, end=x_max)
 
     y_range = DataRange1d(name="p_y_range", only_visible=True)

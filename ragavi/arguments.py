@@ -235,7 +235,7 @@ def gains_argparser():
     d_config.add_argument("--t0", dest="t0", type=float, metavar='',
                           help="""Minimum time to plot [in seconds]. 
                         Defaults to full range]""",
-                          default=0)
+                          default=None)
     d_config.add_argument("--t1", dest="t1", type=float, metavar='',
                           help="""Maximum time to plot [in seconds]. 
                         Defaults to full range""",
