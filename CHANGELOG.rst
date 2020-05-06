@@ -8,10 +8,12 @@
   - All valid y-axis names are also valid in the x-axis
   - Changed UVWave scale from Lambda to Kilo Lambda
   - Improved averaging speed
+  - Added ``--ant`` for antenna selection
 
 - **ragavi-gains**
 
   - Deprecated the use of the name ``ragavi``. Now uses ``ragavi-gains``
+  - Slightly improved layout
 
 
 0.3.2
