@@ -8,11 +8,12 @@ import warnings
 import dask.array as da
 import numpy as np
 
+import bokeh.palettes as pl
+import colorcet as cc
 import xarray as xr
 import daskms as xm
 
 from datetime import datetime
-
 from time import time
 
 ########################################################################
@@ -86,14 +87,14 @@ def calc_phase(ydata, wrap=True):
         :attr:`ydata` data converted to degrees
     """
     phase = xr.apply_ufunc(da.angle, ydata,
-                           dask='allowed', kwargs=dict(deg=True))
+                           dask="allowed", kwargs=dict(deg=True))
     if wrap:
         # using an alternative method to avoid warnings
         try:
             phase = phase.reduce(np.unwrap)
         except TypeError:
             # this is for python2 compat
-            phase = xr.apply_ufunc(np.unwrap, phase, dask='allowed')
+            phase = xr.apply_ufunc(np.unwrap, phase, dask="allowed")
     return phase
 
 
@@ -139,10 +140,9 @@ def calc_uvwave(uvw, freq):
     wavelength = (C / freq)
 
     # add extra dimension
-    wavelength = wavelength
     uvdist = calc_uvdist(uvw)
-    uvdist = uvdist.expand_dims({'chan': 1}, axis=1)
-    uvwave = uvdist / wavelength.values
+    uvdist = uvdist.expand_dims({"chan": 1}, axis=1)
+    uvwave = uvdist / wavelength
     return uvwave
 
 
@@ -179,11 +179,11 @@ def get_antennas(ms_name):
         A :obj:`xarray.DataArray` containing names for all the antennas available.
 
     """
-    subname = "::".join((ms_name, 'ANTENNA'))
+    subname = "::".join((ms_name, "ANTENNA"))
     ant_subtab = list(xm.xds_from_table(subname))
     ant_subtab = ant_subtab[0]
     ant_names = ant_subtab.NAME
-    # ant_subtab('close')
+    # ant_subtab("close")
     return ant_names
 
 
@@ -200,14 +200,14 @@ def get_fields(ms_name):
     field_names : :obj:`xarray.DataArray`
         String names for the available fields
     """
-    subname = "::".join((ms_name, 'FIELD'))
+    subname = "::".join((ms_name, "FIELD"))
     field_subtab = list(xm.xds_from_table(subname))
     field_subtab = field_subtab[0]
     field_names = field_subtab.NAME
     return field_names
 
 
-def get_frequencies(ms_name, spwid=0, chan=None, cbin=None):
+def get_frequencies(ms_name, spwid=None, chan=None, cbin=None):
     """Function to get channel frequencies from the SPECTRAL_WINDOW subtable
 
     Parameters
@@ -223,36 +223,34 @@ def get_frequencies(ms_name, spwid=0, chan=None, cbin=None):
 
     Returns
     -------
-    freqs : :obj:`xarray.DataArray`
-        Channel centre frequencies for specified spectral window.
+    frequencies : :obj:`xarray.DataArray`
+        Channel centre frequencies for specified spectral window or all the frequencies for all spectral windows if one is not specified
     """
-    subname = "::".join((ms_name, 'SPECTRAL_WINDOW'))
+    subname = "::".join((ms_name, "SPECTRAL_WINDOW"))
 
+    # if averaging is true, it shall be done before selection
     if cbin is None:
-        spw_subtab = list(xm.xds_from_table(subname, group_cols='__row__'))
+        spw_subtab = xm.xds_from_table(
+            subname, group_cols="__row__",
+            columns=["CHAN_FREQ", "CHAN_WIDTH", "EFFECTIVE_BW",
+                     "REF_FREQUENCY", "RESOLUTION"])
         if chan is not None:
             spw_subtab = [_.sel(chan=chan) for _ in spw_subtab]
     else:
+        from ragavi.averaging import get_averaged_spws
         # averages done per spectral window, scan and field
-        spw_subtab = average_spws(subname, cbin, chan_select=chan)
+        spw_subtab = get_averaged_spws(subname, cbin, chan_select=chan)
 
-    # if averaging is true, it shall be done before selection
-    if len(spw_subtab) == 1:
-        # select the only available spectral window
-        spw = spw_subtab[0]
-    else:
+    # concat all spws into a single data array
+    frequencies = []
+    for s in spw_subtab:
+        frequencies.append(s.CHAN_FREQ)
+    frequencies = xr.concat(frequencies, dim="row")
+
+    if spwid is not None:
         # if multiple SPWs due to slicer, select the desired one(S)
-        spw = spw_subtab[spwid]
-
-    if isinstance(spw, list):
-        freqs = []
-        for s in spw:
-            freqs.append(s.CHAN_FREQ)
-        freqs = xr.concat(freqs, dim='row')
-
-    else:
-        freqs = spw.CHAN_FREQ
-    return freqs
+        frequencies = frequencies.sel(row=spwid)
+    return frequencies
 
 
 def get_polarizations(ms_name):
@@ -269,13 +267,13 @@ def get_polarizations(ms_name):
                 Returns a list containing the types of correlation
     """
     # Stokes types in this case are 1 based and NOT 0 based.
-    stokes_types = ['I', 'Q', 'U', 'V', 'RR', 'RL', 'LR', 'LL', 'XX', 'XY',
-                    'YX', 'YY', 'RX', 'RY', 'LX', 'LY', 'XR', 'XL', 'YR',
-                    'YL', 'PP', 'PQ', 'QP', 'QQ', 'RCircular', 'LCircular',
-                    'Linear', 'Ptotal', 'Plinear', 'PFtotal', 'PFlinear',
-                    'Pangle']
+    stokes_types = ["I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
+                    "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
+                    "YL", "PP", "PQ", "QP", "QQ", "RCircular", "LCircular",
+                    "Linear", "Ptotal", "Plinear", "PFtotal", "PFlinear",
+                    "Pangle"]
 
-    subname = "::".join((ms_name, 'POLARIZATION'))
+    subname = "::".join((ms_name, "POLARIZATION"))
     pol_subtable = list(xm.xds_from_table(subname))[0]
 
     # offset the acquired corr type by 1 to match correctly the stokes type
@@ -363,7 +361,7 @@ def resolve_ranges(inp):
     else:
 
         # takes care of 5:8 or 5,6,7 or 5:
-        res = '[{}]'.format(inp)
+        res = "[{}]".format(inp)
     return res
 
 
@@ -400,9 +398,7 @@ def slice_data(inp):
         splits = [None if x == '' else int(x) for x in splits]
 
         len_splits = len(splits)
-        start = None
-        stop = None
-        step = 1
+        start, stop, step = None, None, 1
 
         if len_splits == 1:
             start = int(splits[0])
@@ -467,8 +463,8 @@ def time_convert(xdata):
     # Add the initial unix time in seconds to get actual time progression
     unix_time = time_diff + init_time
 
-    # unix_time = da.array(unix_time, dtype='datetime64[s]')
-    unix_time = unix_time.astype('datetime64[s]')
+    # unix_time = da.array(unix_time, dtype="datetime64[s]")
+    unix_time = unix_time.astype("datetime64[s]")
 
     return unix_time
 
@@ -494,10 +490,10 @@ warnings.formatwarning = wrap_warning_text
 def __config_logger():
     """Configure the logger for ragavi and catch all warnings output by sys.stdout.
     """
-    logfile_name = 'ragavi.log'
+    logfile_name = "ragavi.log"
 
     # capture only a single instance of a matching repeated warning
-    warnings.filterwarnings('module')
+    warnings.filterwarnings("module")
 
     # capture warnings from all modules
     logging.captureWarnings(True)
@@ -509,11 +505,11 @@ def __config_logger():
         cols, rows = (100, 100)
 
     # create logger named ragavi
-    logger = logging.getLogger('ragavi')
+    logger = logging.getLogger("ragavi")
     logger.setLevel(logging.INFO)
 
     # warnings logger
-    w_logger = logging.getLogger('py.warnings')
+    w_logger = logging.getLogger("py.warnings")
     w_logger.setLevel(logging.INFO)
 
     # console handler
@@ -527,9 +523,9 @@ def __config_logger():
     start = " (O_o) ".center(cols, "=")
 
     c_formatter = logging.Formatter(
-        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""", datefmt='%d.%m.%Y@%H:%M:%S')
+        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""", datefmt="%d.%m.%Y@%H:%M:%S")
     f_formatter = logging.Formatter(
-        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""" , datefmt='%d.%m.%Y@%H:%M:%S')
+        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""" , datefmt="%d.%m.%Y@%H:%M:%S")
 
     c_handler.setFormatter(c_formatter)
     f_handler.setFormatter(f_formatter)
@@ -553,10 +549,6 @@ def __handle_uncaught_exceptions(extype, exval, extraceback):
     logger.error(message, exc_info=(extype, exval, extraceback))
 
 
-logger = __config_logger()
-sys.excepthook = __handle_uncaught_exceptions
-
-
 ########################################################################
 ########################### Some useful functions ######################
 
@@ -568,7 +560,7 @@ def __welcome():
     print("\n\n")
     print("_*+_" * 23)
     print("Welcome to ")
-    print(Figlet(font='nvscript').renderText('ragavi'))
+    print(Figlet(font="nvscript").renderText("ragavi"))
     print("_*+_" * 23)
     print("\n\n")
     """
@@ -589,53 +581,110 @@ def time_wrapper(func):
     return timer
 
 
-#####################################################################
-#################### Averaging functions ############################
+########################################################################
+#################### Return colours functions ##########################
 
-def average_spws(ms_name, cbin, chan_select=None):
-    """ Average spectral windows
+"""
+Some categories of colormaps and their names
 
-    Parameters
-    ----------
-    ms_name : :obj:`str`
-        Path or name of MS Spectral window Subtable
-    cbin : :obj:`int`
-        Number of channels to be binned together
+############################ Colorcet ############################
+eg. cc.palette[categorical_colours[0]]
+
+categorical_colours = ["glasbey", "glasbey_light", "glasbey_dark",
+                        'glasbey_warm', 'glasbey_cool']
+diverging_colours = ['bkr', 'bky', 'bwy', 'cwr', 'coolwarm', 'gwv', 'bjy']
+
+misc_colours = ['colorwheel', 'isolum', 'rainbow']
+
+linear_colours = ['bgy', 'bgyw', 'kbc', 'blues', 'bmw', 'bmy', 'kgy', 'gray',
+                  'dimgray', 'fire', 'kb', 'kg', 'kr']
+
+
+"""
+
+
+def get_cmap(cmap, fall_back="coolwarm", src="bokeh"):
+    """Get Hex colors that form a certain cmap. 
+    This function checks for the requested cmap in bokeh.palettes 
+    and colorcet.palettes.
+    List of valid names can be found at:
+    https: // colorcet.holoviz.org / user_guide / index.html
+    https: // docs.bokeh.org / en / latest / docs / reference / palettes.html
+
+    """
+    if src == "bokeh":
+        if cmap in pl.all_palettes:
+            max_colours = max(pl.all_palettes[cmap].keys())
+            colors = pl.all_palettes[cmap][max_colours]
+        elif cmap.capitalize() in pl.all_palettes:
+            cmap = cmap.capitalize()
+            max_colours = max(pl.all_palettes[cmap].keys())
+            colors = pl.all_palettes[cmap][max_colours]
+        else:
+            colors = None
+    elif src == "colorcet":
+        if cmap in cc.palette:
+            colors = cc.palette[cmap]
+        else:
+            colors = None
+    if colors is None:
+        if cc.palette[cmap]:
+            colors = cc.palette[cmap]
+        else:
+            colors = cc.palette[fall_back]
+            logger.info("Selected colourmap not found. Reverting to default")
+
+    return colors
+
+
+def get_linear_cmap(cmap, n, fall_back="coolwarm"):
+    """Produce n that differ linearly from a given colormap
+    This function depends on pl.linear_palettes whose doc be found at:
+    https: // docs.bokeh.org / en / latest / docs / reference / palettes.html
+    cmap: : obj: `str`
+        The colourmap chosen
+    n: : obj: `int`
+        Number of colours to generate
 
     Returns
     -------
-    x_datasets : :obj:`list`
-        List containing averaged spectral windows as :obj:`xarray.Dataset`
+    colors: : obj: `list`
+        A list of size n containing the linear colours
     """
-    import collections
-    from xova.apps.xova import averaging as av
+    colors = get_cmap(cmap, fall_back=fall_back)
+    if len(colors) < n:
+        logger.info("Requested {}, available: {}.".format(n, len(colors)))
+        logger.info("Reverting back to default.")
+        colors = get_cmap(fall_back)
+    colors = pl.linear_palette(colors, n)
 
-    spw_subtab = list(xm.xds_from_table(ms_name, group_cols='__row__'))
+    return colors
 
-    if chan_select is not None:
-        spw_subtab = [_.sel(chan=chan_select) for _ in spw_subtab]
 
-    logger.info("Averaging SPECTRAL_WINDOW subtable")
+def get_diverging_cmap(n_colors, cmap1=None, cmap2=None):
+    """Produce n_colors that diverge given two different colourmaps.
+    This function depends on pl.diverging_palettes whose doc can be found at:
+    https: // docs.bokeh.org / en / latest / docs / reference / palettes.html
+    cmap1: : obj: `str`
+        Name of the first colourmap to use
+    cmap2: : obj: `str`
+        Name of the second colourmap to use
+    n_colors: : obj: `int`
+        Number of colours to generate.
 
-    av_spw = av.average_spw(spw_subtab, cbin)
+    Returns
+    -------
+    colors: : obj: `list`
+        A list of size n_colors containing the diverging colours
+    """
+    colors1 = get_cmap(cmap1)
+    colors2 = get_cmap(cmap2)
+    colors = pl.diverging_palette(colors1, colors2, n_colors)
 
-    x_datasets = []
+    return colors
 
-    # convert from daskms datasets to xarray datasets
-    for ds in av_spw:
-        data_vars = collections.OrderedDict()
-        coords = collections.OrderedDict()
 
-        for k, v in sorted(ds.data_vars.items()):
-            data_vars[k] = xr.DataArray(
-                v.data.compute_chunk_sizes(), dims=v.dims, attrs=v.attrs)
-
-        for k, v in sorted(ds.coords.items()):
-            coords[k] = xr.DataArray(
-                v.data.compute_chunk_sizes(), dims=v.dims, attrs=v.attrs)
-
-        x_datasets.append(xr.Dataset(data_vars,
-                                     attrs=dict(ds.attrs),
-                                     coords=coords))
-    logger.info("Done")
-    return x_datasets
+########################################################################
+#################### define the log ####################################
+logger = __config_logger()
+sys.excepthook = __handle_uncaught_exceptions

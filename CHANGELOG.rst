@@ -1,10 +1,28 @@
+0.3.3
+-----
+- **ragavi-vis**
+
+  - Both ``--colour-axis`` and ``--iter-axis`` can now be used simultaneously
+  - Added ``--cols`` to specify number of columns when ``--iter-axis`` is supplied.
+  - Allowed selection of correlations via respective labels
+  - All valid y-axis names are also valid in the x-axis
+  - Changed UVWave scale from Lambda to Kilo Lambda
+  - Improved averaging speed
+  - Added ``--ant`` for antenna selection
+
+- **ragavi-gains**
+
+  - Deprecated the use of the name ``ragavi``. Now uses ``ragavi-gains``
+  - Slightly improved layout
+
+
 0.3.2
 -----
 - **ragavi-vis**
 
   - Added ``--iter-axis`` argument to generate grid plots over the iteration axis
   - ``--colour-axis`` generates a single plot coloured by the specified axis
-  - Added ``--canvas-width`` and ``--canvas-height`` option to set resuting image resolution
+  - Added ``--canvas-width`` and ``--canvas-height`` option to set resulting image resolution
   - Improved RAM management
   - Available X and Y axes names can be specified in short forms like CASA
 
@@ -26,9 +44,9 @@
   - Fixed spectral window selection bug
   - Added spectral window selection widgets
   - Moved stats from plot titles to table below the plots
-  - Changed time xaxis to UTC time
+  - Changed time x-axis to UTC time
   - Added new download selected data button
-  - All availabe times displayed for bandpass plots
+  - All available times displayed for bandpass plots
 
 
 0.2.3
@@ -52,7 +70,7 @@
 
 0.2.0
 -----
-- Introduced ragavi visibility plotter accessible by ragavi-vis
+- Introduced ``ragavi`` visibility plotter accessible by ``ragavi-vis``
 - Improved documentation
 - Added progress bar for ``ragavi-vis``
 - Changed gain plotter name to ``ragavi-gains``. Deprecating ``ragavi``
@@ -98,9 +116,9 @@
 - Different fields now plotted with different markers
 - Migrated to ``xarray-ms`` from ``python-casacore``
 - Added glyph alpha selector, glyph size selector, and field selector
-- Reorganise selector panel
+- Re-organise selector panel
 - Added title and axis label size selectors
-- Add field symbols alongside field names on checkboxes
+- Add field symbols alongside field names on check-boxes
 - Allow automatic plot scaling
 - Medians now shown in plot titles
 
@@ -124,8 +142,8 @@
 
 0.0.3
 -----
-- Travis realease on tag
-- Now plotting Flux callibration tables
+- Travis release on tag
+- Now plotting Flux calibration tables
 - Extra frequency axis for bandpass plot
 
 

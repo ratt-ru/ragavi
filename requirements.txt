@@ -1,9 +1,9 @@
-bokeh==1.4
+bokeh
+codex-africanus[dask]
 dask[complete]
 dask-ms[xarray]
 datashader
 future
-matplotlib>2.2.3; python_version >= '3.5'
-numpy>=1.14
+numpy>=1.15
 python-casacore
 xarray
