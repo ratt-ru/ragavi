@@ -331,12 +331,9 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
                             taql_where=taql_where)
 
     # some channels have been selected
+    # corr selection is performed after averaging!!
     if chan is not None:
         ms_obj = [_.sel(chan=chan) for _ in ms_obj]
-
-    # select a corr
-    if corr is not None:
-        ms_obj = [_.sel(corr=corr) for _ in ms_obj]
 
     logger.info("Averaging MAIN table")
 
@@ -448,6 +445,10 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
             subs.attrs = natt
             subs = subs.chunk(chunks)
             all_grps.append(subs)
+
+     # select a corr
+    if corr is not None:
+        all_grps = [_.sel(corr=corr) for _ in all_grps]
 
     logger.info("Averaging completed.")
 
