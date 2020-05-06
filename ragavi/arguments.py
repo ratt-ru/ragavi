@@ -23,7 +23,7 @@ def vis_argparser():
         Argument parser object that contains command line argument's values
 
     """
-    x_choices = ["ant", "antenna", "ant1", "antenna1", "ant2", "antenna2",
+    x_choices = ["ant1", "antenna1", "ant2", "antenna2",
                  "amp", "amplitude", "chan", "channel", "freq",  "frequency",
                  "imag", "imaginary", "phase", "real", "scan", "time",
                  "uvdist", "UVdist", "uvdistance", "uvdistl", "uvdist_l",
@@ -91,6 +91,14 @@ def vis_argparser():
                          default=None)
 
     d_config = parser.add_argument_group("Data Selection")
+    d_config.add_argument("-a", "--ant", dest="ants", type=str,
+                          metavar='',
+                          help="""Select baselines where ANTENNA1 corresponds 
+                          to the supplied antenna(s). "Can be 
+                        specified as e.g. "4", "5,6,7", "5~7" (inclusive 
+                        range), "5:8" (exclusive range), 5:(from 5 to last). 
+                        Default is all.""",
+                          default=None)
     d_config.add_argument("--chan", dest="chan", type=str, metavar='',
                           help="""Channels to select. Can be specified using 
                         syntax i.e "0:5" (exclusive range) or "20" for 
