@@ -387,7 +387,6 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
                         pw=pw, ph=ph, add_title=add_title,
                         add_xaxis=add_xaxis, add_yaxis=add_yaxis,
                         fix_plotsize=True)
-
     if cat:
         img = tf.shade(agg, color_key=color[:agg[cat].size])
         if add_cbar:
@@ -405,10 +404,12 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
     if add_xaxis:
         # some formatting on the x and y axes
         if x_name.lower() in ["channel", "frequency"]:
-            p_title = fig.above.pop()
+            try:
+                p_title = fig.above.pop()
+            except IndexError:
+                p_title = None
             fig = add_axis(fig=fig, axis_range=x.chan.values,
                            ax_label="Channel")
-            fig.extra_x_ranges["p_extra_xaxis"].bounds = (None, x_max)
             if p_title:
                 fig.add_layout(p_title, "above")
         elif x_name.lower() == "time":
@@ -445,10 +446,11 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
                                                 y=[y_max * 0.87]))
         if i_labels is not None:
             # Only in the case of a baseline
-            if ["ANTENNA1", "ANTENNA2"] in i_axis:
+            if {"ANTENNA1", "ANTENNA2"} <= set(i_axis):
+                i_axis.sort()
+                # Don't split the next line, will result in bad formatting
                 p_txtt_src.add(
-                    [f"""{i_labels[chunk_attrs.get(i_axis[0])]},
-                        {i_labels[chunk_attrs.get(i_axis[1])]}"""],
+                    [f"""{i_labels[chunk_attrs.get(i_axis[0])]}, {i_labels[chunk_attrs.get(i_axis[1])]}"""],
                     name="text")
                 i_axis_data = f"""{ i_labels[chunk_attrs[i_axis[0]]] },
                 { i_labels[chunk_attrs.get(i_axis[1])] }"""
@@ -463,7 +465,7 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
 
         else:
             # only get the associated ID
-            p_txtt_src.add([f"{i_axis[0].capitalize()}"],
+            p_txtt_src.add([f"{i_axis[0].capitalize()}: {chunk_attrs[i_axis[0]]}"],
                            name="text")
             i_axis_data = chunk_attrs[i_axis[0]]
             h_tool.tooltips.append((f"{i_axis[0].capitalize()}", "@i_axis"))
@@ -477,7 +479,6 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
         fig.add_glyph(p_txtt_src, p_txtt)
 
     fig.add_glyph(cds, image_glyph)
-
     return fig
 
 
@@ -633,7 +634,7 @@ def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
             agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
     else:
         with ProgressBar():
-            agg = cvs.points(xy_df, x, y, ds.any())
+            agg = cvs.points(xy_df, x, y, ds.count())
 
     logger.info("Aggregation done")
 
@@ -746,7 +747,14 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
     xaxis = "frequency" if xaxis == "channel" else xaxis
 
     # changing the Name of the dataArray to the name provided as xaxis
-    x.name = xaxis.capitalize()
+    try:
+        x.name = xaxis.capitalize()
+    except AttributeError:
+        logger.error(
+            "Invalid operation. Iteration axis may be contained in the x-axis, or may be the same as the x-axis.")
+        logger.error(
+            "Please change the x-axis or the iteration axis and try again. Exiting.")
+        sys.exit(-1)
     y.name = yaxis.capitalize()
 
     # set plot title name
@@ -853,7 +861,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
 
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=colour_axis,
-                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=False,
+                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=True,
                           add_xaxis=True, add_yaxis=True, **im_inputs)
 
     else:
@@ -943,7 +951,7 @@ def corr_iter(subs):
     return outp
 
 
-def get_ms(ms_name,  cbin=None, chan_select=None, chunks=None,
+def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
            corr_select=None, colour_axis=None, data_col="DATA", ddid=None,
            fid=None, iter_axis=None, scan=None, tbin=None,  where=None,
            x_axis=None):
@@ -990,13 +998,16 @@ def get_ms(ms_name,  cbin=None, chan_select=None, chunks=None,
         else:
             group_cols.update({iter_axis})
 
-    sel_cols.add(data_col)
     sel_cols.update(group_cols)
+    sel_cols.add(data_col)
 
-    if colour_axis:
-        sel_cols.update(colour_axis)
+    if colour_axis and colour_axis not in ["corr", "channel", "frequency"]:
+        if colour_axis == "Baseline":
+            sel_cols.update({"ANTENNA1", "ANTENNA2"})
+        else:
+            sel_cols.add(colour_axis)
 
-    if x_axis in ["channel", "chan", "corr"]:
+    if x_axis in ["channel", "chan", "corr", "frequency"]:
         x_axis = data_col
     else:
         x_axis = get_colname(x_axis, data_col=data_col)
@@ -1027,6 +1038,9 @@ def get_ms(ms_name,  cbin=None, chan_select=None, chunks=None,
         where.append("FIELD_ID IN {}".format(fid))
     if scan is not None:
         where.append("SCAN_NUMBER IN {}".format(scan))
+    if ants is not None:
+        where.append("ANTENNA1 IN {}".format(ants))
+
     # combine the strings to form the where clause
     where = " && ".join(where)
 
@@ -1095,8 +1109,8 @@ def create_bl_data_array(xds_table_obj, bl_combos=False):
     ant1 = xds_table_obj.ANTENNA1
     ant2 = xds_table_obj.ANTENNA2
 
-    u_ants = da.unique(ant1.data).compute()
-    u_bls_combos = combinations(np.arange(u_ants.size + 1), 2)
+    u_ants = np.unique(np.hstack((np.unique(ant1), np.unique(ant2))))
+    u_bls_combos = combinations(np.arange(u_ants.size), 2)
 
     if bl_combos:
         return u_bls_combos
@@ -1104,15 +1118,14 @@ def create_bl_data_array(xds_table_obj, bl_combos=False):
     logger.info("Populating baseline data")
 
     # create a baseline array of the same shape as antenna1
-    baseline = np.empty_like(ant1.values)
-    for bl, a in enumerate(u_bls_combos):
-        a1 = a[0]
-        a2 = a[-1]
-        baseline[(ant2.values == a2) & (ant1.values == a1)] = bl
+    baseline = np.full_like(ant1.values, 0)
+    for bl, (p, q) in enumerate(u_bls_combos):
+        baseline[(ant1.values == p) & (ant2.values == q)] = bl
 
     baseline = da.asarray(a=baseline).rechunk(ant1.data.chunksize)
     baseline = ant1.copy(deep=True, data=baseline)
     baseline.name = "Baseline"
+    logger.info("Done")
     return baseline
 
 
@@ -1135,7 +1148,6 @@ def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
         Array containing the unique identities of the iteration axis
     """
     # iteration key word: data column name
-
     if it_axis in ["corr", "chan"]:
         iter_data = xr.DataArray(da.arange(y_data[it_axis].size),
                                  name=it_axis, dims=[it_axis])
@@ -1144,10 +1156,16 @@ def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
         # get the data array over which to iterate and merge it to x and y
         iter_data = create_bl_data_array(xds_table_obj)
     else:
-        try:
+        if it_axis in xds_table_obj.data_vars.keys():
             iter_data = xds_table_obj[it_axis]
-        except:
+        elif it_axis in xds_table_obj.attrs.keys():
+            iter_data = xr.DataArray(
+                da.full_like(x_data, xds_table_obj.attrs[it_axis]),
+                name=it_axis, dims=x_data.dims, coords=y_data.coords)
+
+        else:
             logger.error("Specified data column not found.")
+            sys.exit(-1)
 
     logger.info("Creating Dataframe")
 
@@ -1289,6 +1307,7 @@ def get_colname(inp, data_col=None):
         # "baseline": ["ANTENNA1", "ANTENNA2"],
         "chan": "chan",
         "corr": "corr",
+        "frequency": "chan",
         "field": "FIELD_ID",
         "imaginary": data_col,
         "phase": data_col,
@@ -1324,8 +1343,7 @@ def validate_axis_inputs(inp):
     """
     alts = {}
     alts["amp"] = alts["Amp"] = "amplitude"
-    alts["ant1"] = alts["Antenna1"] = alts[
-        "Antenna"] = alts["ant"] = "antenna1"
+    alts["ant1"] = alts["Antenna1"] = "antenna1"
     alts["ant2"] = alts["Antenna2"] = "antenna2"
     alts["ant"] = alts["Antenna"] = "antenna"
     alts["Baseline"] = alts["bl"] = "baseline"
@@ -1341,7 +1359,6 @@ def validate_axis_inputs(inp):
     alts["Phase"] = "phase"
     alts["UVdist"] = alts["uvdist"] = "uvdistance"
     alts["uvdistl"] = alts["uvdist_l"] = alts["UVwave"] = "uvwave"
-    alts["ant"] = alts["Antenna"] = "antenna1"
 
     # convert to proper name if in other name
     if inp in alts:
@@ -1379,6 +1396,7 @@ def main(**kwargs):
     if "options" in kwargs:
         NB_RENDER = False
         options = kwargs.get("options", None)
+        ants = options.ants
         chan = options.chan
         chunks = options.chunks
         c_width = options.c_width
@@ -1445,10 +1463,12 @@ def main(**kwargs):
                 fields = str(vu.name_2id(mytab, fields))
                 fields = vu.resolve_ranges(fields)
 
-        if scan != None:
+        if options.scan != None:
             scan = vu.resolve_ranges(scan)
+        if options.ants != None:
+            ants = vu.resolve_ranges(ants)
 
-        if ddid != None:
+        if options.ddid != None:
             n_ddid = vu.slice_data(ddid)
             ddid = vu.resolve_ranges(ddid)
         else:
@@ -1481,7 +1501,8 @@ def main(**kwargs):
             i_labels = None
 
         # open MS perform averaging and select desired fields, scans and spws
-        partitions = get_ms(mytab, cbin=cbin, chan_select=chan, chunks=chunks,
+        partitions = get_ms(mytab, ants=ants,
+                            cbin=cbin, chan_select=chan, chunks=chunks,
                             colour_axis=colour_axis, corr_select=corr,
                             data_col=data_column, ddid=ddid, fid=fields,
                             iter_axis=iter_axis, scan=scan, tbin=tbin,
