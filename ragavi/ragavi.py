@@ -24,7 +24,6 @@ from bokeh.models.widgets import DataTable, TableColumn, Div, PreText
 from itertools import product
 from pyrap.tables import table
 
-
 import ragavi.utils as vu
 from ragavi.plotting import create_bk_fig, add_axis
 
@@ -387,7 +386,7 @@ class DataCoreProcessor:
 
 ################### Some table related functions #######################
 
-def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None,
+def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
               group_cols=None):
     """ Get xarray Dataset objects containing gain table columns of the selected data
 
@@ -401,7 +400,7 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None,
         DATA_DESC_ID or spectral window whose data will be selected
     tab_name: :obj:`str`
         name of your table or path including its name
-    where: :obj:`str`, optional
+    where: :obj:`list`, optional
         TAQL where clause to be used with the MS.
 
     Returns
@@ -419,11 +418,7 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None,
                   "SNR": {"dims": ("chan", "corr")},
                   }
 
-    if where == None:
-        where = []
-    else:
-        where = [where]
-
+    # where is now a list
     if antenna != None:
         where.append("ANTENNA1 IN {}".format(antenna))
     if fid != None:
@@ -434,8 +429,10 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None,
         else:
             spwid = vu.resolve_ranges(spwid)
         where.append("SPECTRAL_WINDOW_ID IN {}".format(spwid))
-
-    where = "&&".join(where)
+    if len(where) > 0:
+        where = " && ".join(where)
+    else:
+        where = ""
 
     if group_cols is None:
         group_cols = ["SPECTRAL_WINDOW_ID", "FIELD_ID", "ANTENNA1"]
@@ -1274,7 +1271,6 @@ def create_stats_table(stats, yaxes):
     n_ys = len(yaxes)
     # number of fields, spws and corrs
     n_items = len(stats) // n_ys
-
     stats = np.array(stats)
     d_stats = dict(
         spw=stats[:n_items, 0],
@@ -1330,7 +1326,8 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
     pre: :obj:`bokeh.models.widgets`
         Pre-formatted text containing the medians for both model. The object returned must then be placed within the widget box for display.
     """
-    subtable = get_table(tab_name, fid=field, spwid=spwid, group_cols=[])[0]
+    subtable = get_table(tab_name, fid=field, spwid=str(spwid),
+                         group_cols=[], where=[])[0]
     if subtable.row.size == 0:
         return None
 
@@ -1481,37 +1478,38 @@ def main(**kwargs):
 
         if options.fields:
             # Not using .isalnum coz the actual field names can be provided
-            if (any(_ in options.fields for _ in ":~") or
-                    options.fields.isnumeric()):
-                fields = vu.resolve_ranges(options.fields)
-            elif ',' in options.fields:
+            if (any(_ in fields for _ in ":~") or
+                    fields.isnumeric()):
+                fields = vu.resolve_ranges(fields)
+            elif ',' in fields:
                 """
                  convert field name to field id and join all the resulting field ids with a comma
                 """
                 fields = ",".join([str(vu.name_2id(tab, x))
                                    if not x.isnumeric() else x
-                                   for x in options.fields.split(',')])
-                fields = vu.resolve_ranges(options.fields)
+                                   for x in fields.split(',')])
+                fields = vu.resolve_ranges(fields)
             else:
-                fields = str(vu.name_2id(tab, options.fields))
-                fields = vu.resolve_ranges(options.fields)
+                fields = str(vu.name_2id(tab, fields))
+                fields = vu.resolve_ranges(fields)
 
         if options.corr:
             if ',' in options.corr:
                 corrs = [int(_) for _ in options.corr.split(',')]
             else:
-                corrs = [int(corrs)]
-            corrs = np.array(corr)
+                corrs = [int(options.corr)]
+            corrs = np.array(corrs)
         else:
             s_tab = table(tab, ack=False)
             corrs = np.arange(s_tab.getcell("FLAG", 0).shape[-1])
             s_tab.close()
 
-        if options.ddid:
+        if options.ddid is not None:
             # TODO: Check for the input comming in from argparse
             # check if it needs to be resolved
             ddid = vu.resolve_ranges(options.ddid)
-            freqs = vu.get_frequencies(tab, spwid=options.ddid).values / _GHZ_
+            # get all frequencies anyways
+            freqs = vu.get_frequencies(tab).values / _GHZ_
         else:
             freqs = vu.get_frequencies(tab).values / _GHZ_
 
@@ -1535,8 +1533,6 @@ def main(**kwargs):
             where.append(f"TIME - {str(init_time)} >= {str(t0)}")
         if t1:
             where.append(f"TIME - {str(init_time)} <= {str(t1)}")
-
-        where = " && ".join(where)
 
         if gain in ["G", "F"] or (options.kx == "time" and gain == "K"):
             x_axis_type = "datetime"
@@ -1603,7 +1599,7 @@ def main(**kwargs):
                 fname = field_names[fid]
                 stats = stats_display(tab_name=tab, yaxis=yaxis, gtype=gain,
                                       corr=corr, field=fid, flag=_FLAG_DATA_,
-                                      f_names=field_names, spwid=str(spw))
+                                      f_names=field_names, spwid=spw)
                 if stats:
                     fig_stats.append(stats)
 
@@ -1660,11 +1656,12 @@ def main(**kwargs):
                             ufsources.append(source)
                             fsources.append(inv_source)
 
-                            glyphs, bars = make_plots(source=source,
-                                                      color=colour,
-                                                      fid=fid,
-                                                      yerr=y_err,
-                                                      yidx=_y)
+                            glyphs, bars = make_plots(
+                                source=source,
+                                color=colour,
+                                fid=np.where(field_ids == fid)[0][0],
+                                yerr=y_err,
+                                yidx=_y)
 
                             fig_glyphs.append(glyphs)
                             fig_legends.append((legend, []))
