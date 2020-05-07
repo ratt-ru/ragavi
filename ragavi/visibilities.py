@@ -231,6 +231,13 @@ class DataCoreProcessor:
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
         if self.flag:
+            if np.all(flags.values == True):
+                logger.error(
+                    "All data appears to be flagged. Unable to continue.")
+                logger.error(
+                    "Please use -nf or --no-flagged to deactivate flagging if you still wish to generate this plot.")
+                logger.error(" Exiting.")
+                sys.exit(-1)
             processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
             y = processed.where(flags == False)
         else:
