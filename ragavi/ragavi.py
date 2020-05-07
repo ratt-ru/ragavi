@@ -429,9 +429,10 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
         else:
             spwid = vu.resolve_ranges(spwid)
         where.append("SPECTRAL_WINDOW_ID IN {}".format(spwid))
-
     if len(where) > 0:
         where = " && ".join(where)
+    else:
+        where = ""
 
     if group_cols is None:
         group_cols = ["SPECTRAL_WINDOW_ID", "FIELD_ID", "ANTENNA1"]
@@ -1655,11 +1656,12 @@ def main(**kwargs):
                             ufsources.append(source)
                             fsources.append(inv_source)
 
-                            glyphs, bars = make_plots(source=source,
-                                                      color=colour,
-                                                      fid=fid,
-                                                      yerr=y_err,
-                                                      yidx=_y)
+                            glyphs, bars = make_plots(
+                                source=source,
+                                color=colour,
+                                fid=np.where(field_ids == fid)[0][0],
+                                yerr=y_err,
+                                yidx=_y)
 
                             fig_glyphs.append(glyphs)
                             fig_legends.append((legend, []))
