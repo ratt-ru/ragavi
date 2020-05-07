@@ -1,3 +1,9 @@
+0.3.4
+-----
+**ragavi-gains**
+  
+  - Fixes data selection bugs
+
 0.3.3
 -----
 - **ragavi-vis**
