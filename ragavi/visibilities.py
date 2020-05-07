@@ -232,12 +232,12 @@ class DataCoreProcessor:
         # single dataarray
         if self.flag:
             if np.all(flags.values == True):
-                logger.error(
+                logger.warning(
                     "All data appears to be flagged. Unable to continue.")
-                logger.error(
+                logger.warning(
                     "Please use -nf or --no-flagged to deactivate flagging if you still wish to generate this plot.")
-                logger.error(" Exiting.")
-                sys.exit(-1)
+                logger.warning(" Exiting.")
+                sys.exit(0)
             processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
             y = processed.where(flags == False)
         else:
@@ -1093,7 +1093,7 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
 
         return tab_objs
     except:
-        logger.exception(
+        logger.error(
             "Invalid DATA_DESC_ID, FIELD_ID, SCAN_NUMBER or TAQL clause")
         sys.exit(-1)
 
