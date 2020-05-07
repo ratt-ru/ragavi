@@ -12,6 +12,55 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
                   ylab=None, fh=None, fw=None,
                   title=None, pw=None, ph=None, x_axis_type="linear",
                   y_axis_type="linear", x_name=None, y_name=None, **kwargs):
+    """ Generates a bokeh figure
+
+    Parameters
+    ----------
+    x :obj:`DataArray`
+        Contains x-axis data
+    xlab : :obj:`str`
+        X-axis label
+    x_min : :obj:`float`
+        Min x value
+    x_max : :obj:`float`
+        Max x value
+    ylab : :obj:`str`
+        Y-axis label
+    fh: :obj:`int`
+        True height of figure without legends, axes titles etc
+    fw: :obj:`int`
+        True width of figure without legends, axes etc
+    title: :obj:`str`
+        Title of plot
+    pw: :obj:`int`
+        Plot width including legends, axes etc
+    ph: :obj:`int`
+        Plot height including legends, axes etc
+    x_axis_type: :obj:`str`
+        Type of x-axis can be linear, log, or datetime
+    y_axis_type: :obj:`str`
+        Can be linear, log or datetime
+    x_name: :obj:`str`
+        Name of the column used for the x-axis. Mostly used to form tooltips
+    y_name: :obj:`str`
+        Name of the column used for the y-axis. Also used for tooltips
+    add_grid: :obj:`bool`
+        Whether or not to add grid
+    add_title: :obj:`bool`
+        Whether or not to add title to plot
+    add_xaxis: :obj:`bool`
+        Whether or not to add x-axis and tick marks
+    add_yaxis: :obj:`bool`
+        Add y-axis or not
+    fix_plotsize: :obj:`bool`
+        Enforce certain dimensions on plot. This is useful for ensuring a plot is not obscure by axes and other things. If activated, plot's dimensions will not be responsive. It utilises fw and fh.
+
+    Returns
+    -------
+    p : :obj:`Plot`
+        A bokeh Plot object
+
+    """
 
     add_grid = kwargs.pop("add_grid", False)
     add_title = kwargs.pop("add_title", True)
