@@ -1,3 +1,10 @@
+0.3.5
+-----
+**ragavi-vis**
+ 
+  - Added information on read the docs
+  - Fix error due to all null plots
+
 0.3.4
 -----
 **ragavi-gains**

@@ -176,6 +176,8 @@ def average_main(main_ds, time_bin_secs, chan_bin_size,
         for computing row flags.
     viscolumn: string
         name of column to average
+    sel_cols: list
+        Columns that need to be present in the dataset
     Returns
     -------
     avg
@@ -281,12 +283,20 @@ def average_spw(spw_ds, chan_bin_size):
 def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
                     columns=None, chan=None, corr=None, data_col=None,
                     group_cols=None, iter_axis=None):
-    """ Perform MS averaging.
-    __Note__
+    """ Performs MS averaging.
 
-    Before averaging is performed, data selections is already performed during the MS  acquisition process. TAQL (if available) is used to perform selections for FIELD, SPW/DDID & SCAN. This is the first round of selection. The second round involves selections over channels and correlations. This is done via a slicer.
+    Before averaging is performed, data selections is already performed 
+    during the MS  acquisition process. TAQL (if available) is used to 
+    perform selections for FIELD, SPW/DDID & SCAN. This is the first round of 
+    selection. The second round involves selections over channels and 
+    correlations. This is done via a slicer. With the exception of corr 
+    selectino, all the other selections are done before averaging. This is 
+    done because the averager requires 3-dimensional data.
 
-    MS is then grouped by DDID, FIELD_ID & SCAN_NUMBER and fed into :meth:`average_main` which actually performs the averaging.
+    MS is then grouped by DDID, FIELD_ID & SCAN_NUMBER and fed into 
+    :meth:`average_main` which actually performs the averaging.
+
+    This function returns to  :meth:`ragavi.visibilities.get_ms` and is therefore grouped and column select similarly
 
 
     Parameters
@@ -301,11 +311,23 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
         Size of resulting MS chunks.
     taql_where: :obj:`str`
         TAQL clause to pass to xarrayms
+    columns: :obj:`list`
+        Columns to be present in the data
+    chan : :obj:`slicer`
+        A slicer to select the channels to be present in the dataset
+    corr : :obj:`slicer` or :obj:`int`
+        Correlation index of slice to be present in the dataset
+    data_col : :obj:`str`
+        Column containing data to be used
+    group_cols: :obj:`list`
+        List containing columns by which to group the data
+    iter_axis: :obj:`str`
+        Axis over which iteration is done
 
     Returns
     -------
     x_dataset: :obj:`list`
-        List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split by Spectral windows
+        List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split by Spectral windows and grouped depending on the type of plots.
 
     """
 
@@ -464,6 +486,8 @@ def get_averaged_spws(ms_name, cbin, chan_select=None):
         Path or name of MS Spectral window Subtable
     cbin : :obj:`int`
         Number of channels to be binned together
+    chan_select : :obj:`slicer` or :obj:`int`
+        Which channels to select 
 
     Returns
     -------

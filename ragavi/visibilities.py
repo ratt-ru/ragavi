@@ -231,6 +231,13 @@ class DataCoreProcessor:
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
         if self.flag:
+            if np.all(flags.values == True):
+                logger.warning(
+                    "All data appears to be flagged. Unable to continue.")
+                logger.warning(
+                    "Please use -nf or --no-flagged to deactivate flagging if you still wish to generate this plot.")
+                logger.warning(" Exiting.")
+                sys.exit(0)
             processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
             y = processed.where(flags == False)
         else:
@@ -360,6 +367,7 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
               x_axis_type="linear", x_name=None, x=None, xlab=None,
               y_axis_type="linear", y_name=None, ylab=None, title=None,
               xds_table_obj=None,  **kwargs):
+    """ Generate single bokeh figure """
 
     add_cbar = kwargs.get("add_cbar", True)
     add_title = kwargs.get("add_title", True)
@@ -487,7 +495,7 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
              pw=190, ph=100, title=None, x=None, x_axis_type="linear",
              x_name=None, xlab=None, y_name=None, ylab=None,
              xds_table_obj=None):
-
+    """ Generate bokeh grid of figures"""
     n_grid = []
 
     nrows = int(np.ceil(cat_vals.size / ncols))
@@ -691,51 +699,47 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
             ncols=9, nrows=None, plot_height=None, plot_width=None,
             x_min=None, x_max=None, y_min=None, y_max=None,
             xds_table_obj=None):
-    """Responsible for plotting in this script.
+    """Perform plotting
 
     This is responsible for:
 
     - Selection of the iteration column. ie. Setting it to a categorical column
-    - Creating the image callback to Datashader
-    - Creating Bokeh canvas onto which image will be placed
     - Calculation of maximums and minimums for the plot
-    - Formatting fonts, axes and titles
 
     Parameters
     ----------
     x : :obj:`xarray.DataArray`
-        x data to plot
+        X data to plot
     y:  :obj:`xarray.DataArray`
-        y data to plot
+        Y data to plot
     xaxis : :obj:`str`
         xaxis selected for plotting
     xlab : :obj:`str`
         Label to appear on x-axis
     yaxis : :obj:`str`
-        yaxis selected for plotting
+        Y-axis selected for plotting
     ylab : :obj:`str`
         Label to appear on y-axis
     iter_axis : :obj:`str`
-        Column in the dataset over which to iterate. It should be noted that currently iteration is done using colors to denote the different parts of the iteration axis. These colors are explicitly selected in the code and are cycled through. i.e repetitive. This option is akin to the colorise_by function in CASA.
-    ititle : :obj:`str`
-        Title to appear incasea of iteration
+        Column in the dataset over which to iterate.
+
     color :  :obj:`str`, :obj:`colormap`, :obj:`itertools.cycler`
-        Color scheme to be used in the plot. It could be a string containing a color, a matplotlib or bokeh or colorcet colormap of a cycler containing specified colors.
+
     xds_table_obj : :obj:`xarray.Dataset`
         Dataset object containing the columns of the MS. This is passed on in case there are items required from the actual dataset.
     ms_name : :obj:`str`
         Name or [can include path] to Measurement Set
-    xmin: :obj:`float`
+    x_min: :obj:`float`
         Minimum x value to be plotted
 
         Note
         ----
         This may be difficult to achieve in the case where :obj:`xaxis` is time because time in ``ragavi-vis`` is converted into milliseconds from epoch for ease of plotting by ``bokeh``.
-    xmax: :obj:`float`
+    x_max: :obj:`float`
         Maximum x value to be plotted
-    ymin: :obj:`float`
+    y_min: :obj:`float`
         Minimum y value to be plotted
-    ymax: :obj:`float`
+    y_max: :obj:`float`
         Maximum y value to be plotted
 
     Returns
@@ -885,6 +889,9 @@ def antenna_iter(ms_name, columns, **kwargs):
     ms_name: :obj:`str`
         Name of the MS
 
+    columns : :obj:`list`
+        Columns that should be present in the dataset
+
     Returns
     -------
     outp: :obj:`list`
@@ -927,6 +934,7 @@ def antenna_iter(ms_name, columns, **kwargs):
 
 def corr_iter(subs):
     """ Return a list containing iteration over corrs in respective SPWs
+
     Parameters
     ----------
     subs: :obj:`list`
@@ -963,8 +971,14 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
         Name of your MS or path including its name
     chunks: :obj:`str`
         Chunk sizes for the resulting dataset.
+    ants: :obj:`str`
+        Values for antennas in ANTENNA1 whose baselines will be selected
     cbin: :obj:`int`
         Number of channels binned together for channel averaging
+    colour_axis: :obj:`str`
+        Axis to be used for colouring
+    iter_axis: :obj:`str`
+        Axis to iterate over
     data_col: :obj:`str`
         Data column to be used. Defaults to 'DATA'
     ddid: :obj:`int`
@@ -975,10 +989,14 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
         SCAN_NUMBER to select. Defaults to all
     tbin: :obj:`float`
         Time in seconds to bin for time averaging
+    x_axis: :obj:`
+        The chosen x-axis
     where: :obj:`str`
         TAQL where clause to be used with the MS.
     chan_select: :obj:`int` or :obj:`slice`
-        Channels to be selected
+        Channels to be selected 
+    corr_select: :obj:`int` or :obj:`slice`
+        Correlations to be selected
 
     Returns
     -------
@@ -1086,7 +1104,7 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
 
         return tab_objs
     except:
-        logger.exception(
+        logger.error(
             "Invalid DATA_DESC_ID, FIELD_ID, SCAN_NUMBER or TAQL clause")
         sys.exit(-1)
 
@@ -1368,7 +1386,7 @@ def validate_axis_inputs(inp):
 
 
 def link_grid_plots(plot_list):
-    """Link all the plots in the x and y
+    """Link all the plots in the X and Y axes
 
     """
     if not isinstance(plot_list[0], Plot):
