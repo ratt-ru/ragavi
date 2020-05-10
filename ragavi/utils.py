@@ -245,6 +245,7 @@ def get_frequencies(ms_name, spwid=None, chan=None, cbin=None):
     frequencies = []
     for s in spw_subtab:
         frequencies.append(s.CHAN_FREQ)
+        s.close()
     frequencies = xr.concat(frequencies, dim="row")
 
     if spwid is not None:
