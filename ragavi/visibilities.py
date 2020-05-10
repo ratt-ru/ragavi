@@ -1085,8 +1085,8 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
                 tab_objs = antenna_iter(ms_name, **xds_inputs)
             else:
                 tab_objs = xm.xds_from_ms(ms_name, **xds_inputs)
-                corr_select = None
                 if iter_axis == "corr":
+                    corr_select = None
                     tab_objs = corr_iter(tab_objs)
             # select channels
             if chan_select is not None:
