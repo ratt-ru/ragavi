@@ -1671,6 +1671,8 @@ def main(**kwargs):
                                       })
                             inv_source = ColumnDataSource(data={})
 
+                            logger.debug(f"Processing data for {legend}")
+
                             data_obj = DataCoreProcessor(
                                 sub, tab, gain,
                                 fid=fid, yaxis=yaxis, corr=corr,
@@ -1679,6 +1681,7 @@ def main(**kwargs):
                             data = data_obj.act()
                             xaxis = data_obj.xaxis
 
+                            logger.debug(f"Getting the flagged data")
                             infl_data = DataCoreProcessor(
                                 sub, tab, gain, fid=fid, yaxis=yaxis,
                                 corr=corr, flag=not _FLAG_DATA_,
@@ -1694,6 +1697,8 @@ def main(**kwargs):
                             y_label = data.y_label
 
                             iy = infl_data.y
+
+                            logger.debug(f"Done")
 
                             source.add(x, name='x')
                             source.add(y, name=f"y{_y}")
@@ -1714,6 +1719,7 @@ def main(**kwargs):
                             fig_glyphs.append(glyphs)
                             fig_legends.append((legend, []))
                             fig_ebars.append(bars)
+                            sub.close()
 
             title = f"{yaxis.capitalize()} vs {xaxis.capitalize()}"
             fig = create_bk_fig(xlab=x_label, ylab=y_label, title=title,
@@ -1738,6 +1744,7 @@ def main(**kwargs):
                 for spw in spw_ids:
                     # do this here otherwise extra x added after title
                     title = fig.above.pop()
+                    logger.debug("Adding extra chan/freq axis")
                     fig = add_axis(fig, (freqs[spw][0], freqs[spw][-1]),
                                    ax_label="Frequency [GHz]",
                                    ax_name=f"spw{spw}")

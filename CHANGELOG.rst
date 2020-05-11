@@ -1,3 +1,9 @@
+0.3.6
+-----
+**ragavi-vis**
+  
+  - Fixed bug in correlation selection
+
 0.3.5
 -----
 **ragavi-vis**
