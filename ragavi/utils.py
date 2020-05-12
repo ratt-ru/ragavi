@@ -488,10 +488,13 @@ def wrap_warning_text(message, category, filename, lineno, file=None,
 warnings.formatwarning = wrap_warning_text
 
 
-def __config_logger():
+def __config_logger(level="info"):
     """Configure the logger for ragavi and catch all warnings output by sys.stdout.
     """
     logfile_name = "ragavi.log"
+
+    # numeric value of logging level
+    level_num = getattr(logging, level.upper(), None)
 
     # capture only a single instance of a matching repeated warning
     warnings.filterwarnings("module")
@@ -507,18 +510,18 @@ def __config_logger():
 
     # create logger named ragavi
     logger = logging.getLogger("ragavi")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level_num)
 
     # warnings logger
     w_logger = logging.getLogger("py.warnings")
-    w_logger.setLevel(logging.INFO)
+    w_logger.setLevel(level_num)
 
     # console handler
     c_handler = logging.StreamHandler()
     f_handler = logging.FileHandler(logfile_name)
 
-    c_handler.setLevel(logging.INFO)
-    f_handler.setLevel(logging.INFO)
+    c_handler.setLevel(level_num)
+    f_handler.setLevel(level_num)
 
     # setting the format for the logging messages
     start = " (O_o) ".center(cols, "=")

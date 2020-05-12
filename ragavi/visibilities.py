@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import division
-
 import sys
 
 from collections import namedtuple, OrderedDict
@@ -91,6 +89,10 @@ class DataCoreProcessor:
         self.flag = flag
         self.cbin = cbin
 
+    def __repr__(self):
+        return "DataCoreProcessor(%r, %r, %r, %r)" % (
+            self.xds_table_obj, self.ms_name, self.xaxis, self.yaxis)
+
     def get_xaxis_data(self):
         """Get x-axis data. This function also returns the relevant x-axis label.
         Returns
@@ -100,6 +102,8 @@ class DataCoreProcessor:
         x_label : :obj:`str`
             Label to appear on the x-axis of the plots.
         """
+
+        logger.debug("DCP: Getting x-axis data")
 
         if self.xaxis == "antenna1":
             xdata = self.xds_table_obj.ANTENNA1
@@ -142,6 +146,8 @@ class DataCoreProcessor:
             logger.error("Invalid xaxis name")
             return
 
+        logger.debug("Done")
+
         return xdata, x_label
 
     def get_yaxis_data(self):
@@ -154,6 +160,9 @@ class DataCoreProcessor:
         y_label: :obj:`str`
             Label to appear on the y-axis of the plots.
         """
+
+        logger.debug("DCP: Getting y-axis data")
+
         if self.yaxis == "amplitude":
             y_label = "Amplitude"
         elif self.yaxis == "imaginary":
@@ -168,6 +177,8 @@ class DataCoreProcessor:
         except KeyError:
             logger.exception("Column '{}' not Found".format(self.datacol))
             return sys.exit(-1)
+
+        logger.debug("Done")
 
         return ydata, y_label
 
@@ -189,6 +200,8 @@ class DataCoreProcessor:
         prepdx: :obj:`xarray.DataArray`
             Prepared :attr:`xdata`
         """
+        logger.debug("DCP: Preping x-axis data")
+
         if self.xaxis == "channel" or self.xaxis == "frequency":
             prepdx = xdata / 1e9
         elif self.xaxis in ["phase", "amplitude", "real", "imaginary"]:
@@ -201,6 +214,9 @@ class DataCoreProcessor:
             prepdx = vu.calc_uvwave(xdata, freq) / 1e3
         elif self.xaxis == "antenna1" or self.xaxis == "antenna2" or self.xaxis == "scan":
             prepdx = xdata
+
+        logger.debug("Done")
+
         return prepdx
 
     def prep_yaxis_data(self, ydata, yaxis=None):
@@ -222,6 +238,9 @@ class DataCoreProcessor:
         y: :obj:`xarray.DataArray`
            Processed :attr:`ydata` data.
         """
+
+        logger.debug("DCP: Preping y-axis data")
+
         flags = vu.get_flags(self.xds_table_obj)
 
         # Doing this because some of xaxis data must be processed here
@@ -238,10 +257,16 @@ class DataCoreProcessor:
                     "Please use -nf or --no-flagged to deactivate flagging if you still wish to generate this plot.")
                 logger.warning(" Exiting.")
                 sys.exit(0)
+
             processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
+
+            logger.debug("Applying flags")
+
             y = processed.where(flags == False)
         else:
             y = self.process_data(ydata, yaxis=yaxis)
+
+        logger.debug("Done")
 
         return y
 
@@ -260,6 +285,8 @@ class DataCoreProcessor:
         y : :obj:`xarray.DataArray`
            Processed :obj:`ydata`
         """
+        logger.debug("DCP: Calculating y-axis data")
+
         if yaxis is None:
             yaxis = self.yaxis
         if yaxis == "amplitude":
@@ -270,6 +297,9 @@ class DataCoreProcessor:
             y = vu.calc_phase(ydata, wrap=wrap)
         elif yaxis == "real":
             y = vu.calc_real(ydata)
+
+        logger.debug("Done")
+
         return y
 
     def blackbox(self):
@@ -411,6 +441,8 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
 
     if add_xaxis:
         # some formatting on the x and y axes
+        logger.debug("Formatting x-axis")
+
         if x_name.lower() in ["channel", "frequency"]:
             try:
                 p_title = fig.above.pop()
@@ -428,12 +460,16 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
             xaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
     if add_yaxis:
+        logger.debug("Formatting y-axis")
+
         if y_name.lower() == "phase":
             yaxis = fig.select(name="p_y_axis")[0]
             yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
 
     # only to be added in iteration mode
     if add_subtitle:
+
+        logger.debug("Formatting and adding sub-title")
         # getting the iteration axis
         chunk_attrs = xds_table_obj.attrs
 
@@ -486,7 +522,9 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
 
         fig.add_glyph(p_txtt_src, p_txtt)
 
+    logger.debug("Adding glyph to figure")
     fig.add_glyph(cds, image_glyph)
+
     return fig
 
 
@@ -496,6 +534,9 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
              x_name=None, xlab=None, y_name=None, ylab=None,
              xds_table_obj=None):
     """ Generate bokeh grid of figures"""
+
+    logger.debug("Preparing bokeh grid generation")
+
     n_grid = []
 
     nrows = int(np.ceil(cat_vals.size / ncols))
@@ -547,6 +588,8 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
     logger.info("Creating Bokeh grid")
 
     for i, c_val in enumerate(cat_vals):
+
+        logger.debug(f"Item: {i}/{cat_vals.size}, iterating: {cat}")
         # some text title for the iterated columns
         p_txtt = Text(x="x", y="y", text="text", text_font="monospace",
                       text_font_style="bold", text_font_size="10pt",
@@ -629,6 +672,8 @@ def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
     n_grid.tags = [ncols, nrows]
     # final_grid = gridplot(children=[title_div, n_grid], ncols=1)
 
+    logger.debug("Bokeh grid done")
+
     return n_grid
 
 
@@ -683,12 +728,16 @@ def make_cbar(cats, category, cmap=None):
     b_ticker = BasicTicker(desired_num_ticks=ncats,
                            num_minor_ticks=0)
 
+    logger.debug("Creating colour bar")
+
     cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
                     border_line_color=None, ticker=b_ticker,
                     location=(0, 0), title=category, title_standoff=5,
                     title_text_font_size="10pt", title_text_align="left",
                     title_text_font="monospace", minor_tick_line_width=0,
                     title_text_font_style="normal")
+
+    logger.debug("Done")
 
     return cbar
 
@@ -898,6 +947,7 @@ def antenna_iter(ms_name, columns, **kwargs):
         A list containing data for each individual antenna. This list is
         ordered by antenna and SPW.
     """
+    logger.debug("Creating antenna iterable")
 
     taql_where = kwargs.get("taql_where", "")
     table_schema = kwargs.get("table_schema", None)
@@ -914,6 +964,9 @@ def antenna_iter(ms_name, columns, **kwargs):
 
     for d in range(n_spws):
         for a in range(n_ants):
+
+            logger.debug(f"Spw: {d}, antenna: {a}")
+
             sel_str = taql_where + \
                 f"ANTENNA1=={a} || ANTENNA2=={a} && DATA_DESC_ID=={d}"
 
@@ -929,6 +982,7 @@ def antenna_iter(ms_name, columns, **kwargs):
 
             outp.append(sub)
 
+    logger.debug("Done")
     return outp
 
 
@@ -948,14 +1002,22 @@ def corr_iter(subs):
 
     # NOTE: can also be used for chan iteration. Will require name change
     """
+
+    logger.debug("Creating correlation iterable")
+
     outp = []
     n_corrs = subs[0].corr.size
 
     for sub in subs:
         for c in range(n_corrs):
+
+            logger.debug(f"Corr: {c}")
+
             nsub = sub.copy(deep=True).sel(corr=c)
             nsub.attrs["Corr"] = c
             outp.append(nsub)
+
+    logger.debug("Done")
     return outp
 
 
@@ -1003,6 +1065,8 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
     tab_objs: :obj:`list`
         A list containing the specified table objects as  :obj:`xarray.Dataset`
     """
+    logger.debug("Starting MS acquisition")
+
     group_cols = set()
 
     # Always group by DDID
@@ -1065,6 +1129,10 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
     sel_cols = list(sel_cols)
     group_cols = list(group_cols)
 
+    logger.debug(f"Selected columns: {', '.join(sel_cols)}")
+    logger.debug(f"Grouping by: {', '.join(group_cols)}")
+    logger.debug(f"TAQL selection: {where}")
+
     xds_inputs = dict(chunks=chunks, taql_where=where,
                       columns=sel_cols, group_cols=group_cols,
                       table_schema=ms_schema)
@@ -1090,9 +1158,11 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
                     tab_objs = corr_iter(tab_objs)
             # select channels
             if chan_select is not None:
+                logger.debug("Selecting channels")
                 tab_objs = [_.sel(chan=chan_select) for _ in tab_objs]
             # select corrs
             if corr_select is not None:
+                logger.debug("Selecting correlations")
                 tab_objs = [_.sel(corr=corr_select) for _ in tab_objs]
 
         # get some info about the data
@@ -1103,9 +1173,8 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
         logger.info("Number of Partitions: {}".format(chunk_p))
 
         return tab_objs
-    except:
-        logger.error(
-            "Invalid DATA_DESC_ID, FIELD_ID, SCAN_NUMBER or TAQL clause")
+    except Exception as ex:
+        logger.error(ex.args[0])
         sys.exit(-1)
 
 
@@ -1185,7 +1254,7 @@ def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
             logger.error("Specified data column not found.")
             sys.exit(-1)
 
-    logger.info("Creating Dataframe")
+    logger.info("Starting creation of categorical dataframe")
 
     xy_df = create_df(x_data, y_data, iter_data=iter_data)[[x_data.name,
                                                             y_data.name,
@@ -1233,9 +1302,12 @@ def create_df(x, y, iter_data=None):
         var_names[i_name] = ("row", iter_data)
 
     logger.info("Creating dataframe")
+
     new_ds = xr.Dataset(data_vars=var_names)
     new_ds = new_ds.to_dask_dataframe()
     new_ds = new_ds.dropna()
+
+    logger.info("Done")
     return new_ds
 
 
@@ -1260,6 +1332,7 @@ def massage_data(x, y, get_y=False, iter_ax=None):
     y: :obj:`dask.array`
         Data for the y-axis
     """
+    logger.debug("Flattening x-axis and y-axis data")
 
     iter_cols = ["ANTENNA1", "ANTENNA2", "FIELD_ID", "SCAN_NUMBER",
                  "DATA_DESC_ID", "Baseline"]
@@ -1268,6 +1341,9 @@ def massage_data(x, y, get_y=False, iter_ax=None):
     # available dims in the x and y axes
     y_dims = set(y.dims)
     x_dims = set(x.dims)
+
+    logger.debug(f"x shape: {str(x.shape)}")
+    logger.debug(f"y shape: {str(y.shape)}")
 
     # find dims that are not available in x and only avail in y
     req_x_dims = y_dims - x_dims
@@ -1305,10 +1381,14 @@ def massage_data(x, y, get_y=False, iter_ax=None):
             except ValueError:
                 # for the non-xarray dask data
                 nx = nx.repeat(np.prod(sizes)).rechunk(y.data.ravel().chunks)
+
+    logger.debug(f"New x shape: {str(nx.shape)}")
+
     if get_y:
         # flatten y data
         # get_data also
         ny = y.data.ravel()
+        logger.debug(f"New y shape: {str(ny.shape)}")
         return nx, ny
     else:
         return nx
@@ -1340,6 +1420,8 @@ def get_colname(inp, data_col=None):
         col_name = aliases[inp]
     else:
         col_name = None
+
+    logger.debug(f"Column name for {inp} --> {col_name}")
     return col_name
 
 
@@ -1356,7 +1438,7 @@ def validate_axis_inputs(inp):
 
     Returns
     -------
-    inp: :obj:`str`
+    oup: :obj:`str`
         Validated string
     """
     alts = {}
@@ -1380,15 +1462,21 @@ def validate_axis_inputs(inp):
 
     # convert to proper name if in other name
     if inp in alts:
-        inp = alts[inp]
+        oup = alts[inp]
+    else:
+        oup = inp
 
-    return inp
+    logger.debug(f"Alias for axis {inp} --> {oup}")
+    return oup
 
 
 def link_grid_plots(plot_list):
     """Link all the plots in the X and Y axes
 
     """
+
+    logger.debug(f"Linking {len(plot_list)} generated plots")
+
     if not isinstance(plot_list[0], Plot):
         plots = []
         plot_list = plot_list[0].children
@@ -1403,6 +1491,8 @@ def link_grid_plots(plot_list):
     for i in range(1, n_plots):
         plots[i].x_range = init_xr
         plots[i].y_range = init_yr
+
+    logger.debug("Done")
 
     return 0
 

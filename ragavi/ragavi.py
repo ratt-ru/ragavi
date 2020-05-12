@@ -90,6 +90,10 @@ class DataCoreProcessor:
         self.xaxis = self.set_xaxis()
         self.yaxis = yaxis
 
+    def __repr__(self):
+        return "DataCoreProcessor(%r, %r, %r, %r)" % (
+            self.xds_table_obj, self.ms_name, self.gtype, self.yaxis)
+
     def set_xaxis(self):
         if self.gtype in ['B', 'D']:
             xaxis = "channel"
@@ -128,6 +132,7 @@ class DataCoreProcessor:
             y = vu.calc_real(ydata)
         elif yaxis == "delay" or yaxis == "error":
             y = ydata
+
         return y
 
     def flatten_bandpass_data(self, y, x=None):
@@ -151,17 +156,21 @@ class DataCoreProcessor:
 
 
         """
+        logger.debug(f"Flattening bandpass: In y shape {str(y.shape)}")
         if y.ndim > 1:
             # no of unique times available in the bandpass
             # last index because y is transposed to (chan, time)
             nrows = y.shape[1]
 
         if x is not None:
+            logger.debug(f"Flattening bandpass: In x shape {str(x.shape)}")
             x = np.tile(x, (nrows))
+            logger.debug(f"Out x shape: {str(x.shape)}")
             return x
         else:
             # TODO check if this flattening works proper
             y = y.T.flatten()
+            logger.debug(f"Out y shape: {str(y.shape)}")
             return y
 
     def get_errors(self):
@@ -171,6 +180,8 @@ class DataCoreProcessor:
         errors: :obj:`xarray.DataArray`
             Data from the PARAMERR column
         """
+        logger.debug("DCP: Collecting parameter errors")
+
         errors = self.xds_table_obj.PARAMERR
         return errors
 
@@ -184,7 +195,6 @@ class DataCoreProcessor:
         x_label : :obj:`str`
             Label to appear on the x-axis of the plots.
         """
-
         if self.xaxis in ["antenna", "antenna1"]:
             xdata = self.xds_table_obj.ANTENNA1
             x_label = "Antenna"
@@ -198,6 +208,7 @@ class DataCoreProcessor:
         else:
             logger.error("Invalid xaxis name")
             return
+
         return xdata, x_label
 
     def prep_xaxis_data(self, xdata, freq=None):
@@ -256,7 +267,6 @@ class DataCoreProcessor:
         except KeyError:
             logger.exception("Column '{}'' not Found".format(datacol))
             return sys.exit(-1)
-
         return ydata, y_label
 
     def prep_yaxis_data(self, ydata, yaxis=None):
@@ -289,6 +299,7 @@ class DataCoreProcessor:
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
         if self.flag:
+            logger.debug("Flagging active")
             # if flagging is activated select data only where flag mask is 0
             processed = self.process_data(ydata)
             y = processed.where(flags == False)
@@ -315,12 +326,16 @@ class DataCoreProcessor:
             A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
 
         """
+        logger.debug("DCP: Running blackbox")
+
+        logger.debug("DCP: Getting x-axis data")
 
         Data = namedtuple("Data", "x x_label y y_label y_err")
         x = self.x_only()
         xdata = x.x
         xlabel = x.x_label
 
+        logger.debug("DCP: Getting y-axis data")
         y = self.y_only()
         ydata = y.y
         ylabel = y.y_label
@@ -336,6 +351,8 @@ class DataCoreProcessor:
 
         d = Data(x=xdata, x_label=xlabel, y=ydata,
                  y_label=ylabel, y_err=(hi, lo))
+
+        logger.debug("Blackbox blackout")
         return d
 
     def act(self):
@@ -409,6 +426,8 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
 
     """
 
+    logger.debug("Getting calibration table")
+
     # defining part of the gain table schema
     tab_schema = {"CPARAM": {"dims": ("chan", "corr")},
                   "FLAG": {"dims": ("chan", "corr")},
@@ -436,14 +455,18 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
     if group_cols is None:
         group_cols = ["SPECTRAL_WINDOW_ID", "FIELD_ID", "ANTENNA1"]
 
+    logger.debug(f"Grouping data in: {str(group_cols)}")
+    logger.debug(f"TAQL selection: {where}")
+
     try:
         tab_objs = xm.xds_from_table(tab_name, taql_where=where,
                                      table_schema=tab_schema,
                                      group_cols=group_cols)
+        logger.debug(f"{len(tab_objs)} groups created from table")
         return tab_objs
-    except:
-        logger.exception("""Invalid ANTENNA id, FIELD_ID,
-                            SPECTRAL_WINDOW_ID or TAQL clause""")
+
+    except Exception as ex:
+        logger.error(ex, exc_info=True)
         sys.exit(-1)
 
 
@@ -468,6 +491,8 @@ def get_time_range(tab_name, unix_time=True):
         f_time = f_time - munix
 
     ms.close()
+
+    logger.debug(f"Table time range. Initial: {str(i_time)}, final: {str(f_time)}")
 
     return i_time, f_time
 
@@ -994,6 +1019,9 @@ def condense_legend_items(inlist):
 
     # reformulate odict to list
     outlist = [(key, value) for key, value in od.items()]
+
+    logger.debug("Grouped renderers with the same legends")
+
     return outlist
 
 
@@ -1041,6 +1069,8 @@ def create_legend_batches(num_leg_objs, li_ax1, batch_size=16):
 
         j += batch_size
 
+    logger.debug(f"Ant batches created. Batch size {str(batch_size)}, Num batches {str(num_leg_objs)}")
+
     return bax1
 
 
@@ -1074,6 +1104,8 @@ def create_legend_objs(num_leg_objs, bax1):
     for i in range(num_leg_objs):
         leg1 = Legend(items=bax1[i], name=f"leg{i}", **l_opts)
         lo_ax1["leg_%s" % str(i)] = leg1
+
+    logger.debug("Legend objects created")
 
     return lo_ax1
 
@@ -1110,6 +1142,8 @@ def errorbar(x, y, yerr=None, color="red"):
                         visible=False)
         ebars.upper_head.line_color = color
         ebars.lower_head.line_color = color
+
+        logger.debug("Errorbars created")
     return ebars
 
 
@@ -1144,6 +1178,8 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker="circle_x"):
     # return filled matrix
     masked_markers_arr = masked_markers_arr.filled()
 
+    logger.debug("Flagged data markers generated")
+
     return masked_markers_arr
 
 
@@ -1176,6 +1212,8 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
     n_rs = len(fig1.renderers)
     all_ufsrc = []
     all_fsrc = []
+
+    logger.debug("Linking generated plots")
 
     for f in range(1, n_figs):
         # link the x- ranges
@@ -1292,6 +1330,8 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
                          color=color, yerr=yerr)
         p_glyph.js_link("fill_alpha", ebars, "line_alpha")
 
+    logger.debug("Glyphs generated")
+
     return p_glyph, ebars
 
 
@@ -1336,6 +1376,7 @@ def create_stats_table(stats, yaxes):
                      sizing_mode="stretch_both", width=500)
     t_title = Div(text="Median Statistics")
 
+    logger.debug("Stats table generated")
     return column([t_title, dtab], sizing_mode="stretch_both")
 
 
@@ -1376,6 +1417,8 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
     -------
     List containing stats
     """
+
+    logger.debug("Starting median stats calculations")
     subtable = get_table(tab_name, fid=field, spwid=str(spwid),
                          group_cols=[], where=[])[0]
     if subtable.row.size == 0:
@@ -1387,6 +1430,8 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
     y = dobj.y_only(yaxis).y.compute()
 
     med_y = np.nanmedian(y)
+
+    logger.debug(f"{yaxis}, {f_names[field]}, corr {str(corr)} median: {str(med_y)}")
 
     return [spwid, f_names[field], corr, med_y, yaxis]
 
@@ -1436,6 +1481,9 @@ def save_html(name, plot_layout):
     """
     if "html" not in name:
         name = name + ".html"
+
+    logger.debug(f"Saving items to {name}")
+
     output_file(name)
     output = save(plot_layout, name, title=name)
 
@@ -1470,10 +1518,12 @@ def save_static_image(name, figs=None):
             _r.visible = True
 
         if "png" in name.lower():
+            logger.debug("Attempting to save images in PNG format")
             export_png(obj=figs[_i], filename=f"{name}_{yaxis}.{o_type}",
                        width=_PLOT_WIDTH_, height=_PLOT_HEIGHT_,
                        webdriver=driver)
         elif "svg" in name.lower():
+            logger.debug("Attempting to save images in SVG format")
             figs[_i].output_backend = "svg"
             export_svgs(figs[_i], filename=f"{name}_{yaxis}.{o_type}")
 
@@ -1645,13 +1695,13 @@ def main(**kwargs):
 
             for spw, fid, corr in iters:
                 fname = field_names[fid]
+
+                logger.info(f"Spw: {spw}, Field: {fname}, Corr: {corr} {yaxis}")
                 stats = stats_display(tab_name=tab, yaxis=yaxis, gtype=gain,
                                       corr=corr, field=fid, flag=_FLAG_DATA_,
                                       f_names=field_names, spwid=spw)
                 if stats:
                     fig_stats.append(stats)
-
-                logger.info(f"Spw: {spw}, Field: {fname}, Corr: {corr} {yaxis}")
 
                 for _a, ant in enumerate(ant_ids):
                     legend = ant_names[ant]
@@ -1681,7 +1731,7 @@ def main(**kwargs):
                             data = data_obj.act()
                             xaxis = data_obj.xaxis
 
-                            logger.debug(f"Getting the flagged data")
+                            logger.debug(f"Processing the flagged data")
                             infl_data = DataCoreProcessor(
                                 sub, tab, gain, fid=fid, yaxis=yaxis,
                                 corr=corr, flag=not _FLAG_DATA_,
@@ -1817,6 +1867,8 @@ def main(**kwargs):
         ################ Defining widgets ###################################
         ######################################################################
 
+        logger.debug("Defining plot widgets")
+
         # widget dimensions
         w_dims = dict(width=150, height=30)
 
@@ -1883,6 +1935,8 @@ def main(**kwargs):
         ######################################################################
         ############## Defining widget Callbacks ############################
         ######################################################################
+
+        logger.debug("Attaching callbacks to widgets")
 
         ant_select.js_on_change("active", CustomJS(
             args=dict(ax=all_figures[0].renderers, bsel=batch_select,
@@ -1970,6 +2024,9 @@ def main(**kwargs):
         #################################################################
         ########## Define widget layouts #################################
         ##################################################################
+
+        logger.debug("Setting up plot layout")
+
         asel_div = Div(text="Select antenna group")
         fsel_div = Div(text="Fields")
         ssel_div = Div(text="Select spw")
