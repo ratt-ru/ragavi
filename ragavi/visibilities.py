@@ -258,19 +258,19 @@ class DataCoreProcessor:
                 logger.warning(" Exiting.")
                 sys.exit(0)
 
-            processed = self.process_data(ydata, yaxis=yaxis, wrap=True)
+            processed = self.process_data(ydata, yaxis=yaxis, unwrap=False)
 
             logger.debug("Applying flags")
 
             y = processed.where(flags == False)
         else:
-            y = self.process_data(ydata, yaxis=yaxis, wrap=True)
+            y = self.process_data(ydata, yaxis=yaxis, unwrap=False)
 
         logger.debug("Done")
 
         return y
 
-    def process_data(self, ydata, wrap=True, yaxis=None):
+    def process_data(self, ydata, unwrap=False, yaxis=None):
         """Abstraction for processing y-data passes it to the processing function.
 
         Parameters
@@ -294,7 +294,7 @@ class DataCoreProcessor:
         elif yaxis == "imaginary":
             y = vu.calc_imaginary(ydata)
         elif yaxis == "phase":
-            y = vu.calc_phase(ydata, wrap=wrap)
+            y = vu.calc_phase(ydata, unwrap=unwrap)
         elif yaxis == "real":
             y = vu.calc_real(ydata)
 

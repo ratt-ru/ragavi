@@ -127,7 +127,7 @@ class DataCoreProcessor:
         elif yaxis == "imaginary":
             y = vu.calc_imaginary(ydata)
         elif yaxis == "phase":
-            y = vu.calc_phase(ydata, wrap=False)
+            y = vu.calc_phase(ydata, unwrap=False)
         elif yaxis == "real":
             y = vu.calc_real(ydata)
         elif yaxis == "delay" or yaxis == "error":
