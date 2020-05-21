@@ -78,7 +78,7 @@ def calc_real(ydata):
     return real
 
 
-def calc_phase(ydata, wrap=True):
+def calc_phase(ydata, unwrap=False):
     """Convert complex data to angle in degrees
 
     Parameters
@@ -93,18 +93,18 @@ def calc_phase(ydata, wrap=True):
     phase: `xarray.DataArray`
         :attr:`ydata` data converted to degrees
     """
-    logger.debug("Setting up phase")
+    logger.debug("Setting up wrapped phase")
 
+    # np.angle already returns a phase wrapped between (-pi and pi]
+    # https://numpy.org/doc/1.18/reference/generated/numpy.angle.html
     phase = xr.apply_ufunc(da.angle, ydata,
                            dask="allowed", kwargs=dict(deg=True))
-    if wrap:
+
+    if unwrap:
         # using an alternative method to avoid warnings
-        logger.debug("Wrapping enabled")
-        try:
-            phase = phase.reduce(np.unwrap)
-        except TypeError:
-            # this is for python2 compat
-            phase = xr.apply_ufunc(np.unwrap, phase, dask="allowed")
+        logger.debug("Unwrapping enabled. Unwrapping angles")
+
+        phase = phase.reduce(np.unwrap)
     return phase
 
 
