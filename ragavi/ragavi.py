@@ -869,12 +869,17 @@ def legend_toggle_callback():
     """
     code = """
                 //Show only the legend for the first item
+                let n;
                 if (cb_obj.active.includes(0)){
-                        legs[0].visible = true;
+                    for (n=0; n<n_legs; n++){
+                        legs[n].visible = true;
+                        }
                 }
 
                 else{
-                        legs[0].visible = false;
+                    for (n=0; n<n_legs; n++){
+                        legs[n].visible = false;
+                        }
                 }
 
            """
@@ -1984,7 +1989,7 @@ def main(**kwargs):
             code=spw_select_callback()))
 
         legend_toggle.js_on_change("active", CustomJS(
-            args=dict(legs=all_legends),
+            args=dict(legs=all_legends, n_legs=n_leg_objs),
             code=legend_toggle_callback()))
 
         toggle_err.js_on_change("active", CustomJS(

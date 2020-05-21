@@ -264,7 +264,7 @@ class DataCoreProcessor:
 
             y = processed.where(flags == False)
         else:
-            y = self.process_data(ydata, yaxis=yaxis)
+            y = self.process_data(ydata, yaxis=yaxis, wrap=True)
 
         logger.debug("Done")
 
