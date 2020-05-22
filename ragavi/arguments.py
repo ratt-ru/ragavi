@@ -202,15 +202,6 @@ def gains_argparser():
     parser = MyParser(usage="%(prog)s [options] <value>",
                       description="A Radio Astronomy Gains and Visibility Inspector")
     required = parser.add_argument_group("Required arguments")
-    required.add_argument("-g", "--gaintype", nargs='+', type=str,
-                          metavar=' ', dest="gain_types", required=True,
-                          choices=['B', 'D', 'G', 'K', 'F'],
-                          help="""Type of table(s) to be plotted. Can be 
-                          specified as a single character e.g. "B" if a 
-                          single table has been provided or space 
-                          separated list e.g B D G if multiple tables have 
-                          been specified. Valid choices are  B D G K & F""",
-                          default=[])
     required.add_argument("-t", "--table", dest="mytabs",
                           nargs='+', type=str, metavar=(' '), required=True,
                           help="""Table(s) to plot. Multiple tables can be 
@@ -267,6 +258,15 @@ def gains_argparser():
                          help="""Plot complex values as amplitude & phase 
                          (ap) or real and imaginary (ri). Defaults to ap.""",
                          default="ap")
+    pconfig.add_argument("-g", "--gaintype", nargs='*', type=str,
+                         metavar=' ', dest="gain_types",
+                         choices=['B', 'D', 'G', 'K', 'F'],
+                         help="""Type of table(s) to be plotted. Can be 
+                          specified as a single character e.g. "B" if a 
+                          single table has been provided or space 
+                          separated list e.g B D G if multiple tables have 
+                          been specified. Valid choices are  B D G K & F""",
+                         default=[])
     pconfig.add_argument("-kx", "--k-xaxis", dest="kx", type=str, metavar='',
                          choices=["time", "antenna"],
                          help="""Choose the x-xaxis for the K table. Valid 
