@@ -1,3 +1,15 @@
+0.3.7
+-----
+**ragavi-gains**
+
+  - Fixed legend display bug
+  - ``--gain-type`` argument is now optional
+  
+
+**general**
+
+  - Fixed bug in phase wrapping
+  
 0.3.6
 -----
 **ragavi-vis**
