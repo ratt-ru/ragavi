@@ -459,11 +459,18 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
     logger.debug(f"TAQL selection: {where}")
 
     try:
-        tab_objs = xm.xds_from_table(tab_name, taql_where=where,
-                                     table_schema=tab_schema,
-                                     group_cols=group_cols)
+        tab_objs, t_keywords = xm.xds_from_table(tab_name, taql_where=where,
+                                                 table_schema=tab_schema,
+                                                 group_cols=group_cols,
+                                                 table_keywords=True)
+
+        # get table type from VisCal
+        g_type = t_keywords["VisCal"].split()[0]
+
+        logger.info(f"Table type: {g_type} Jones")
+
         logger.debug(f"{len(tab_objs)} groups created from table")
-        return tab_objs
+        return tab_objs, g_type
 
     except Exception as ex:
         logger.error(ex, exc_info=True)
@@ -780,9 +787,8 @@ def spw_select_callback():
             }
 
             //Make the extra y-axes visible only if corresponding spw selected
-            if (cb_obj.active.includes(sp) && ex_ax[sp].name==`spw${sp}`){
+            if (cb_obj.active.includes(sp)){
                 ex_ax[sp].visible=true;
-                console.log("Trueuee");
             }
             else{
                 ex_ax[sp].visible=false;
@@ -1391,7 +1397,7 @@ def make_table_name(tab_name):
     return div
 
 
-def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
+def stats_display(tab_name, yaxis, corr, field, f_names=None,
                   flag=True, spwid=None):
     """Display some statistics on the plots.
     These statistics are derived from a specific correlation and a specified field of the data.
@@ -1411,8 +1417,6 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
         :meth:`ragavi.vis_utils.name_2id`.
     flag : :obj:`bool`
         Whether to flag data or not
-    gtype : :obj:`str`
-        Type of gain table to be plotted.
     spwid : :obj:`int`
         Spectral window to be selected
     yaxis : :obj:`str`
@@ -1424,8 +1428,9 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
     """
 
     logger.debug("Starting median stats calculations")
-    subtable = get_table(tab_name, fid=field, spwid=str(spwid),
-                         group_cols=[], where=[])[0]
+    subtable, gtype = get_table(tab_name, fid=field, spwid=str(spwid),
+                                group_cols=[], where=[])
+    subtable = subtable[0]
     if subtable.row.size == 0:
         return None
 
@@ -1545,7 +1550,6 @@ def main(**kwargs):
         ddid = options.ddid
         doplot = options.doplot
         fields = options.fields
-        gain_types = options.gain_types
         html_name = options.html_name
         image_name = options.image_name
         mytabs = options.mytabs
@@ -1560,24 +1564,10 @@ def main(**kwargs):
 
     tables = [os.path.abspath(tab) for tab in options.mytabs]
 
-    # ensure the length of gain type and table type are the same
-    if len(options.gain_types) < len(tables):
-        gains = gain_types * len(tables)
-    else:
-        gains = options.gain_types
-
-    doplot = options.doplot
-
     # parent container of the items in this pot
     final_layout = []
-    for tab, gain in zip(tables, gains):
 
-        if doplot == "ap":
-            y_axes = ["amplitude", "phase"]
-        else:
-            y_axes = ["real", "imaginary"]
-        if gain == "K":
-            y_axes = ["delay"]
+    for tab in tables:
 
         if options.fields:
             # Not using .isalnum coz the actual field names can be provided
@@ -1608,7 +1598,7 @@ def main(**kwargs):
             s_tab.close()
 
         if options.ddid is not None:
-            # TODO: Check for the input comming in from argparse
+            # TODO: Check for the input coming in from argparse
             # check if it needs to be resolved
             ddid = vu.resolve_ranges(options.ddid)
             # get all frequencies anyways
@@ -1637,11 +1627,6 @@ def main(**kwargs):
         if t1:
             where.append(f"TIME - {str(init_time)} <= {str(t1)}")
 
-        if gain in ["G", "F"] or (options.kx == "time" and gain == "K"):
-            x_axis_type = "datetime"
-        else:
-            x_axis_type = "linear"
-
         all_figures = []
 
         # store generated plots
@@ -1661,8 +1646,20 @@ def main(**kwargs):
         all_fsources = []
 
         logger.info("Acquiring table: {}".format(os.path.basename(tab)))
-        subs = get_table(tab, spwid=ddid, where=where,
-                         fid=fields, antenna=plotants)
+        subs, gain = get_table(tab, spwid=ddid, where=where, fid=fields,
+                               antenna=plotants)
+
+        if doplot == "ap":
+            y_axes = ["amplitude", "phase"]
+        else:
+            y_axes = ["real", "imaginary"]
+        if gain == "K":
+            y_axes = ["delay"]
+
+        if gain in ["G", "F"] or (options.kx == "time" and gain == "K"):
+            x_axis_type = "datetime"
+        else:
+            x_axis_type = "linear"
 
         # confirm a populous table is selected
         try:
@@ -1702,7 +1699,7 @@ def main(**kwargs):
                 fname = field_names[fid]
 
                 logger.info(f"Spw: {spw}, Field: {fname}, Corr: {corr} {yaxis}")
-                stats = stats_display(tab_name=tab, yaxis=yaxis, gtype=gain,
+                stats = stats_display(tab_name=tab, yaxis=yaxis,
                                       corr=corr, field=fid, flag=_FLAG_DATA_,
                                       f_names=field_names, spwid=spw)
                 if stats:
@@ -1984,7 +1981,7 @@ def main(**kwargs):
                       fsel=field_selector, nants=ant_ids.size,
                       ncorrs=corrs.size, nfields=field_ids.size,
                       nbatches=n_leg_objs, nspws=spw_ids.size,
-                      ax=all_figures[0].renderers,
+                      ax=all_figures[0].renderers, spw_ids=spw_ids,
                       ex_ax=ex_ax),
             code=spw_select_callback()))
 
@@ -2081,16 +2078,10 @@ def plot_table(**kwargs):
 
     Parameters
     ----------
-    **Required**
-    gaintype: :obj:`str`, :obj:`list`
-        Cal-table (list of caltypes) type to be plotted. Can be either 
-        'B'-bandpass, 'D'- D jones leakages, G'-gains, 'K'-delay or 'F'-flux.
-         Default is none
-    table : :obj:`str` or :obj:`list` required
+    table : :obj:`str` or :obj:`list`
         The table (list of tables) to be plotted.
 
-    **Optional**
-    ant : :obj:`str`
+    ant : :obj:`str, optional`
         Plot only specific antennas, or comma-separated list of antennas.
     corr : :obj:`int, optional`
         Correlation index to plot. Can be a single integer or comma separated 
