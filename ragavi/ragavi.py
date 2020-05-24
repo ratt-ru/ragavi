@@ -525,7 +525,9 @@ def get_tooltip_data(xds_table_obj, gtype, freqs):
 
     """
     scan_no = xds_table_obj.SCAN_NUMBER.values
-    spw_id = [xds_table_obj.SPECTRAL_WINDOW_ID] * scan_no.size
+    scan_no = scan_no.astype(np.uint16)
+    spw_id = np.full(scan_no.shape, xds_table_obj.SPECTRAL_WINDOW_ID,
+                     dtype=np.uint8)
 
     # get the number of channels
     nchan = freqs.size
@@ -1249,6 +1251,7 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
                 all_figures[f].renderers[_i].data_source.data[f"y{f+1}"],
                 name=f"y{f+1}")
 
+            # place the data in a single CDS to be shared
             shared_cds = ColumnDataSource(
                 data=dict(fig1.renderers[_i].data_source.data))
 
@@ -1496,6 +1499,7 @@ def save_html(name, plot_layout):
 
     output_file(name)
     output = save(plot_layout, name, title=name)
+    logger.info(f"Rendered HTML: {output}")
 
 
 def save_static_image(name, figs=None):
@@ -1515,10 +1519,21 @@ def save_static_image(name, figs=None):
 
     """
     from selenium import webdriver
-    driver = webdriver.Firefox()
+
+    logger.debug("Setting up Firefox selenium driver")
+    b_opts = webdriver.FirefoxOptions()
+    # Ensure browser is headless
+    b_opts.headless = True
+
+    logger.debug(f"Browser headless mode: {b_opts.headless}")
+
+    driver = webdriver.Firefox(options=b_opts)
+
+    logger.debug("Driver succesfully set up")
+
+    pren, suffix = name.split('.')
 
     for _i in range(len(figs)):
-        yaxis = figs[_i].yaxis.axis_label
         legs = figs[_i].legend
 
         for _l in legs:
@@ -1526,16 +1541,42 @@ def save_static_image(name, figs=None):
 
         for _r in figs[_i].renderers:
             _r.visible = True
+            _r.glyph.size = 7
+            # if suffix == "svg":
+            if _r.glyph.marker == "circle":
+                _r.glyph.marker = "square_x"
+                _r.glyph.line_width = 1
+                _r.glyph.line_color = "#0f9af0"
 
-        if "png" in name.lower():
-            logger.debug("Attempting to save images in PNG format")
-            export_png(obj=figs[_i], filename=f"{name}_{yaxis}.{o_type}",
-                       width=_PLOT_WIDTH_, height=_PLOT_HEIGHT_,
-                       webdriver=driver)
-        elif "svg" in name.lower():
-            logger.debug("Attempting to save images in SVG format")
-            figs[_i].output_backend = "svg"
-            export_svgs(figs[_i], filename=f"{name}_{yaxis}.{o_type}")
+        figs[_i].width = 600
+        figs[_i].frame_width = int(0.9 * 600)
+        figs[_i].height = 500
+        figs[_i].frame_height = int(0.9 * 500)
+
+    # some shared options
+    o_opts = dict(filename=f"{pren}.{suffix}",
+                  timeout=30,
+                  webdriver=driver)
+
+    logger.info(f"Attempting to save image in format: {suffix}, name:{pren}")
+    if "png" == suffix.lower():
+        figs = row(figs)
+        store = export_png(obj=figs, **o_opts)
+
+    elif "svg" == suffix.lower():
+        # Bokeh SVG doesn't work with circle markers
+        # Issue is here: https://github.com/bokeh/bokeh/issues/8446
+        logger.info(
+            "All circle markers switched to 'square_x' because of SVG issues")
+        for fig in figs:
+            fig.output_backend = "svg"
+        figs = row(figs)
+        store = export_svgs(figs, **o_opts)
+
+    logger.info(f"Done. Image at: {store}")
+
+    logger.debug("Attempting to close browser")
+    driver.close()
 
 
 ################### Main ###############################################
@@ -1716,10 +1757,11 @@ def main(**kwargs):
                             spw_id, scan = get_tooltip_data(sub, gain, freqs)
                             source = ColumnDataSource(
                                 data={"scanid": scan,
-                                      "corr": [corr] * scan.size,
-                                      "field": [fname] * scan.size,
+                                      "corr":  np.full(scan.shape, corr,
+                                                       dtype=np.uint8),
+                                      "field": np.full(scan.shape, fname),
                                       "spw": spw_id,
-                                      "antname": [legend] * scan.size
+                                      "antname": np.full(scan.shape, legend)
                                       })
                             inv_source = ColumnDataSource(data={})
 
@@ -1818,8 +1860,9 @@ def main(**kwargs):
                                "(@x{%F %T}, $y)")
 
             if yaxis == "phase":
-                 # Add degree sign to phase tick formatter
-                fig.yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
+                # Add degree sign to phase tick formatter
+                fig.yaxis.formatter = PrintfTickFormatter(
+                    format=u"%.2e\u00b0")
 
             h_tool.tooltips = tooltips
 
@@ -2054,21 +2097,22 @@ def main(**kwargs):
 
         logger.info("Table {} done.".format(tab))
 
-        if options.image_name:
-            save_static_image(name=options.image_name, figs=all_figures)
-
     if _NB_RENDER_:
         return final_layout
     else:
-        if not html_name:
+        if options.image_name and html_name:
+            save_html(html_name, final_layout)
+            save_static_image(name=options.image_name, figs=all_figures)
+
+        elif options.image_name:
+            save_static_image(name=options.image_name, figs=all_figures)
+        else:
             t_name = os.path.basename(tables[0])
             html_name = f"{t_name}_{doplot}"
             if len(tables) > 1:
                 t_now = datetime.now().strftime("%Y%m%d_%H%M%S")
                 html_name = html_name.replace(t_name, t_now)
-        save_html(html_name, final_layout)
-
-        logger.info("Rendered: {}.html".format(html_name))
+            save_html(html_name, final_layout)
         return 0
 
 
