@@ -74,9 +74,9 @@ It is possible to generate PNG and SVG with ``ragavi-gains`` via two methods. Th
 
     export PATH=$PATH:/absolute/path/to/gecko
 
-With this setup, one can now supply to ``ragavi-gains`` a ``--plotname`` value, which will result in the generation of PNG/SVG files, depending on the file extension provided. If, for example the plotname provided is ``foo.png``, ``ragavi-gains`` will assume the desired output should be PNG. The same applies for SVG.
+With this setup, one can now supply to ``ragavi-gains`` a ``--plotname`` value, which will result in the generation of PNG/SVG files, depending on the file extension provided. If, for example, the plotname provided is ``foo.png``, ``ragavi-gains`` will assume the desired output should be PNG. The same applies for SVG. If both ``--plotname`` and ``--htmlname`` are provided, ``ragavi`` will generate both static (PNG) and interactive (HTML) outputs simulaneously.
 
-It is necessary to point out that by default, ``ragavi`` uses the canvas image backend for interactive plots, due to performance issues associated with SVG image backend as stated in the `docs`_.
+It is necessary to point out that by default, ``ragavi`` uses the canvas image backend for interactive plots, due to performance issues associated with SVG image backend as stated in the Bokeh `docs`_.
 The default plots generated are always in HTML format.
 
 

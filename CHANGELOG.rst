@@ -4,8 +4,9 @@
 
   - Fixed legend display bug
   - ``--gain-type`` argument is now optional
+  - Static and interactive files can be generated simultaneously by specifying both ``--plotname`` and ``--htmlname``
   
-
+ous
 **general**
 
   - Fixed bug in phase wrapping
