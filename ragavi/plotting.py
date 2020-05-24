@@ -105,10 +105,11 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
     # define the axes ranges
     x_range = DataRange1d(name="p_x_range", only_visible=True)
 
+    y_range = DataRange1d(name="p_y_range", only_visible=True)
+
     if x_min != None and x_max != None and x_name.lower() in ["channel", "frequency"]:
         x_range = Range1d(name="p_x_range", start=x_min, end=x_max)
-
-    y_range = DataRange1d(name="p_y_range", only_visible=True)
+        y_range.only_visible = False
 
     # define items to add on the plot
     p_htool = HoverTool(tooltips=[(x_name, "$x"),

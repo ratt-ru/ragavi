@@ -10,15 +10,15 @@ Currently, gain tables supported for visualisation by ``ragavi-gains`` are :
     * Gain calibration (G tables)
     * D-Jones Leakage tables (D tables)
 
-Mandatory fields are :code:`--table`, :code:`--gain_type`
+Mandatory argument is :code:`--table`.
 
-If a field name is not specified to ``ragavi-vis`` all the fields will be plotted by default
+If a field name is not specified to ``ragavi-vis`` all the fields will be plotted by default. This is the same for correlations and spectral windows.
 
-It is possible to place multiple gain table plots of different [or same] types into a single HTML document using ``ragavi`` This can be done by specifying the table names and gain types as space separate list as below
+It is possible to place multiple gain table plots of different [or same] types into a single HTML document using ``ragavi`` This can be done by specifying the table names as a space separate list as below
 
 .. code-block:: bash
 
-    $ragavi-gains --table table/one/name table/two/name table/three/name table/four/name --gain_types B G D F --fields 0
+    $ragavi-gains --table table/one/name table/two/name table/three/name table/four/name --fields 0
 
 This will yield an output HTML file, with plots in the order
 
@@ -47,7 +47,7 @@ To use ``ragavi-gains`` in a notebook environment, run in a notebook cell
     from ragavi.ragavi import plot_table
 
     #specifying function arguments
-    args = dict(mytabs=[], gain_types=[], cmap='viridis', doplot='ri', corr=1, ant='1,2,3,9,10')
+    args = dict(mytabs=[], cmap='viridis', doplot='ri', corr=1, ant='1,2,3,9,10')
 
     #inline plotting will be done
     plot_table(**args)
@@ -74,17 +74,14 @@ It is possible to generate PNG and SVG with ``ragavi-gains`` via two methods. Th
 
     export PATH=$PATH:/absolute/path/to/gecko
 
-With this setup, one can now supply to ``ragavi-gains`` a ``--plotname`` value, which will result in the generation of PNG/SVG files, depending on the file extension provided. If, for example the plotname provided is ``foo.png``, ``ragavi-gains`` will assume the desired output should be PNG. The same applies for SVG.
+With this setup, one can now supply to ``ragavi-gains`` a ``--plotname`` value, which will result in the generation of PNG/SVG files, depending on the file extension provided. If, for example, the plotname provided is ``foo.png``, ``ragavi-gains`` will assume the desired output should be PNG. The same applies for SVG. If both ``--plotname`` and ``--htmlname`` are provided, ``ragavi`` will generate both static (PNG) and interactive (HTML) outputs simulaneously.
 
-It is necessary to point out that by default, ``ragavi`` uses the canvas image backend for interactive plots, due to performance issues associated with SVG image backend as stated in the `docs`_.
+It is necessary to point out that by default, ``ragavi`` uses the canvas image backend for interactive plots, due to performance issues associated with SVG image backend as stated in the Bokeh `docs`_.
 The default plots generated are always in HTML format.
 
 
-API
-***
-.. autoclass:: ragavi.ragavi.DataCoreProcessor
-   :members: blackbox, act
-
+Useful function
+****************
 .. autofunction:: ragavi.ragavi.plot_table
 
 

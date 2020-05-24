@@ -90,6 +90,10 @@ class DataCoreProcessor:
         self.xaxis = self.set_xaxis()
         self.yaxis = yaxis
 
+    def __repr__(self):
+        return "DataCoreProcessor(%r, %r, %r, %r)" % (
+            self.xds_table_obj, self.ms_name, self.gtype, self.yaxis)
+
     def set_xaxis(self):
         if self.gtype in ['B', 'D']:
             xaxis = "channel"
@@ -123,11 +127,12 @@ class DataCoreProcessor:
         elif yaxis == "imaginary":
             y = vu.calc_imaginary(ydata)
         elif yaxis == "phase":
-            y = vu.calc_phase(ydata, wrap=False)
+            y = vu.calc_phase(ydata, unwrap=False)
         elif yaxis == "real":
             y = vu.calc_real(ydata)
         elif yaxis == "delay" or yaxis == "error":
             y = ydata
+
         return y
 
     def flatten_bandpass_data(self, y, x=None):
@@ -151,17 +156,21 @@ class DataCoreProcessor:
 
 
         """
+        logger.debug(f"Flattening bandpass: In y shape {str(y.shape)}")
         if y.ndim > 1:
             # no of unique times available in the bandpass
             # last index because y is transposed to (chan, time)
             nrows = y.shape[1]
 
         if x is not None:
+            logger.debug(f"Flattening bandpass: In x shape {str(x.shape)}")
             x = np.tile(x, (nrows))
+            logger.debug(f"Out x shape: {str(x.shape)}")
             return x
         else:
             # TODO check if this flattening works proper
             y = y.T.flatten()
+            logger.debug(f"Out y shape: {str(y.shape)}")
             return y
 
     def get_errors(self):
@@ -171,6 +180,8 @@ class DataCoreProcessor:
         errors: :obj:`xarray.DataArray`
             Data from the PARAMERR column
         """
+        logger.debug("DCP: Collecting parameter errors")
+
         errors = self.xds_table_obj.PARAMERR
         return errors
 
@@ -184,7 +195,6 @@ class DataCoreProcessor:
         x_label : :obj:`str`
             Label to appear on the x-axis of the plots.
         """
-
         if self.xaxis in ["antenna", "antenna1"]:
             xdata = self.xds_table_obj.ANTENNA1
             x_label = "Antenna"
@@ -198,6 +208,7 @@ class DataCoreProcessor:
         else:
             logger.error("Invalid xaxis name")
             return
+
         return xdata, x_label
 
     def prep_xaxis_data(self, xdata, freq=None):
@@ -256,7 +267,6 @@ class DataCoreProcessor:
         except KeyError:
             logger.exception("Column '{}'' not Found".format(datacol))
             return sys.exit(-1)
-
         return ydata, y_label
 
     def prep_yaxis_data(self, ydata, yaxis=None):
@@ -289,6 +299,7 @@ class DataCoreProcessor:
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
         if self.flag:
+            logger.debug("Flagging active")
             # if flagging is activated select data only where flag mask is 0
             processed = self.process_data(ydata)
             y = processed.where(flags == False)
@@ -315,12 +326,16 @@ class DataCoreProcessor:
             A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
 
         """
+        logger.debug("DCP: Running blackbox")
+
+        logger.debug("DCP: Getting x-axis data")
 
         Data = namedtuple("Data", "x x_label y y_label y_err")
         x = self.x_only()
         xdata = x.x
         xlabel = x.x_label
 
+        logger.debug("DCP: Getting y-axis data")
         y = self.y_only()
         ydata = y.y
         ylabel = y.y_label
@@ -336,6 +351,8 @@ class DataCoreProcessor:
 
         d = Data(x=xdata, x_label=xlabel, y=ydata,
                  y_label=ylabel, y_err=(hi, lo))
+
+        logger.debug("Blackbox blackout")
         return d
 
     def act(self):
@@ -409,6 +426,8 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
 
     """
 
+    logger.debug("Getting calibration table")
+
     # defining part of the gain table schema
     tab_schema = {"CPARAM": {"dims": ("chan", "corr")},
                   "FLAG": {"dims": ("chan", "corr")},
@@ -436,14 +455,25 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
     if group_cols is None:
         group_cols = ["SPECTRAL_WINDOW_ID", "FIELD_ID", "ANTENNA1"]
 
+    logger.debug(f"Grouping data in: {str(group_cols)}")
+    logger.debug(f"TAQL selection: {where}")
+
     try:
-        tab_objs = xm.xds_from_table(tab_name, taql_where=where,
-                                     table_schema=tab_schema,
-                                     group_cols=group_cols)
-        return tab_objs
-    except:
-        logger.exception("""Invalid ANTENNA id, FIELD_ID,
-                            SPECTRAL_WINDOW_ID or TAQL clause""")
+        tab_objs, t_keywords = xm.xds_from_table(tab_name, taql_where=where,
+                                                 table_schema=tab_schema,
+                                                 group_cols=group_cols,
+                                                 table_keywords=True)
+
+        # get table type from VisCal
+        g_type = t_keywords["VisCal"].split()[0]
+
+        logger.info(f"Table type: {g_type} Jones")
+
+        logger.debug(f"{len(tab_objs)} groups created from table")
+        return tab_objs, g_type
+
+    except Exception as ex:
+        logger.error(ex, exc_info=True)
         sys.exit(-1)
 
 
@@ -469,6 +499,8 @@ def get_time_range(tab_name, unix_time=True):
 
     ms.close()
 
+    logger.debug(f"Table time range. Initial: {str(i_time)}, final: {str(f_time)}")
+
     return i_time, f_time
 
 
@@ -493,7 +525,9 @@ def get_tooltip_data(xds_table_obj, gtype, freqs):
 
     """
     scan_no = xds_table_obj.SCAN_NUMBER.values
-    spw_id = [xds_table_obj.SPECTRAL_WINDOW_ID] * scan_no.size
+    scan_no = scan_no.astype(np.uint16)
+    spw_id = np.full(scan_no.shape, xds_table_obj.SPECTRAL_WINDOW_ID,
+                     dtype=np.uint8)
 
     # get the number of channels
     nchan = freqs.size
@@ -755,9 +789,8 @@ def spw_select_callback():
             }
 
             //Make the extra y-axes visible only if corresponding spw selected
-            if (cb_obj.active.includes(sp) && ex_ax[sp].name==`spw${sp}`){
+            if (cb_obj.active.includes(sp)){
                 ex_ax[sp].visible=true;
-                console.log("Trueuee");
             }
             else{
                 ex_ax[sp].visible=false;
@@ -844,12 +877,17 @@ def legend_toggle_callback():
     """
     code = """
                 //Show only the legend for the first item
+                let n;
                 if (cb_obj.active.includes(0)){
-                        legs[0].visible = true;
+                    for (n=0; n<n_legs; n++){
+                        legs[n].visible = true;
+                        }
                 }
 
                 else{
-                        legs[0].visible = false;
+                    for (n=0; n<n_legs; n++){
+                        legs[n].visible = false;
+                        }
                 }
 
            """
@@ -994,6 +1032,9 @@ def condense_legend_items(inlist):
 
     # reformulate odict to list
     outlist = [(key, value) for key, value in od.items()]
+
+    logger.debug("Grouped renderers with the same legends")
+
     return outlist
 
 
@@ -1041,6 +1082,8 @@ def create_legend_batches(num_leg_objs, li_ax1, batch_size=16):
 
         j += batch_size
 
+    logger.debug(f"Ant batches created. Batch size {str(batch_size)}, Num batches {str(num_leg_objs)}")
+
     return bax1
 
 
@@ -1074,6 +1117,8 @@ def create_legend_objs(num_leg_objs, bax1):
     for i in range(num_leg_objs):
         leg1 = Legend(items=bax1[i], name=f"leg{i}", **l_opts)
         lo_ax1["leg_%s" % str(i)] = leg1
+
+    logger.debug("Legend objects created")
 
     return lo_ax1
 
@@ -1110,6 +1155,8 @@ def errorbar(x, y, yerr=None, color="red"):
                         visible=False)
         ebars.upper_head.line_color = color
         ebars.lower_head.line_color = color
+
+        logger.debug("Errorbars created")
     return ebars
 
 
@@ -1144,6 +1191,8 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker="circle_x"):
     # return filled matrix
     masked_markers_arr = masked_markers_arr.filled()
 
+    logger.debug("Flagged data markers generated")
+
     return masked_markers_arr
 
 
@@ -1177,6 +1226,8 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
     all_ufsrc = []
     all_fsrc = []
 
+    logger.debug("Linking generated plots")
+
     for f in range(1, n_figs):
         # link the x- ranges
         all_figures[f].x_range = fig1.x_range
@@ -1200,6 +1251,7 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
                 all_figures[f].renderers[_i].data_source.data[f"y{f+1}"],
                 name=f"y{f+1}")
 
+            # place the data in a single CDS to be shared
             shared_cds = ColumnDataSource(
                 data=dict(fig1.renderers[_i].data_source.data))
 
@@ -1292,6 +1344,8 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
                          color=color, yerr=yerr)
         p_glyph.js_link("fill_alpha", ebars, "line_alpha")
 
+    logger.debug("Glyphs generated")
+
     return p_glyph, ebars
 
 
@@ -1336,6 +1390,7 @@ def create_stats_table(stats, yaxes):
                      sizing_mode="stretch_both", width=500)
     t_title = Div(text="Median Statistics")
 
+    logger.debug("Stats table generated")
     return column([t_title, dtab], sizing_mode="stretch_both")
 
 
@@ -1345,7 +1400,7 @@ def make_table_name(tab_name):
     return div
 
 
-def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
+def stats_display(tab_name, yaxis, corr, field, f_names=None,
                   flag=True, spwid=None):
     """Display some statistics on the plots.
     These statistics are derived from a specific correlation and a specified field of the data.
@@ -1365,8 +1420,6 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
         :meth:`ragavi.vis_utils.name_2id`.
     flag : :obj:`bool`
         Whether to flag data or not
-    gtype : :obj:`str`
-        Type of gain table to be plotted.
     spwid : :obj:`int`
         Spectral window to be selected
     yaxis : :obj:`str`
@@ -1376,8 +1429,11 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
     -------
     List containing stats
     """
-    subtable = get_table(tab_name, fid=field, spwid=str(spwid),
-                         group_cols=[], where=[])[0]
+
+    logger.debug("Starting median stats calculations")
+    subtable, gtype = get_table(tab_name, fid=field, spwid=str(spwid),
+                                group_cols=[], where=[])
+    subtable = subtable[0]
     if subtable.row.size == 0:
         return None
 
@@ -1387,6 +1443,8 @@ def stats_display(tab_name, yaxis, gtype, corr, field, f_names=None,
     y = dobj.y_only(yaxis).y.compute()
 
     med_y = np.nanmedian(y)
+
+    logger.debug(f"{yaxis}, {f_names[field]}, corr {str(corr)} median: {str(med_y)}")
 
     return [spwid, f_names[field], corr, med_y, yaxis]
 
@@ -1436,8 +1494,12 @@ def save_html(name, plot_layout):
     """
     if "html" not in name:
         name = name + ".html"
+
+    logger.debug(f"Saving items to {name}")
+
     output_file(name)
     output = save(plot_layout, name, title=name)
+    logger.info(f"Rendered HTML: {output}")
 
 
 def save_static_image(name, figs=None):
@@ -1457,10 +1519,21 @@ def save_static_image(name, figs=None):
 
     """
     from selenium import webdriver
-    driver = webdriver.Firefox()
+
+    logger.debug("Setting up Firefox selenium driver")
+    b_opts = webdriver.FirefoxOptions()
+    # Ensure browser is headless
+    b_opts.headless = True
+
+    logger.debug(f"Browser headless mode: {b_opts.headless}")
+
+    driver = webdriver.Firefox(options=b_opts)
+
+    logger.debug("Driver succesfully set up")
+
+    pren, suffix = name.split('.')
 
     for _i in range(len(figs)):
-        yaxis = figs[_i].yaxis.axis_label
         legs = figs[_i].legend
 
         for _l in legs:
@@ -1468,14 +1541,42 @@ def save_static_image(name, figs=None):
 
         for _r in figs[_i].renderers:
             _r.visible = True
+            _r.glyph.size = 7
+            # if suffix == "svg":
+            if _r.glyph.marker == "circle":
+                _r.glyph.marker = "square_x"
+                _r.glyph.line_width = 1
+                _r.glyph.line_color = "#0f9af0"
 
-        if "png" in name.lower():
-            export_png(obj=figs[_i], filename=f"{name}_{yaxis}.{o_type}",
-                       width=_PLOT_WIDTH_, height=_PLOT_HEIGHT_,
-                       webdriver=driver)
-        elif "svg" in name.lower():
-            figs[_i].output_backend = "svg"
-            export_svgs(figs[_i], filename=f"{name}_{yaxis}.{o_type}")
+        figs[_i].width = 600
+        figs[_i].frame_width = int(0.9 * 600)
+        figs[_i].height = 500
+        figs[_i].frame_height = int(0.9 * 500)
+
+    # some shared options
+    o_opts = dict(filename=f"{pren}.{suffix}",
+                  timeout=30,
+                  webdriver=driver)
+
+    logger.info(f"Attempting to save image in format: {suffix}, name:{pren}")
+    if "png" == suffix.lower():
+        figs = row(figs)
+        store = export_png(obj=figs, **o_opts)
+
+    elif "svg" == suffix.lower():
+        # Bokeh SVG doesn't work with circle markers
+        # Issue is here: https://github.com/bokeh/bokeh/issues/8446
+        logger.info(
+            "All circle markers switched to 'square_x' because of SVG issues")
+        for fig in figs:
+            fig.output_backend = "svg"
+        figs = row(figs)
+        store = export_svgs(figs, **o_opts)
+
+    logger.info(f"Done. Image at: {store}")
+
+    logger.debug("Attempting to close browser")
+    driver.close()
 
 
 ################### Main ###############################################
@@ -1490,7 +1591,6 @@ def main(**kwargs):
         ddid = options.ddid
         doplot = options.doplot
         fields = options.fields
-        gain_types = options.gain_types
         html_name = options.html_name
         image_name = options.image_name
         mytabs = options.mytabs
@@ -1505,24 +1605,10 @@ def main(**kwargs):
 
     tables = [os.path.abspath(tab) for tab in options.mytabs]
 
-    # ensure the length of gain type and table type are the same
-    if len(options.gain_types) < len(tables):
-        gains = gain_types * len(tables)
-    else:
-        gains = options.gain_types
-
-    doplot = options.doplot
-
     # parent container of the items in this pot
     final_layout = []
-    for tab, gain in zip(tables, gains):
 
-        if doplot == "ap":
-            y_axes = ["amplitude", "phase"]
-        else:
-            y_axes = ["real", "imaginary"]
-        if gain == "K":
-            y_axes = ["delay"]
+    for tab in tables:
 
         if options.fields:
             # Not using .isalnum coz the actual field names can be provided
@@ -1553,7 +1639,7 @@ def main(**kwargs):
             s_tab.close()
 
         if options.ddid is not None:
-            # TODO: Check for the input comming in from argparse
+            # TODO: Check for the input coming in from argparse
             # check if it needs to be resolved
             ddid = vu.resolve_ranges(options.ddid)
             # get all frequencies anyways
@@ -1582,11 +1668,6 @@ def main(**kwargs):
         if t1:
             where.append(f"TIME - {str(init_time)} <= {str(t1)}")
 
-        if gain in ["G", "F"] or (options.kx == "time" and gain == "K"):
-            x_axis_type = "datetime"
-        else:
-            x_axis_type = "linear"
-
         all_figures = []
 
         # store generated plots
@@ -1606,8 +1687,20 @@ def main(**kwargs):
         all_fsources = []
 
         logger.info("Acquiring table: {}".format(os.path.basename(tab)))
-        subs = get_table(tab, spwid=ddid, where=where,
-                         fid=fields, antenna=plotants)
+        subs, gain = get_table(tab, spwid=ddid, where=where, fid=fields,
+                               antenna=plotants)
+
+        if doplot == "ap":
+            y_axes = ["amplitude", "phase"]
+        else:
+            y_axes = ["real", "imaginary"]
+        if gain == "K":
+            y_axes = ["delay"]
+
+        if gain in ["G", "F"] or (options.kx == "time" and gain == "K"):
+            x_axis_type = "datetime"
+        else:
+            x_axis_type = "linear"
 
         # confirm a populous table is selected
         try:
@@ -1645,13 +1738,13 @@ def main(**kwargs):
 
             for spw, fid, corr in iters:
                 fname = field_names[fid]
-                stats = stats_display(tab_name=tab, yaxis=yaxis, gtype=gain,
+
+                logger.info(f"Spw: {spw}, Field: {fname}, Corr: {corr} {yaxis}")
+                stats = stats_display(tab_name=tab, yaxis=yaxis,
                                       corr=corr, field=fid, flag=_FLAG_DATA_,
                                       f_names=field_names, spwid=spw)
                 if stats:
                     fig_stats.append(stats)
-
-                logger.info(f"Spw: {spw}, Field: {fname}, Corr: {corr} {yaxis}")
 
                 for _a, ant in enumerate(ant_ids):
                     legend = ant_names[ant]
@@ -1664,10 +1757,11 @@ def main(**kwargs):
                             spw_id, scan = get_tooltip_data(sub, gain, freqs)
                             source = ColumnDataSource(
                                 data={"scanid": scan,
-                                      "corr": [corr] * scan.size,
-                                      "field": [fname] * scan.size,
+                                      "corr":  np.full(scan.shape, corr,
+                                                       dtype=np.uint8),
+                                      "field": np.full(scan.shape, fname),
                                       "spw": spw_id,
-                                      "antname": [legend] * scan.size
+                                      "antname": np.full(scan.shape, legend)
                                       })
                             inv_source = ColumnDataSource(data={})
 
@@ -1681,7 +1775,7 @@ def main(**kwargs):
                             data = data_obj.act()
                             xaxis = data_obj.xaxis
 
-                            logger.debug(f"Getting the flagged data")
+                            logger.debug(f"Processing the flagged data")
                             infl_data = DataCoreProcessor(
                                 sub, tab, gain, fid=fid, yaxis=yaxis,
                                 corr=corr, flag=not _FLAG_DATA_,
@@ -1766,8 +1860,9 @@ def main(**kwargs):
                                "(@x{%F %T}, $y)")
 
             if yaxis == "phase":
-                 # Add degree sign to phase tick formatter
-                fig.yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
+                # Add degree sign to phase tick formatter
+                fig.yaxis.formatter = PrintfTickFormatter(
+                    format=u"%.2e\u00b0")
 
             h_tool.tooltips = tooltips
 
@@ -1816,6 +1911,8 @@ def main(**kwargs):
         ######################################################################
         ################ Defining widgets ###################################
         ######################################################################
+
+        logger.debug("Defining plot widgets")
 
         # widget dimensions
         w_dims = dict(width=150, height=30)
@@ -1884,6 +1981,8 @@ def main(**kwargs):
         ############## Defining widget Callbacks ############################
         ######################################################################
 
+        logger.debug("Attaching callbacks to widgets")
+
         ant_select.js_on_change("active", CustomJS(
             args=dict(ax=all_figures[0].renderers, bsel=batch_select,
                       fsel=field_selector, csel=corr_select, ssel=spw_select,
@@ -1925,12 +2024,12 @@ def main(**kwargs):
                       fsel=field_selector, nants=ant_ids.size,
                       ncorrs=corrs.size, nfields=field_ids.size,
                       nbatches=n_leg_objs, nspws=spw_ids.size,
-                      ax=all_figures[0].renderers,
+                      ax=all_figures[0].renderers, spw_ids=spw_ids,
                       ex_ax=ex_ax),
             code=spw_select_callback()))
 
         legend_toggle.js_on_change("active", CustomJS(
-            args=dict(legs=all_legends),
+            args=dict(legs=all_legends, n_legs=n_leg_objs),
             code=legend_toggle_callback()))
 
         toggle_err.js_on_change("active", CustomJS(
@@ -1970,6 +2069,9 @@ def main(**kwargs):
         #################################################################
         ########## Define widget layouts #################################
         ##################################################################
+
+        logger.debug("Setting up plot layout")
+
         asel_div = Div(text="Select antenna group")
         fsel_div = Div(text="Fields")
         ssel_div = Div(text="Select spw")
@@ -1995,21 +2097,22 @@ def main(**kwargs):
 
         logger.info("Table {} done.".format(tab))
 
-        if options.image_name:
-            save_static_image(name=options.image_name, figs=all_figures)
-
     if _NB_RENDER_:
         return final_layout
     else:
-        if not html_name:
+        if options.image_name and html_name:
+            save_html(html_name, final_layout)
+            save_static_image(name=options.image_name, figs=all_figures)
+
+        elif options.image_name:
+            save_static_image(name=options.image_name, figs=all_figures)
+        else:
             t_name = os.path.basename(tables[0])
             html_name = f"{t_name}_{doplot}"
             if len(tables) > 1:
                 t_now = datetime.now().strftime("%Y%m%d_%H%M%S")
                 html_name = html_name.replace(t_name, t_now)
-        save_html(html_name, final_layout)
-
-        logger.info("Rendered: {}.html".format(html_name))
+            save_html(html_name, final_layout)
         return 0
 
 
@@ -2019,16 +2122,10 @@ def plot_table(**kwargs):
 
     Parameters
     ----------
-    **Required**
-    gaintype: :obj:`str`, :obj:`list`
-        Cal-table (list of caltypes) type to be plotted. Can be either 
-        'B'-bandpass, 'D'- D jones leakages, G'-gains, 'K'-delay or 'F'-flux.
-         Default is none
-    table : :obj:`str` or :obj:`list` required
+    table : :obj:`str` or :obj:`list`
         The table (list of tables) to be plotted.
 
-    **Optional**
-    ant : :obj:`str`
+    ant : :obj:`str, optional`
         Plot only specific antennas, or comma-separated list of antennas.
     corr : :obj:`int, optional`
         Correlation index to plot. Can be a single integer or comma separated 

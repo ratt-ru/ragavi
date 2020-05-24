@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import os
+import re
 import sys
 import textwrap
 import warnings
@@ -33,6 +34,8 @@ def calc_amplitude(ydata):
     amplitude : :obj:`xarray.DataArray`
         :attr:`ydata` converted to an amplitude
     """
+    logger.debug("Setting up amplitude")
+
     amplitude = da.absolute(ydata)
     return amplitude
 
@@ -50,6 +53,8 @@ def calc_imaginary(ydata):
     imag : :obj:`xarray.DataArray`
         Imaginary part of :attr:`ydata`
     """
+    logger.debug("Setting up imaginary")
+
     imag = ydata.imag
     return imag
 
@@ -67,11 +72,13 @@ def calc_real(ydata):
     real : :obj:`xarray.DataArray`
         Real part of :attr:`ydata`
     """
+    logger.debug("Setting up real")
+
     real = ydata.real
     return real
 
 
-def calc_phase(ydata, wrap=True):
+def calc_phase(ydata, unwrap=False):
     """Convert complex data to angle in degrees
 
     Parameters
@@ -86,15 +93,18 @@ def calc_phase(ydata, wrap=True):
     phase: `xarray.DataArray`
         :attr:`ydata` data converted to degrees
     """
+    logger.debug("Setting up wrapped phase")
+
+    # np.angle already returns a phase wrapped between (-pi and pi]
+    # https://numpy.org/doc/1.18/reference/generated/numpy.angle.html
     phase = xr.apply_ufunc(da.angle, ydata,
                            dask="allowed", kwargs=dict(deg=True))
-    if wrap:
+
+    if unwrap:
         # using an alternative method to avoid warnings
-        try:
-            phase = phase.reduce(np.unwrap)
-        except TypeError:
-            # this is for python2 compat
-            phase = xr.apply_ufunc(np.unwrap, phase, dask="allowed")
+        logger.debug("Unwrapping enabled. Unwrapping angles")
+
+        phase = phase.reduce(np.unwrap)
     return phase
 
 
@@ -111,6 +121,7 @@ def calc_uvdist(uvw):
     uvdist : :obj:`xarray.DataArray`
         uv distance in meters
     """
+    logger.debug("Setting up UV Distance (metres)")
     u = uvw.isel(uvw=0)
     v = uvw.isel(uvw=1)
     uvdist = da.sqrt(da.square(u) + da.square(v))
@@ -133,6 +144,8 @@ def calc_uvwave(uvw, freq):
         uv distance in wavelength for specific frequency
     """
 
+    logger.debug("Setting up UV Wavelengths (lambdas)")
+
     # speed of light
     C = 3e8
 
@@ -154,11 +167,14 @@ def calc_unique_bls(n_ants=None):
         Available antennas
     Returns
     -------
-    Number of unique baselines
+    pq: :obj:`int`
+        Number of unique baselines
 
     """
 
-    return int(0.5 * n_ants * (n_ants - 1))
+    pq = int(0.5 * n_ants * (n_ants - 1))
+    logger.debug(f"Number of unique baselines: {str(pq)}.")
+    return pq
 
 
 ########################################################################
@@ -179,11 +195,15 @@ def get_antennas(ms_name):
         A :obj:`xarray.DataArray` containing names for all the antennas available.
 
     """
+    logger.debug("Getting antenna names")
+
     subname = "::".join((ms_name, "ANTENNA"))
     ant_subtab = list(xm.xds_from_table(subname))
     ant_subtab = ant_subtab[0]
     ant_names = ant_subtab.NAME
     # ant_subtab("close")
+
+    logger.debug(f"Antennas found: {str(ant_names.values)}")
     return ant_names
 
 
@@ -200,10 +220,14 @@ def get_fields(ms_name):
     field_names : :obj:`xarray.DataArray`
         String names for the available fields
     """
+    logger.debug("Getting antenna names")
+
     subname = "::".join((ms_name, "FIELD"))
     field_subtab = list(xm.xds_from_table(subname))
     field_subtab = field_subtab[0]
     field_names = field_subtab.NAME
+
+    logger.debug(f"Fields found: {str(field_names.values)}")
     return field_names
 
 
@@ -226,6 +250,9 @@ def get_frequencies(ms_name, spwid=None, chan=None, cbin=None):
     frequencies : :obj:`xarray.DataArray`
         Channel centre frequencies for specified spectral window or all the frequencies for all spectral windows if one is not specified
     """
+
+    logger.debug("Gettting Frequencies for selected SPWS and channels")
+
     subname = "::".join((ms_name, "SPECTRAL_WINDOW"))
 
     # if averaging is true, it shall be done before selection
@@ -239,6 +266,7 @@ def get_frequencies(ms_name, spwid=None, chan=None, cbin=None):
     else:
         from ragavi.averaging import get_averaged_spws
         # averages done per spectral window, scan and field
+        logger.info("Channel averaging active")
         spw_subtab = get_averaged_spws(subname, cbin, chan_select=chan)
 
     # concat all spws into a single data array
@@ -251,6 +279,9 @@ def get_frequencies(ms_name, spwid=None, chan=None, cbin=None):
     if spwid is not None:
         # if multiple SPWs due to slicer, select the desired one(S)
         frequencies = frequencies.sel(row=spwid)
+
+    logger.debug(
+        f"Frequency table shape (spws, chans): {str(frequencies.shape)}")
     return frequencies
 
 
@@ -267,6 +298,8 @@ def get_polarizations(ms_name):
     cor2stokes: :obj:`list`
                 Returns a list containing the types of correlation
     """
+
+    logger.debug("Getting Stokes' types")
     # Stokes types in this case are 1 based and NOT 0 based.
     stokes_types = ["I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
                     "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
@@ -283,6 +316,8 @@ def get_polarizations(ms_name):
 
     # Select corr_type name from the stokes types
     cor2stokes = [stokes_types[typ] for typ in corr_types]
+
+    logger.debug(f"Found stokes: {str(cor2stokes)}")
 
     return cor2stokes
 
@@ -303,7 +338,12 @@ def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
         Data array containing values from FLAG column selected by correlation if index is available.
 
     """
+    logger.debug("Getting flags")
     flags = xds_table_obj.FLAG
+
+    if np.all(flags.values):
+        logger.debug(f"All flags are active for {xds_table_obj.attrs}")
+
     if corr is None:
         return flags.sel(chan=chan)
     else:
@@ -329,6 +369,8 @@ def name_2id(tab_name, field_name):
     field_id : :obj:`int`
         Integer field id
     """
+    logger.debug("Converting field names to FIELD_IDs")
+
     field_names = get_fields(tab_name).data.compute()
 
     # make the sup field name uppercase
@@ -336,8 +378,12 @@ def name_2id(tab_name, field_name):
 
     if field_name in field_names:
         field_id = np.where(field_names == field_name)[0][0]
+
+        logger.debug(f"Field name {field_name} --> found in ID {field_id}")
+
         return int(field_id)
     else:
+        logger.debug(f"FIELD_ID of {field_name} not found")
         return -1
 
 
@@ -363,6 +409,8 @@ def resolve_ranges(inp):
 
         # takes care of 5:8 or 5,6,7 or 5:
         res = "[{}]".format(inp)
+
+    logger.debug(f"Resolved range {inp} --> {res} for TAQL selection")
     return res
 
 
@@ -381,44 +429,30 @@ def slice_data(inp):
 
     """
     if inp is None:
-        # start = 0
-        # stop = None
-        # sl = slice(start, stop)
         sl = slice(0, None)
-        return sl
-
-    if inp.isdigit():
+    elif inp.isdigit():
         sl = int(inp)
-        return sl
-    # check where the string is a comma separated list
-    if ',' not in inp:
-        if '~' in inp:
-            splits = inp.replace('~', ':').split(':')
-        else:
-            splits = inp.split(':')
-        splits = [None if x == '' else int(x) for x in splits]
+    elif ',' in inp:
+        # assume a comma separated list
+        sl = np.array(inp.split(","), dtype=int)
+    elif '~' in inp or ':' in inp:
+        splits = re.split(r"(~|:)", inp)
+        n_splits = []
+        for x in splits:
+            if x.isdigit():
+                x = int(x)
+            elif x == '':
+                x = None
+            n_splits.append(x)
 
-        len_splits = len(splits)
-        start, stop, step = None, None, 1
+        if '~' in n_splits:
+            n_splits[n_splits.index('~') + 1] += 1
+            n_splits = [':' if _ == '~' else _ for _ in n_splits]
 
-        if len_splits == 1:
-            start = int(splits[0])
-        elif len_splits == 2:
-            start, stop = splits
-        elif len_splits == 3:
-            start, stop, step = splits
+        # get every second item on list
+        sl = slice(*n_splits[::2])
 
-        # since ~ only alters the end value, we can then only change the stop
-        # value
-        if '~' in inp:
-            stop += 1
-
-        sl = slice(start, stop, step)
-    else:
-        # assuming string is a comma separated list
-        inp = inp.replace(' ', '')
-        splits = [int(x) for x in inp.split(',')]
-        sl = np.array(splits)
+    logger.debug(f"Created slicer / (fancy) index {str(sl)} from input {inp}")
 
     return sl
 
@@ -488,10 +522,13 @@ def wrap_warning_text(message, category, filename, lineno, file=None,
 warnings.formatwarning = wrap_warning_text
 
 
-def __config_logger():
+def __config_logger(level="info"):
     """Configure the logger for ragavi and catch all warnings output by sys.stdout.
     """
     logfile_name = "ragavi.log"
+
+    # numeric value of logging level
+    level_num = getattr(logging, level.upper(), None)
 
     # capture only a single instance of a matching repeated warning
     warnings.filterwarnings("module")
@@ -507,18 +544,18 @@ def __config_logger():
 
     # create logger named ragavi
     logger = logging.getLogger("ragavi")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level_num)
 
     # warnings logger
     w_logger = logging.getLogger("py.warnings")
-    w_logger.setLevel(logging.INFO)
+    w_logger.setLevel(level_num)
 
     # console handler
     c_handler = logging.StreamHandler()
     f_handler = logging.FileHandler(logfile_name)
 
-    c_handler.setLevel(logging.INFO)
-    f_handler.setLevel(logging.INFO)
+    c_handler.setLevel(level_num)
+    f_handler.setLevel(level_num)
 
     # setting the format for the logging messages
     start = " (O_o) ".center(cols, "=")

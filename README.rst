@@ -90,14 +90,13 @@ To use ragavi gain plotter
 
 .. code-block:: bash
 
-    $ ragavi-gains -t /path/to/your/table -g table_type (K / B/ F/ G/ D)
+    $ ragavi-gains -t /path/to/your/table
 
-Multiple tables can be plotted on the same document simply by adding them in a space separated list to the :code:`-t` / :code:`--table` switch. 
-They must however be accompanied by their respective gain table type in the :code:`-g` switch. e.g
+Multiple tables can be plotted on the same document simply by adding them in a space separated list to the :code:`-t` / :code:`--table` switch e.g
 
 .. code-block:: bash
 
-    $ ragavi-gains -t delay/table/1/ bandpass/table/2 flux/table/3 -g K B F
+    $ ragavi-gains -t delay/table/1/ bandpass/table/2 flux/table/3 
 
 For the visibility plotter, the name-space :code:`ragavi-vis` is used. Help can be obtained by running
 
