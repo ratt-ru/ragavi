@@ -1542,11 +1542,11 @@ def save_static_image(name, figs=None):
         for _r in figs[_i].renderers:
             _r.visible = True
             _r.glyph.size = 7
-            # if suffix == "svg":
-            if _r.glyph.marker == "circle":
-                _r.glyph.marker = "square_x"
-                _r.glyph.line_width = 1
-                _r.glyph.line_color = "#0f9af0"
+            if suffix == "svg":
+                if _r.glyph.marker == "circle":
+                    _r.glyph.marker = "square_x"
+                    _r.glyph.line_width = 1
+                    _r.glyph.line_color = "#0f9af0"
 
         figs[_i].width = 600
         figs[_i].frame_width = int(0.9 * 600)
