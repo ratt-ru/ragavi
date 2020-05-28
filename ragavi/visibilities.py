@@ -114,9 +114,11 @@ class DataCoreProcessor:
         elif self.xaxis == "amplitude":
             xdata = self.xds_table_obj[self.datacol]
             x_label = "Amplitude"
-        elif self.xaxis == "frequency" or self.xaxis == "channel":
+        elif self.xaxis in ["frequency", "channel"]:
             xdata = vu.get_frequencies(self.ms_name, spwid=self.ddid,
                                        chan=self.chan, cbin=self.cbin)
+            xdata = xdata.chunk(self.xds_table_obj.chunks['chan'])
+
             x_label = "Frequency GHz"
         elif self.xaxis == "imaginary":
             xdata = self.xds_table_obj[self.datacol]
@@ -182,18 +184,13 @@ class DataCoreProcessor:
 
         return ydata, y_label
 
-    def prep_xaxis_data(self, xdata, freq=None):
+    def prep_xaxis_data(self, xdata):
         """Prepare the x-axis data for plotting. Selections also performed here.
 
         Parameters
         ----------
         xdata: :obj:`xarray.DataArray`
             x-axis data depending  x-axis selected
-        freq: :obj:`xarray.DataArray` or :obj:`float`
-            Frequency(ies) from which corresponding wavelength will be obtained.
-            Note
-            ----
-                Only required when xaxis specified is 'uvwave'
 
         Returns
         -------
@@ -205,14 +202,20 @@ class DataCoreProcessor:
         if self.xaxis == "channel" or self.xaxis == "frequency":
             prepdx = xdata / 1e9
         elif self.xaxis in ["phase", "amplitude", "real", "imaginary"]:
-            prepdx = xdata
+            prepdx = self.prep_yaxis_data(xdata, yaxis=self.xaxis)
         elif self.xaxis == "time":
             prepdx = vu.time_convert(xdata)
         elif self.xaxis == "uvdistance":
             prepdx = vu.calc_uvdist(xdata)
         elif self.xaxis == "uvwave":
-            prepdx = vu.calc_uvwave(xdata, freq) / 1e3
-        elif self.xaxis == "antenna1" or self.xaxis == "antenna2" or self.xaxis == "scan":
+            # compute uvwave using the available selected frequencies
+            freqs = vu.get_frequencies(self.ms_name, spwid=self.ddid,
+                                       chan=self.chan,
+                                       cbin=self.cbin).values
+
+            # results are returned in kilo lamnda
+            prepdx = vu.calc_uvwave(xdata, freqs)
+        elif self.xaxis in ["antenna1", "antenna2", "scan"]:
             prepdx = xdata
 
         logger.debug("Done")
@@ -265,6 +268,15 @@ class DataCoreProcessor:
             y = processed.where(flags == False)
         else:
             y = self.process_data(ydata, yaxis=yaxis, unwrap=False)
+
+        if self.xaxis in ["channel", "frequency"]:
+            # the input shape
+            i_shape = str(y.shape)
+            if y.ndim == 3:
+                y = y.transpose("chan", "row", "corr")
+            else:
+                y = y.T
+            logger.debug(f"xaxis: {self.xaxis}, changing y shape {i_shape} --> {str(y.shape)}")
 
         logger.debug("Done")
 
@@ -327,12 +339,6 @@ class DataCoreProcessor:
         y_prepd = ys.y
         ylabel = ys.ylabel
 
-        if self.xaxis == "channel" or self.xaxis == "frequency":
-            if y_prepd.ndim == 3:
-                y_prepd = y_prepd.transpose("chan", "row", "corr")
-            else:
-                y_prepd = y_prepd.T
-
         d = Data(x=x_prepd, xlabel=xlabel, y=y_prepd, ylabel=ylabel)
 
         return d
@@ -353,19 +359,8 @@ class DataCoreProcessor:
         Data = namedtuple("Data", "x xlabel")
 
         x_data, xlabel = self.get_xaxis_data()
-        if self.xaxis == "uvwave":
-            # compute uvwave using the available selected frequencies
-            freqs = vu.get_frequencies(self.ms_name, spwid=self.ddid,
-                                       chan=self.chan,
-                                       cbin=self.cbin).values
 
-            x = self.prep_xaxis_data(x_data, freq=freqs)
-
-        # if we have x-axes corresponding to ydata
-        elif self.xaxis in ["phase", "amplitude", "real", "imaginary"]:
-            x = self.prep_yaxis_data(x_data, yaxis=self.xaxis)
-        else:
-            x = self.prep_xaxis_data(x_data)
+        x = self.prep_xaxis_data(x_data)
 
         d = Data(x=x, xlabel=xlabel)
 
@@ -419,6 +414,7 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
                          x=x_name, y=y_name, cat=cat)
 
     logger.info("Creating Bokeh Figure")
+
     fig = create_bk_fig(xlab=xlab, ylab=ylab, title=title, x_min=x_min,
                         x_max=x_max,
                         x_axis_type=x_axis_type, x_name=x_name, y_name=y_name,
@@ -1674,6 +1670,9 @@ def main(**kwargs):
             # We check current DATA_DESC_ID
             c_spw = chunk.DATA_DESC_ID
 
+            if not isinstance(c_spw, int):
+                c_spw = c_spw.values[0]
+
             logger.info("Starting data processing.")
 
             p_data = DataCoreProcessor(chunk, mytab, xaxis, yaxis, chan=chan,
@@ -1718,7 +1717,14 @@ def main(**kwargs):
             final_plot = column(children=[title_div, pre, final_plot])
 
         else:
-            final_plot = oup_a[0]
+            if len(final_plot) > 1:
+                final_plot = gridplot(
+                    children=oup_a,
+                    sizing_mode="stretch_width", ncols=2,
+                    plot_width=PLOT_WIDTH // len(oup_a),
+                    plot_height=PLOT_HEIGHT // len(oup_a))
+            else:
+                final_plot = oup_a[0]
 
         logger.info("Plotting complete.")
 
