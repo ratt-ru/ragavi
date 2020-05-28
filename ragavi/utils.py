@@ -122,14 +122,16 @@ def calc_uvdist(uvw):
         uv distance in meters
     """
     logger.debug("Setting up UV Distance (metres)")
-    u = uvw.isel(uvw=0)
-    v = uvw.isel(uvw=1)
+    u = uvw.isel({'[uvw]': 0})
+    v = uvw.isel({'[uvw]': 1})
     uvdist = da.sqrt(da.square(u) + da.square(v))
     return uvdist
 
 
 def calc_uvwave(uvw, freq):
-    """Calculate uv distance in wavelength for availed frequency. This function also calculates the corresponding wavelength. Uses output from :func:`ragavi.vis_utils.calc_uvdist`
+    """Calculate uv distance in wavelength for availed frequency. This 
+    function also calculates the corresponding wavelength. Uses output from 
+    :func:`ragavi.vis_utils.calc_uvdist`
 
     Parameters
     ----------
@@ -155,7 +157,11 @@ def calc_uvwave(uvw, freq):
     # add extra dimension
     uvdist = calc_uvdist(uvw)
     uvdist = uvdist.expand_dims({"chan": 1}, axis=1)
-    uvwave = uvdist / wavelength
+
+    uvwave = (uvdist / wavelength)
+
+    # make the uv distance in kilo lambda
+    uvwave = uvwave / 1e3
     return uvwave
 
 
