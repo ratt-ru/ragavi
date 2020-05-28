@@ -1717,7 +1717,7 @@ def main(**kwargs):
             final_plot = column(children=[title_div, pre, final_plot])
 
         else:
-            if len(final_plot) > 1:
+            if len(oup_a) > 1:
                 final_plot = gridplot(
                     children=oup_a,
                     sizing_mode="stretch_width", ncols=2,
