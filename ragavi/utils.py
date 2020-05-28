@@ -122,8 +122,8 @@ def calc_uvdist(uvw):
         uv distance in meters
     """
     logger.debug("Setting up UV Distance (metres)")
-    u = uvw.isel({'[uvw]': 0})
-    v = uvw.isel({'[uvw]': 1})
+    u = uvw.isel({'uvw': 0})
+    v = uvw.isel({'uvw': 1})
     uvdist = da.sqrt(da.square(u) + da.square(v))
     return uvdist
 

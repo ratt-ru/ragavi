@@ -125,7 +125,7 @@ def output_dataset(avg, field_id, data_desc_id, scan_number,
         "INTERVAL": (("row",), avg.interval),
         "TIME_CENTROID": (("row",), avg.time_centroid),
         "EXPOSURE": (("row",), avg.exposure),
-        "UVW": (("row", "[uvw]"), avg.uvw),
+        "UVW": (("row", "uvw"), avg.uvw),
         "WEIGHT": (("row", "corr"), avg.weight),
         "SIGMA": (("row", "corr"), avg.sigma),
         viscolumn: (("row", "chan", "corr"), avg.vis),
@@ -378,12 +378,9 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
         datas = {k: (v.dims, v.data, v.attrs)
                  for k, v in ams.data_vars.items() if k != "FLAG_CATEGORY"}
 
-        # create datasets and rename dimension "[uvw]"" to "uvw"
         new_ds = xr.Dataset(datas, attrs=ams.attrs, coords=ams.coords)
         new_ds = new_ds.chunk(chunks)
 
-        if "uvw" in new_ds.dims.keys():
-            new_ds = new_ds.rename_dims({"[uvw]": "uvw"})
         x_datasets.append(new_ds)
 
     # data will always be grouped by SPW unless iterating over antenna

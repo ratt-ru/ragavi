@@ -1670,7 +1670,7 @@ def main(**kwargs):
             # We check current DATA_DESC_ID
             c_spw = chunk.DATA_DESC_ID
 
-            if not isinstance(c_spw, int):
+            if isinstance(c_spw, xr.DataArray):
                 c_spw = c_spw.values[0]
 
             logger.info("Starting data processing.")
