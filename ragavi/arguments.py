@@ -110,7 +110,11 @@ def vis_argparser():
                           help="""Correlation index or subset to plot. Can be 
                         specified using normal python slicing syntax i.e 
                         "0:5" for 0<=corr<5 or "::2" for every 2nd corr or 
-                        "0" for corr 0  or "0,1,3". Default is all.""",
+                        "0" for corr 0  or "0,1,3". Can also be specified 
+                        using comma separated corr labels e.g 'xx,yy' or 
+                        specifying 'diag' / 'diagonal' for diagonal 
+                        correlations and 'off-diag' / 'off-diagonal' for of 
+                        diagonal correlations. Default is all.""",
                           default=None)
     d_config.add_argument("-dc", "--data-column", dest="data_column",
                           type=str, metavar='',
