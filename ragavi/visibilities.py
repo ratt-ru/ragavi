@@ -1585,29 +1585,33 @@ def main(**kwargs):
         ################################################################
         ################### Iterate over subtables #####################
 
-        # translate corr labels to indices if need be
-        if corr.isalpha() or '-' in corr:
-            if corr in ["diag", "diagonal"]:
-                corr = "xx,yy"
-            elif corr in ["off-diag", "off-diagonal"]:
-                corr = "xy,yx"
+        if options.corr != None:
+            # translate corr labels to indices if need be
+            if corr.isalpha() or '-' in corr:
+                if corr in ["diag", "diagonal"]:
+                    corr = "xx,yy"
+                elif corr in ["off-diag", "off-diagonal"]:
+                    corr = "xy,yx"
+                else:
+                    logger.error(f"Invalid corr: {corr} selected. Choose from diag / diagonal, or off-diag / off-diagonal.")
+                    sys.exit(-1)
+                corr = corr.upper()
 
-            corr = corr.upper()
-            corr = corr.split(",")
-            corr_labs = vu.get_polarizations(mytab)
+                corr = corr.split(",")
+                corr_labs = vu.get_polarizations(mytab)
 
-            logger.info(f"Available corrs: {str(corr_labs)}")
+                logger.info(f"Available corrs: {str(corr_labs)}")
 
-            for c in range(len(corr)):
-                try:
-                    corr[c] = corr_labs.index(corr[c])
-                except ValueError:
-                    logger.warning(f"Chosen corr {corr[c]} is not available")
-                    corr[c] = -1
-            if all(c == -1 for c in corr):
-                logger.error("All selected corrs are not available. Exiting.")
-                sys.exit(-1)
-        else:
+                for c in range(len(corr)):
+                    try:
+                        corr[c] = corr_labs.index(corr[c])
+                    except ValueError:
+                        logger.warning(f"Chosen corr {corr[c]} is not available")
+                        corr[c] = -1
+                if all(c == -1 for c in corr):
+                    logger.error(
+                        "All selected corrs are not available. Exiting.")
+                    sys.exit(-1)
             corr = vu.slice_data(corr)
 
         # if there are id labels to be gotten, get them
