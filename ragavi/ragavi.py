@@ -1,4 +1,5 @@
 import glob
+import logging
 import numpy as np
 import re
 import sys
@@ -37,8 +38,8 @@ _GHZ_ = 1e9
 _NB_RENDER_ = False
 _BATCH_SIZE_ = 16
 
-logger = vu.logger
-excepthook = vu.__handle_uncaught_exceptions
+
+logger = logging.getLogger(__name__)
 
 
 #################### Define Dataprocessor ##############################
@@ -1603,6 +1604,14 @@ def main(**kwargs):
     if isinstance(options.fields, list):
         fields = ",".join(fields)
 
+    if options.debug:
+        vu.update_log_levels(logger, "debug")
+    else:
+        vu.update_log_levels(logger, "info")
+
+    if options.logfile:
+        vu.update_logfile_name(logger, options.logfile)
+
     tables = [os.path.abspath(tab) for tab in options.mytabs]
 
     # parent container of the items in this pot
@@ -1862,7 +1871,7 @@ def main(**kwargs):
             if yaxis == "phase":
                 # Add degree sign to phase tick formatter
                 fig.yaxis.formatter = PrintfTickFormatter(
-                    format=u"%.2e\u00b0")
+                    format=u"%f\u00b0")
 
             h_tool.tooltips = tooltips
 
@@ -2106,6 +2115,8 @@ def main(**kwargs):
 
         elif options.image_name:
             save_static_image(name=options.image_name, figs=all_figures)
+        elif html_name:
+            save_html(html_name, final_layout)
         else:
             t_name = os.path.basename(tables[0])
             html_name = f"{t_name}_{doplot}"
