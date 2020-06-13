@@ -1,3 +1,20 @@
+0.3.8
+-----
+**general**
+
+  - Added arguments ``--debug`` and ``-lf / --logfile`` to allow the enabling of debug messages and specification of desired log file names respectively
+  - Some improvements in logging
+
+**ragavi-gains**
+
+  - Fixed issue #70
+  - Fixed issue #69
+
+**ragavi-vis**
+  
+  - Better handle of RAM usage
+
+
 0.3.7
 -----
 **ragavi-gains**
