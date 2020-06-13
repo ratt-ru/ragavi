@@ -7,6 +7,7 @@ Commit #d653b38
 
 """
 
+import logging
 import dask.array as da
 import daskms as xm
 import numpy as np
@@ -22,7 +23,7 @@ from africanus.averaging.dask import (time_and_channel,
 
 import ragavi.utils as vu
 
-logger = vu.logger
+logger = logging.getLogger(__name__)
 
 
 def _id(array, fill_value=0, dtype_=np.int32):
