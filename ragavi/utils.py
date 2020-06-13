@@ -17,7 +17,10 @@ import daskms as xm
 from datetime import datetime
 from time import time
 
-########################################################################
+logger = logging.getLogger(__name__)
+
+
+#######################################################################
 ####################### Computation Functions ##########################
 
 
@@ -34,7 +37,7 @@ def calc_amplitude(ydata):
     amplitude : :obj:`xarray.DataArray`
         :attr:`ydata` converted to an amplitude
     """
-    logger.debug("Setting up amplitude")
+    logger.debug("Calculating amplitude data")
 
     amplitude = da.absolute(ydata)
     return amplitude
@@ -53,7 +56,7 @@ def calc_imaginary(ydata):
     imag : :obj:`xarray.DataArray`
         Imaginary part of :attr:`ydata`
     """
-    logger.debug("Setting up imaginary")
+    logger.debug("Setting up imaginary data")
 
     imag = ydata.imag
     return imag
@@ -72,7 +75,7 @@ def calc_real(ydata):
     real : :obj:`xarray.DataArray`
         Real part of :attr:`ydata`
     """
-    logger.debug("Setting up real")
+    logger.debug("Setting up real data")
 
     real = ydata.real
     return real
@@ -93,7 +96,7 @@ def calc_phase(ydata, unwrap=False):
     phase: `xarray.DataArray`
         :attr:`ydata` data converted to degrees
     """
-    logger.debug("Setting up wrapped phase")
+    logger.debug("Calculating wrapped phase")
 
     # np.angle already returns a phase wrapped between (-pi and pi]
     # https://numpy.org/doc/1.18/reference/generated/numpy.angle.html
@@ -161,7 +164,8 @@ def calc_uvwave(uvw, freq):
     uvwave = (uvdist / wavelength)
 
     # make the uv distance in kilo lambda
-    uvwave = uvwave / 1e3
+    # Removed this, causing problems when limits are selected
+    # uvwave = uvwave / 1e3
     return uvwave
 
 
@@ -347,13 +351,13 @@ def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
     logger.debug("Getting flags")
     flags = xds_table_obj.FLAG
 
-    if np.all(flags.values):
-        logger.debug(f"All flags are active for {xds_table_obj.attrs}")
-
     if corr is None:
-        return flags.sel(chan=chan)
+        flags = flags.sel(chan=chan)
     else:
         flags = flags.sel(dict(corr=corr, chan=chan))
+
+    logger.debug("Flags ready")
+
     return flags
 
 
@@ -509,88 +513,62 @@ def time_convert(xdata):
 
     return unix_time
 
-
 ########################################################################
-####################### Logger #########################################
+########################### alter handler levels ######################
 
 
-def wrap_warning_text(message, category, filename, lineno, file=None,
-                      line=None):
-    wrapper = textwrap.TextWrapper(initial_indent=''.rjust(51),
-                                   break_long_words=True,
-                                   subsequent_indent=''.rjust(49),
-                                   width=160)
-    message = wrapper.fill(str(message))
-    return "%s:%s:\n%s:\n%s" % (filename, lineno,
-                                category.__name__.rjust(64), message)
+def update_log_levels(in_logger, level):
+    """Change the logging level of the parent plotter"""
+
+    # get the parent logger. We shall change the level of the entire module
+    parent_logger = in_logger.parent
+
+    if level.isnumeric():
+        level = int(level)
+        log_level = logging._levelToName[level]
+    else:
+        level = level.upper()
+        log_level = logging._nameToLevel[level]
+
+    # change the logging level for the handlers
+    if parent_logger.hasHandlers():
+        handlers = parent_logger.handlers
+        for handler in handlers:
+            handler.setLevel(log_level)
+
+    # change logging level for the logger
+    parent_logger.setLevel(log_level)
+    logger.debug(f"Updated logging level to {log_level}")
 
 
-warnings.formatwarning = wrap_warning_text
+def update_logfile_name(in_logger, new_name):
+    """Change the name of the resulting logfile"""
+    parent_logger = in_logger.parent
 
+    for handler in parent_logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            fh = handler
+            break
 
-def __config_logger(level="info"):
-    """Configure the logger for ragavi and catch all warnings output by sys.stdout.
-    """
-    logfile_name = "ragavi.log"
+    # append an extension if none is provided
+    if os.path.splitext(new_name)[-1] == "":
+        new_name += ".log"
 
-    # numeric value of logging level
-    level_num = getattr(logging, level.upper(), None)
+    path = os.path.dirname(fh.baseFilename)
+    new_name = os.path.join(path, new_name)
 
-    # capture only a single instance of a matching repeated warning
-    warnings.filterwarnings("module")
+    parent_logger.removeHandler(fh)
 
-    # capture warnings from all modules
-    logging.captureWarnings(True)
-
-    try:
-        cols, rows = os.get_terminal_size(0)
-    except:
-        # for python2
-        cols, rows = (100, 100)
-
-    # create logger named ragavi
-    logger = logging.getLogger("ragavi")
-    logger.setLevel(level_num)
-
-    # warnings logger
-    w_logger = logging.getLogger("py.warnings")
-    w_logger.setLevel(level_num)
-
-    # console handler
-    c_handler = logging.StreamHandler()
-    f_handler = logging.FileHandler(logfile_name)
-
-    c_handler.setLevel(level_num)
-    f_handler.setLevel(level_num)
-
-    # setting the format for the logging messages
-    start = " (O_o) ".center(cols, "=")
-
-    c_formatter = logging.Formatter(
-        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""", datefmt="%d.%m.%Y@%H:%M:%S")
+    new_fh = logging.FileHandler(new_name)
     f_formatter = logging.Formatter(
-        """%(asctime)s - %(name)-12s - %(levelname)-10s - %(message)s""" , datefmt="%d.%m.%Y@%H:%M:%S")
+        "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
+        datefmt="%d.%m.%Y@%H:%M:%S")
+    new_fh.setFormatter(f_formatter)
+    new_fh.setLevel(fh.level)
 
-    c_handler.setFormatter(c_formatter)
-    f_handler.setFormatter(f_formatter)
+    parent_logger.addHandler(new_fh)
 
-    logger.addHandler(c_handler)
-    logger.addHandler(f_handler)
-    w_logger.addHandler(f_handler)
-
-    return logger
-
-
-def __handle_uncaught_exceptions(extype, exval, extraceback):
-    """Function to Capture all uncaught exceptions into the log file
-
-       Parameters to this function are acquired from sys.excepthook. This
-       is because this function overrides :obj:`sys.excepthook`
-      `Sys module excepthook <https://docs.python.org/3/library/sys.html#sys.excepthook>`_
-
-    """
-    message = "Oops ... !"
-    logger.error(message, exc_info=(extype, exval, extraceback))
+    logger.info(f"Logfile changed from {fh.baseFilename} --> {new_name}")
 
 
 ########################################################################
@@ -726,9 +704,3 @@ def get_diverging_cmap(n_colors, cmap1=None, cmap2=None):
     colors = pl.diverging_palette(colors1, colors2, n_colors)
 
     return colors
-
-
-########################################################################
-#################### define the log ####################################
-logger = __config_logger()
-sys.excepthook = __handle_uncaught_exceptions
