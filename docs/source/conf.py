@@ -12,20 +12,21 @@
 #
 import os
 import sys
-from ragavi import ragavi, visibilities, utils
+from datetime import datetime
+from ragavi import ragavi, visibilities, utils, __version__
 
 sys.path.insert(0, os.path.abspath('../..'))
 
 
 # -- Project information -----------------------------------------------------
-
+date = datetime.now()
 project = 'ragavi'
-copyright = '2019, Lexy Andati'
+copyright = f"{date.year}, Lexy Andati"
 author = 'Lexy Andati'
 
 
 # The full version, including alpha/beta/rc tags
-release = '0.2.0'
+release = __version__
 
 
 # -- General configuration ---------------------------------------------------
