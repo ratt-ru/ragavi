@@ -2,7 +2,7 @@ import logging
 
 from argparse import ArgumentParser, ArgumentError
 from psutil import cpu_count, virtual_memory
-
+from ragavi import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,10 @@ def vis_argparser():
 
     cores, ml = resource_defaults()
 
-    parser = MyParser(usage="ragavi-vis [options] <value>")
+    parser = MyParser(usage="ragavi-vis [options] <value>",
+                      description="A Radio Astronomy Visibilities Inspector")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"ragavi {__version__}")
 
     required = parser.add_argument_group("Required arguments")
     required.add_argument("--ms", dest="mytabs",
@@ -179,10 +182,9 @@ def vis_argparser():
                         using a field name or comma separated field names.
                         Default is all""",
                           default=None)
-    d_config.add_argument("-nf", "--no-flagged", dest="flag",
+    d_config.add_argument("-if", "--include-flagged", dest="flag",
                           action="store_false",
-                          help="""Whether to plot both flagged and unflagged
-                        data. Default only plot data that is not flagged.""",
+                          help="Include flagged data in the plot. (Plots both flagged and unflagged data.)",
                           default=True)
     d_config.add_argument("-s", "--scan", dest="scan", type=str, metavar='',
                           help="Scan Number to select. Default is all.",
@@ -237,7 +239,6 @@ def vis_argparser():
                         this machine to ensure that:
                         num-cores * mem-limit < total RAM available""",
                           default=cores)
-
     return parser
 
 
@@ -251,7 +252,10 @@ def gains_argparser():
 
     """
     parser = MyParser(usage="%(prog)s [options] <value>",
-                      description="A Radio Astronomy Gains and Visibility Inspector")
+                      description="Radio Astronomy Gains Inspector")
+    parser.add_argument("-v", "--version", action="version",
+                        version=f"ragavi {__version__}")
+
     required = parser.add_argument_group("Required arguments")
     required.add_argument("-t", "--table", dest="mytabs",
                           nargs='+', type=str, metavar=(' '), required=True,
