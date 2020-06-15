@@ -419,9 +419,13 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
     # perform data aggregation
     # shaded data and the aggregated data
     logger.info("Launching datashader")
+
     agg = image_callback(df, xr=x_range, yr=y_range, w=c_width, h=c_height,
                          x=x_name, y=y_name, cat=cat)
-    agg = agg.astype(np.uint32)
+
+    # change dtype to uint32 if agg contains a negative number
+    if (agg.values < 0).any():
+        agg = agg.astype(np.uint32)
 
     logger.info("Creating Bokeh Figure")
 
@@ -712,7 +716,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
                      title=title, x=x, x_axis_type=x_axis_type, xlab=xlab,
                      x_name=x.name, y_name=y.name, ylab=ylab,
                      xds_table_obj=xds_table_obj, fix_plotsize=True,
-                     add_grid=True, add_subtitle=True, add_title=False)
+                     add_grid=True, add_subtitle=True)
 
     if iter_axis and colour_axis:
         # NOTE!!!
@@ -738,7 +742,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         image = gen_image(xy_df, x_min, x_max, y_min, y_max,
                           cat=colour_axis, ph=plot_height, pw=plot_width,
                           add_cbar=False, add_xaxis=add_xaxis,
-                          add_yaxis=add_yaxis, **im_inputs)
+                          add_yaxis=add_yaxis, add_title=False, **im_inputs)
 
     elif iter_axis:
         # NOTE!!!
@@ -761,7 +765,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
                           ph=plot_height, pw=plot_width, add_cbar=False,
                           add_xaxis=add_xaxis, add_yaxis=add_yaxis,
-                          **im_inputs)
+                          add_title=False, **im_inputs)
 
     elif colour_axis:
         title += f" Colourised By: {colour_axis.capitalize()}"
@@ -772,7 +776,8 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=colour_axis,
                           ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=True,
-                          add_xaxis=True, add_yaxis=True, **im_inputs)
+                          add_xaxis=True, add_yaxis=True, add_title=True,
+                          **im_inputs)
 
     else:
         xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
@@ -781,7 +786,8 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         im_inputs.update(dict(add_subtitle=False, add_title=True))
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
                           ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=False,
-                          add_xaxis=True, add_yaxis=True, **im_inputs)
+                          add_xaxis=True, add_yaxis=True,
+                          add_title=True, **im_inputs)
 
     return image, title
 
