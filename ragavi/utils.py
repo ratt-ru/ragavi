@@ -554,9 +554,6 @@ def update_logfile_name(in_logger, new_name):
     if os.path.splitext(new_name)[-1] == "":
         new_name += ".log"
 
-    path = os.path.dirname(fh.baseFilename)
-    new_name = os.path.join(path, new_name)
-
     parent_logger.removeHandler(fh)
 
     new_fh = logging.FileHandler(new_name)
@@ -568,7 +565,7 @@ def update_logfile_name(in_logger, new_name):
 
     parent_logger.addHandler(new_fh)
 
-    logger.info(f"Logfile changed from {fh.baseFilename} --> {new_name}")
+    logger.debug(f"Logfile changed from {fh.baseFilename} --> {new_name}")
 
 
 ########################################################################
