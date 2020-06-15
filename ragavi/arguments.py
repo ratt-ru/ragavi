@@ -81,7 +81,7 @@ def vis_argparser():
                           help="MS to plot. Default is None",
                           default=[])
     required.add_argument('-x', "--xaxis", dest="xaxis", type=str, metavar='',
-                          choices=x_choices, help="X-axis to plot",
+                          choices=x_choices, help="""X-axis to plot. See https://ragavi.readthedocs.io/en/dev/vis.html#ragavi-vis for the accepted values.""",
                           default=None, required=True)
     required.add_argument("-y", "--yaxis", dest="yaxis", type=str, metavar='',
                           choices=y_choices, help="Y-axis to plot",
