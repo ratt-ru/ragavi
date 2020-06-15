@@ -1,42 +1,67 @@
 **************
 ``ragavi-vis``
 **************
-This is the visibility plotter. Supported arguments are
+This is the visibility plotter. Supported arguments are as follows
 
-For x-axis:
++-----------------------------+---------------+--------------+-------------+
+| xaxis                       | yaxis         | iter-axis    | colour-axis |
++-----------------------------+---------------+--------------+-------------+
+| amplitude                   | amplitude     | antenna      | antenna1    |
++-----------------------------+---------------+--------------+-------------+
+| antenna1                    | phase         | antenna1     | antenna2    |
++-----------------------------+---------------+--------------+-------------+
+| antenna2                    | real          | antenna2     | spw         |
++-----------------------------+---------------+--------------+-------------+
+| channel                     | imaginary     | baseline     | baseline    |
++-----------------------------+---------------+--------------+-------------+
+| frequency                   |               | corr         | corr        |
++-----------------------------+---------------+--------------+-------------+
+| imaginary                   |               | field        | field       |
++-----------------------------+---------------+--------------+-------------+
+| phase (phase)               |               | scan         | scan        |
++-----------------------------+---------------+--------------+-------------+
+| real (real)                 |               | spw          |             |
++-----------------------------+---------------+--------------+-------------+
+| scan (scan)                 |               |              |             |  
++-----------------------------+---------------+--------------+-------------+
+| time (time)                 |               |              |             |
++-----------------------------+---------------+--------------+-------------+
+| uvdistance (uv distamce m)  |               |              |             |
++-----------------------------+---------------+--------------+-------------+
+| uvwave (uv distance lambda) |               |              |             |
++-----------------------------+---------------+--------------+-------------+
 
-* amplitude
-* antenna1
-* antenna2
-* channel
-* frequency
-* imaginary
-* phase
-* real
-* scan
-* time
-* uvdistance
-* uvwave
+Some of the arguments can be shortened using the following aliases
 
-For y-axis:
+aliases
++------------+--------------------+
+| axis       | alias              |
++------------+--------------------+
+| amplitude  | amp                |
++------------+--------------------+
+| antenna    | ant                |
++------------+--------------------+
+| antenna1   | ant1               |
++------------+--------------------+
+| antenna2   | ant2               |
++------------+--------------------+
+| baseline   | bl                 |
++------------+--------------------+
+| channel    | chan               |
++------------+--------------------+
+| frequency  | freq               |
++------------+--------------------+
+| imaginary  | imag               |
++------------+--------------------+
+| uvdistance | uvdist             |
++------------+--------------------+
+| uvwave     | uvidistl /uvdist_l |
++------------+--------------------+
 
-* amplitude
-* phase
-* real
-* imaginary
-
-Iteration can also be activated through the :code:`-ia / --iter-axis` option and is possible over:
-
-* antenna
-* antenna1
-* antenna2
-* baseline
-* corr (correlation)
-* field
-* Scan (scan)
-* Spectral windows (spw)
-
-It is also possible to colour over some axis (most of the iteration axes are supported) and this can be activated through the :code:`-ca / --colour-axis` argument. Please note that the mandatory arguments are :code:`--xaxis`, :code:`--yaxis`, :code:`--ms`.
+Iteration can also be activated through the :code:`-ia / --iter-axis` option. 
+It is also possible to colour over some axis (most of the iteration axes are 
+supported as shown in the table above) and this can be activated through the 
+:code:`-ca / --colour-axis` argument. Please note that the mandatory arguments are :code:`--xaxis`, :code:`--yaxis`, :code:`--ms`.
 
 
 Averaging
@@ -54,14 +79,13 @@ Number of computer cores to be used, memory per core and the size of chunks to b
 
 By default, ``ragavi-vis`` will use a maximum of 10 cores, with the maximum memory associated to each core being 1GB, and a chunk size in the row axis as 5000. The number of cores to be used, however, is dependent on the amount of RAM that is available on the host machine, in order to try and ensure that: 
 
-.. code-block:: python
+.. code-block:: bash
 
     Number of cores x memory limit per core < total amount of available RAM
 
-
 This means that, if the number of cores is less than 10, then by default,
  ``ragavi-vis`` will attempt to match the number of cores to those available. 
-Given that visibility data has the shape (rows x channels x correlations), chunk sizes may also be chosen per each dimension using comma separated values (run :code:`ragavi-vis -h` to see how). As mentioned, the default chunk size is 5000 in the row axis, while the chunks sizes in the rest of the dimension are determined by the sizes of those dimensions (hence remaining as they are). Therefore, the true size of the chunks during processing will be translated to (nrows x nchannels x ncorrelations).
+Given that visibility data has the shape (rows x channels x correlations), chunk sizes may also be chosen per each dimension using comma separated values (see `help`_). As mentioned, the default chunk size is 5000 in the row axis, while the chunks sizes in the rest of the dimension are determined by the sizes of those dimensions (hence remaining as they are). Therefore, the true size of the chunks during processing will be translated to (nrows x nchannels x ncorrelations).
 
 It is worth noting that supplying the x-axis and y-axis minimums and maximums may also significantly cut down the plotting time. This is because for minimum and maximum values to be calculated, ``ragavi-vis``' backends must pass through the entire dataset at least once before plotting begins and again as plotting continues, therefore, taking a longer time. While the effect of this may be minimal in small datasets, it is certainly amplified in large datasets.
 
@@ -136,7 +160,7 @@ The output of the help is as follows:
                           (exclusive range), "3:" (from 3 to last) or using a
                           field name or comma separated field names. Default is
                           all
-    -if, --include-flag   Include flagged data in the plot. (Plots both flagged
+    -if, --include-flagged   Include flagged data in the plot. (Plots both flagged
                           and unflagged data.)
     -s , --scan           Scan Number to select. Default is all.
     --taql                TAQL where
@@ -170,3 +194,4 @@ The output of the help is as follows:
 
 
 .. _Codex: https://codex-africanus.readthedocs.io/en/latest/
+.. _help: https://ragavi.readthedocs.io/en/dev/vis.html#help
