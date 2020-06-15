@@ -3,6 +3,7 @@
 **general**
 
   - Added arguments ``--debug`` and ``-lf / --logfile`` to allow the enabling of debug messages and specification of desired log file names respectively
+  - Added argument ``-v`` / ``--version`` to display the current ``ragavi`` version.
   - Some improvements in logging
 
 **ragavi-gains**
@@ -12,6 +13,7 @@
 
 **ragavi-vis**
   
+  - Changed argument ``-nf / --no-flagged`` to ``-if / --include-flagged`` for clarity.
   - Better handle of RAM usage
 
 
@@ -23,7 +25,6 @@
   - ``--gain-type`` argument is now optional
   - Static and interactive files can be generated simultaneously by specifying both ``--plotname`` and ``--htmlname``
   
-ous
 **general**
 
   - Fixed bug in phase wrapping
