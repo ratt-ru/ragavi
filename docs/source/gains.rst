@@ -1,5 +1,6 @@
+****************
 ``ragavi-gains``
-================
+****************
 To be used for gain table visualisation.
 
 Currently, gain tables supported for visualisation by ``ragavi-gains`` are :
@@ -40,6 +41,9 @@ Note
 * While antenna data can be made visible through clicking its corresponding legend, this behaviour is not linked to the field, SPW, correlation selection checkboxes. Therefore, clicking the legend for a specific antenna will make data from all fields, SPWs and correlation for that antenna visible. As a workaround, data points can be identified using tooltip information
 * Unless **all** the available fields, SPWs and correlations have not been selected, the antenna legends will appear greyed-out. This is because a single legend is attached to multiple data for each of the available categories. Therefore, clicking on legends without meeting the preceeding condition may lead to some awkward results (a toggling effect).
 
+
+Use in Jupyter Notebooks
+========================
 To use ``ragavi-gains`` in a notebook environment, run in a notebook cell
 
 .. code-block:: python
@@ -52,6 +56,9 @@ To use ``ragavi-gains`` in a notebook environment, run in a notebook cell
     #inline plotting will be done
     plot_table(**args)
 
+
+Generating Static (Non-Interactive) Images
+==========================================
 It is possible to generate PNG and SVG with ``ragavi-gains`` via two methods. The first method involves generating the HTML format first and then using the save tool found in the toolbar to download the plots. This method requires minimal effort although it may be a necessary redundancy to achieve the static image goal. The second method requires some additional setup, which may be slightly more taxing. 
 
 **Step 1**: Install selenium, which can be done via:
@@ -81,71 +88,73 @@ The default plots generated are always in HTML format.
 
 
 Help
-****
+====
 
-The full help output is:
+The full help output for ``ragavi-gains`` is:
 
 .. code-block:: bash
+
     usage: ragavi-gains [options] <value>
 
     A Radio Astronomy Gains and Visibility Inspector
 
     optional arguments:
       -h, --help            show this help message and exit
+      -v, --version         show program's version number and exit
 
     Required arguments:
       -t   [  ...], --table   [  ...]
                             Table(s) to plot. Multiple tables can be specified as a space separated list
 
-    Data Selection:
-      -a , --ant            Plot only a specific antenna, or comma-separated list
-                            of antennas. Defaults to all.
-      -c , --corr           Correlation index to plot. Can be a single integer or
-                            comma separated integers e.g '0,2'. Defaults to all.
-      --ddid                SPECTRAL_WINDOW_ID or ddid number. Defaults to all
-      -f  [ ...], --field  [ ...]
-                            Field ID(s) / NAME(s) to plot. Can be specified as
-                            "0", "0,2,4", "0~3" (inclusive range), "0:3"
-                            (exclusive range), "3:" (from 3 to last) or using a
-                            field name or comma separated field names. Defaults to
-                            all
-      --t0                  Minimum time to plot [in seconds]. Defaults to full
-                            range]
-      --t1                  Maximum time to plot [in seconds]. Defaults to full
-                            range
-      --taql                TAQL where clause
+  Data Selection:
+    -a , --ant            Plot only a specific antenna, or comma-separated list
+                          of antennas. Defaults to all.
+    -c , --corr           Correlation index to plot. Can be a single integer or
+                          comma separated integers e.g '0,2'. Defaults to all.
+    --ddid                SPECTRAL_WINDOW_ID or ddid number. Defaults to all
+    -f  [ ...], --field  [ ...]
+                          Field ID(s) / NAME(s) to plot. Can be specified as
+                          "0", "0,2,4", "0~3" (inclusive range), "0:3"
+                          (exclusive range), "3:" (from 3 to last) or using a
+                          field name or comma separated field names. Defaults to
+                          all
+    --t0                  Minimum time to plot [in seconds]. Defaults to full
+                          range]
+    --t1                  Maximum time to plot [in seconds]. Defaults to full
+                          range
+    --taql                TAQL where clause
 
-    Plot settings:
-      --cmap                Bokeh or Colorcet colour map to use for antennas. List
-                            of available colour maps can be found at: https://docs
-                            .bokeh.org/en/latest/docs/reference/palettes.html or
-                            https://colorcet.holoviz.org/user_guide/index.html .
-                            Defaults to coolwarm
-      --debug               Enable debug messages
-      -d , --doplot         Plot complex values as amplitude & phase (ap) or real
-                            and imaginary (ri). Defaults to ap.
-      -g [  [  ...]], --gaintype [  [  ...]]
-                            Type of table(s) to be plotted. Can be specified as a
-                            single character e.g. "B" if a single table has been
-                            provided or space separated list e.g B D G if multiple
-                            tables have been specified. Valid choices are B D G K
-                            & F
-      -kx , --k-xaxis       Choose the x-xaxis for the K table. Valid choices are:
-                            time or antenna. Defaults to time.
-      -lf , --logfile       The name of resulting log file (with preferred
-                        extension) If no file extension is provided, a '.log'
-                        extension is appended. The default log file name is
-                        ragavi.log
+  Plot settings:
+    --cmap                Bokeh or Colorcet colour map to use for antennas. List
+                          of available colour maps can be found at: https://docs
+                          .bokeh.org/en/latest/docs/reference/palettes.html or
+                          https://colorcet.holoviz.org/user_guide/index.html .
+                          Defaults to coolwarm
+    -d , --doplot         Plot complex values as amplitude & phase (ap) or real
+                          and imaginary (ri). Defaults to ap.
+    --debug               Enable debug messages
+    -g [  [  ...]], --gaintype [  [  ...]]
+                          Type of table(s) to be plotted. Can be specified as a
+                          single character e.g. "B" if a single table has been
+                          provided or space separated list e.g B D G if multiple
+                          tables have been specified. Valid choices are B D G K
+                          & F
+    -kx , --k-xaxis       Choose the x-xaxis for the K table. Valid choices are:
+                          time or antenna. Defaults to time.
+    -lf , --logfile       The name of resulting log file (with preferred
+                          extension) If no file extension is provided, a '.log'
+                          extension is appended. The default log file name is
+                          ragavi.log
+    -o , --htmlname       Name of the resulting HTML file. The '.html' prefix
+                          will be appended automatically.
+    -p , --plotname       Static image name. The suffix of this name determines
+                          the type of plot. If foo.png, the output will be PNG,
+                          else if foo.svg, the output will be of the SVG format.
 
-      -o , --htmlname       Name of the resulting HTML file. The '.html' prefix
-                            will be appended automatically.
-      -p , --plotname       Static image name. The suffix of this name determines
-                            the type of plot. If foo.png, the output will be PNG,
-                            else if foo.svg, the output will be of the SVG format.
 
 
 Useful function
-****************
+===============
 .. autofunction:: ragavi.ragavi.plot_table
 
 

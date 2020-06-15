@@ -1,15 +1,15 @@
-============
+************
 Introduction
-============
+************
 
 Radio Astronomy Gains and Visibility Inspector [``ragavi``]
-***********************************************************
+===========================================================
 
 `Ragavi`_ is a python based software built for visualisation of radio astronomy data reduction by-products such as gains as well as visibility data. As the name implies, it comprises two aspects, a gain plotter aliased by ``ragavi-gains`` or ``ragavi``, which may be used as a command line tool and  within a notebook environment (Jupyter), and a visibility plotter aliased by ``ragavi-vis``, which is **only available** as a command line tool.
 
 
 Motivation
-**********
+==========
 The main motivation for ``ragavi`` is introduced an in interactivity aspect to radio astronomy oriented plots traditionally be produced as static images in formats such as PNG, JPEG and SVG. This is achieved though a python package known as `Bokeh`_ which has the capability of producing stand alone HTML based interactive plots which are JavaScript oriented.
 
 The output interactive plots enable actions such as
@@ -23,7 +23,7 @@ among others, without requiring any redraw actions or special software to view p
 
 
 Limitations
-***********
+===========
 ``Ragavi`` is still under development.
 
 
