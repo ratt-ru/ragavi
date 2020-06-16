@@ -5,7 +5,7 @@ This is the visibility plotter. Supported arguments are as follows
 
 +-----------------------------+---------------+--------------+-------------+
 | xaxis                       | yaxis         | iter-axis    | colour-axis |
-+-----------------------------+---------------+--------------+-------------+
++=============================+===============+==============+=============+
 | amplitude                   | amplitude     | antenna      | antenna1    |
 +-----------------------------+---------------+--------------+-------------+
 | antenna1                    | phase         | antenna1     | antenna2    |
@@ -18,13 +18,13 @@ This is the visibility plotter. Supported arguments are as follows
 +-----------------------------+---------------+--------------+-------------+
 | imaginary                   |               | field        | field       |
 +-----------------------------+---------------+--------------+-------------+
-| phase (phase)               |               | scan         | scan        |
+| phase                       |               | scan         | scan        |
 +-----------------------------+---------------+--------------+-------------+
-| real (real)                 |               | spw          |             |
+| real                        |               | spw          |             |
 +-----------------------------+---------------+--------------+-------------+
-| scan (scan)                 |               |              |             |  
+| scan                        |               |              |             |  
 +-----------------------------+---------------+--------------+-------------+
-| time (time)                 |               |              |             |
+| time                        |               |              |             |
 +-----------------------------+---------------+--------------+-------------+
 | uvdistance (uv distamce m)  |               |              |             |
 +-----------------------------+---------------+--------------+-------------+
@@ -33,10 +33,9 @@ This is the visibility plotter. Supported arguments are as follows
 
 Some of the arguments can be shortened using the following aliases
 
-aliases
 +------------+--------------------+
 | axis       | alias              |
-+------------+--------------------+
++============+====================+
 | amplitude  | amp                |
 +------------+--------------------+
 | antenna    | ant                |
@@ -55,7 +54,7 @@ aliases
 +------------+--------------------+
 | uvdistance | uvdist             |
 +------------+--------------------+
-| uvwave     | uvidistl /uvdist_l |
+| uvwave     | uvidistl / uvdist_l|
 +------------+--------------------+
 
 Iteration can also be activated through the :code:`-ia / --iter-axis` option. 
@@ -79,13 +78,12 @@ Number of computer cores to be used, memory per core and the size of chunks to b
 
 By default, ``ragavi-vis`` will use a maximum of 10 cores, with the maximum memory associated to each core being 1GB, and a chunk size in the row axis as 5000. The number of cores to be used, however, is dependent on the amount of RAM that is available on the host machine, in order to try and ensure that: 
 
-.. code-block:: bash
-
+.. code:: bash
+  
     Number of cores x memory limit per core < total amount of available RAM
 
-This means that, if the number of cores is less than 10, then by default,
- ``ragavi-vis`` will attempt to match the number of cores to those available. 
-Given that visibility data has the shape (rows x channels x correlations), chunk sizes may also be chosen per each dimension using comma separated values (see `help`_). As mentioned, the default chunk size is 5000 in the row axis, while the chunks sizes in the rest of the dimension are determined by the sizes of those dimensions (hence remaining as they are). Therefore, the true size of the chunks during processing will be translated to (nrows x nchannels x ncorrelations).
+This means that, if the number of cores is less than 10, then by default, ``ragavi-vis`` will attempt to match the number of cores to those available. 
+Given that visibility data has the shape (rows x channels x correlations), chunk sizes may also be chosen per each dimension using comma separated values (see the `help`_ section on this page). As mentioned, the default chunk size is 5000 in the row axis, while the chunks sizes in the rest of the dimension are determined by the sizes of those dimensions (hence remaining as they are). Therefore, the true size of the chunks during processing will be translated to (nrows x nchannels x ncorrelations).
 
 It is worth noting that supplying the x-axis and y-axis minimums and maximums may also significantly cut down the plotting time. This is because for minimum and maximum values to be calculated, ``ragavi-vis``' backends must pass through the entire dataset at least once before plotting begins and again as plotting continues, therefore, taking a longer time. While the effect of this may be minimal in small datasets, it is certainly amplified in large datasets.
 

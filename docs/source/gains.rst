@@ -25,7 +25,7 @@ This will yield an output HTML file, with plots in the order
 
 +----------+--------+------+
 | --table  | field  | gain | 
-+----------+--------+------+
++==========+========+======+
 | table1   |   0    |    B |
 +----------+--------+------+
 | table2   |   0    |    G |
