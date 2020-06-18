@@ -1418,13 +1418,11 @@ def main(**kwargs):
         chunks = options.chunks
         c_width = options.c_width
         c_height = options.c_height
-        colour_axis = validate_axis_inputs(options.colour_axis)
         corr = options.corr
         data_column = options.data_column
         ddid = options.ddid
         fields = options.fields
         flag = options.flag
-        iter_axis = validate_axis_inputs(options.iter_axis)
         html_name = options.html_name
         mycmap = options.mycmap
         mytabs = options.mytabs
@@ -1433,18 +1431,12 @@ def main(**kwargs):
         n_cores = options.n_cores
         scan = options.scan
         where = options.where  # taql where
-        xaxis = validate_axis_inputs(options.xaxis)
         xmin = options.xmin
         xmax = options.xmax
         ymin = options.ymin
         ymax = options.ymax
-        yaxis = validate_axis_inputs(options.yaxis)
         tbin = options.tbin
         cbin = options.cbin
-
-    # change iteration axis names to actual column names
-    colour_axis = get_colname(colour_axis)
-    iter_axis = get_colname(iter_axis)
 
     if options.debug:
         vu.update_log_levels(logger, "debug")
@@ -1453,6 +1445,17 @@ def main(**kwargs):
 
     if options.logfile:
         vu.update_logfile_name(logger, options.logfile)
+
+    # change iteration axis names to actual column names
+    colour_axis = validate_axis_inputs(options.colour_axis)
+    colour_axis = get_colname(colour_axis)
+
+    iter_axis = validate_axis_inputs(options.iter_axis)
+    iter_axis = get_colname(iter_axis)
+
+    # validate the x and y axis names
+    xaxis = validate_axis_inputs(options.xaxis)
+    yaxis = validate_axis_inputs(options.yaxis)
 
     # number of processes or threads/ cores
     dask_config.set(num_workers=n_cores, memory_limit=mem_limit)

@@ -7,7 +7,7 @@ import warnings
 
 LOG_FILE = "ragavi.log"
 ROOT_LOGGER_LEVEL = "DEBUG"
-ROOT_HANDLER_LEVEL = "INFO"
+ROOT_HANDLER_LEVEL = "DEBUG"
 
 # set up the general logger
 logger = logging.getLogger("ragavi")

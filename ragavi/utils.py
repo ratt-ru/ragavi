@@ -213,7 +213,7 @@ def get_antennas(ms_name):
     ant_names = ant_subtab.NAME
     # ant_subtab("close")
 
-    logger.debug(f"Antennas found: {str(ant_names.values)}")
+    logger.debug(f"Antennas found: {', '.join(ant_names.values)}")
     return ant_names
 
 
@@ -237,7 +237,7 @@ def get_fields(ms_name):
     field_subtab = field_subtab[0]
     field_names = field_subtab.NAME
 
-    logger.debug(f"Fields found: {str(field_names.values)}")
+    logger.debug(f"Fields found: {', '.join(field_names.values)}")
     return field_names
 
 
@@ -599,6 +599,34 @@ def time_wrapper(func):
         return ans
     return timer
 
+
+def ctext(text, colour="green"):
+    """Colour some terminal output"""
+
+    # colours
+    c = {
+        "off": "\033[0m",
+
+        # High Intensity
+        "black": "\033[0;90m",
+        "bl": "\033[0;90m",
+        "red": "\033[0;91m",
+        "r": "\033[0;91m",
+        "green": "\033[0;92m",
+        "g": "\033[0;92m",
+        "yellow": "\033[0;93m",
+        "y": "\033[0;93m",
+        "blue": "\033[0;94m",
+        "b": "\033[0;94m",
+        "purple": "\033[0;95m",
+        "p": "\033[0;95m",
+        "cyan": "\033[0;96m",
+        "c": "\033[0;96m",
+        "white": "\033[0;97m",
+        "w": "\033[0;97m",
+    }
+
+    return f"{c[colour]}{text}{c['off']}"
 
 ########################################################################
 #################### Return colours functions ##########################

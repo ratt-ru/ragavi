@@ -27,12 +27,12 @@ def resource_defaults():
     # get size of 90% of the RAM available in GB
     mems = virtual_memory()
 
-    logger.debug(f"Total RAM size: ~{(mems.total / _GB_):.2f} GB")
+    logger.info(f"Total RAM size: ~{(mems.total / _GB_):.2f} GB")
     total_mem = int((mems.total * 0.9) / _GB_)
 
     # set cores to half the amount available
     cores = cpu_count()
-    logger.debug(f"Total number of Cores: {cores}")
+    logger.info(f"Total number of Cores: {cores}")
     cores = cores / 2
 
     if cores > 10:
