@@ -2,11 +2,15 @@ import logging
 import os
 import sys
 import textwrap
+import traceback as tb
 import warnings
 
 LOG_FILE = "ragavi.log"
 ROOT_LOGGER_LEVEL = "DEBUG"
 ROOT_HANDLER_LEVEL = "INFO"
+
+# set up the general logger
+logger = logging.getLogger("ragavi")
 
 
 def wrap_warning_text(message, category, filename, lineno, file=None,
@@ -20,7 +24,7 @@ def wrap_warning_text(message, category, filename, lineno, file=None,
                                 category.__name__.rjust(64), message)
 
 
-def __handle_uncaught_exceptions(extype, exval, extraceback):
+def _handle_uncaught_exceptions(extype, exval, extraceback):
     """Function to Capture all uncaught exceptions into the log file
 
        Parameters to this function are acquired from sys.excepthook. This
@@ -28,56 +32,63 @@ def __handle_uncaught_exceptions(extype, exval, extraceback):
       `Sys module excepthook <https://docs.python.org/3/library/sys.html#sys.excepthook>`_
 
     """
-    message = "Oops ... !"
-    logger.error(message, exc_info=(extype, exval, extraceback))
+    trace = tb.format_exception(extype, exval, extraceback)
+    trace = " ".join(trace).split("\n")
+
+    logger.error("Oops ... uncaught exception occurred!")
+
+    for _ in trace:
+        if _ != "":
+            logger.error(_)
 
 
-# capture only a single instance of a matching repeated warning
-warnings.filterwarnings("module")
+def config_root_logger():
+    # capture only a single instance of a matching repeated warning
+    warnings.filterwarnings("module")
 
-# capture warnings from all modules
-logging.captureWarnings(True)
+    # capture warnings from all modules
+    logging.captureWarnings(True)
 
-try:
-    cols, rows = os.get_terminal_size(0)
-except:
-    # for python2
-    cols, rows = (100, 100)
+    try:
+        cols, rows = os.get_terminal_size(0)
+    except:
+        # for python2
+        cols, rows = (100, 100)
 
-# only get data from ragavi modules
-logger_filter = logging.Filter("ragavi")
+    # only get data from ragavi modules
+    logger_filter = logging.Filter("ragavi")
 
-# setup root logger and defaults
-logger = logging.getLogger()
-logger.setLevel(ROOT_LOGGER_LEVEL)
+    # setup root logger and defaults
+    root_logger = logging.getLogger()
+    root_logger.setLevel(ROOT_LOGGER_LEVEL)
 
-# warnings logger
-w_logger = logging.getLogger("py.warnings")
-w_logger.setLevel("WARNING")
+    # warnings logger
+    w_logger = logging.getLogger("py.warnings")
+    w_logger.setLevel("WARNING")
 
-# console handler
-c_handler = logging.StreamHandler()
-f_handler = logging.FileHandler(LOG_FILE)
+    # console handler
+    c_handler = logging.StreamHandler()
+    f_handler = logging.FileHandler(LOG_FILE)
 
-c_handler.setLevel(ROOT_HANDLER_LEVEL)
-f_handler.setLevel(ROOT_HANDLER_LEVEL)
+    c_handler.setLevel(ROOT_HANDLER_LEVEL)
+    f_handler.setLevel(ROOT_HANDLER_LEVEL)
 
-f_formatter = logging.Formatter(
-    "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
-    datefmt="%d.%m.%Y@%H:%M:%S")
+    f_formatter = logging.Formatter(
+        "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
+        datefmt="%d.%m.%Y@%H:%M:%S")
 
-c_handler.setFormatter(f_formatter)
-c_handler.addFilter(logger_filter)
+    c_handler.setFormatter(f_formatter)
+    c_handler.addFilter(logger_filter)
 
-f_handler.setFormatter(f_formatter)
-f_handler.addFilter(logger_filter)
+    f_handler.setFormatter(f_formatter)
+    f_handler.addFilter(logger_filter)
 
-logger.addFilter(logger_filter)
-logger.addHandler(c_handler)
-logger.addHandler(f_handler)
+    root_logger.addFilter(logger_filter)
+    root_logger.addHandler(c_handler)
+    root_logger.addHandler(f_handler)
 
-w_logger.addHandler(f_handler)
+    w_logger.addHandler(f_handler)
 
-
-sys.excepthook = __handle_uncaught_exceptions
+config_root_logger()
+sys.excepthook = _handle_uncaught_exceptions
 warnings.formatwarning = wrap_warning_text
