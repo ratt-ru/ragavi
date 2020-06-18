@@ -786,8 +786,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         im_inputs.update(dict(add_subtitle=False, add_title=True))
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
                           ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=False,
-                          add_xaxis=True, add_yaxis=True,
-                          add_title=True, **im_inputs)
+                          add_xaxis=True, add_yaxis=True, **im_inputs)
 
     return image, title
 
@@ -1027,6 +1026,11 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
                 logger.debug("Selecting correlations")
                 tab_objs = [_.sel(corr=corr_select) for _ in tab_objs]
 
+        if len(tab_objs) == 0:
+            logger.error("No Data found in the MS")
+            logger.error("Please check your selection criteria")
+            sys.exit(-1)
+
         # get some info about the data
         chunk_sizes = list(tab_objs[0].FLAG.data.chunksize)
         chunk_sizes = " * ".join([str(_) for _ in chunk_sizes])
@@ -1037,7 +1041,9 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
 
         return tab_objs
     except Exception as ex:
-        logger.error(ex.args[0])
+        logger.error("MS data acquisition failed")
+        for _ in ex.args[0].split("\n"):
+            logger.error(_)
         sys.exit(-1)
 
 
