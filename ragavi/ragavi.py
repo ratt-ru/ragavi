@@ -181,8 +181,6 @@ class DataCoreProcessor:
         errors: :obj:`xarray.DataArray`
             Data from the PARAMERR column
         """
-        logger.debug("DCP: Collecting parameter errors")
-
         errors = self.xds_table_obj.PARAMERR
         return errors
 
@@ -207,7 +205,7 @@ class DataCoreProcessor:
             xdata = self.xds_table_obj.TIME
             x_label = "Time"
         else:
-            logger.error("Invalid xaxis name")
+            logger.error("Invalid x-axis name")
             return
 
         return xdata, x_label
@@ -237,6 +235,8 @@ class DataCoreProcessor:
             prepdx = vu.time_convert(xdata)
         elif self.xaxis in ["antenna1", "antenna"]:
             prepdx = np.full((self.xds_table_obj.row.size), (xdata))
+
+        logger.debug(f"xaxis: {self.xaxis} data ready")
         return prepdx
 
     def get_yaxis_data(self):
@@ -270,7 +270,7 @@ class DataCoreProcessor:
             return sys.exit(-1)
         return ydata, y_label
 
-    def prep_yaxis_data(self, ydata, yaxis=None):
+    def prep_yaxis_data(self, ydata):
         """Process data for the y-axis.
 
         This function is responsible for :
@@ -291,16 +291,13 @@ class DataCoreProcessor:
         y : :obj:`xarray.DataArray`
             Processed :attr:`ydata`
         """
-        flags = vu.get_flags(self.xds_table_obj)
+        ydata = ydata.sel(corr=self.corr)
 
-        if self.corr != None:
-            ydata = ydata.sel(corr=self.corr)
+        if self.flag:
+            logger.debug("Flagging is active")
+            flags = vu.get_flags(self.xds_table_obj)
             flags = flags.sel(corr=self.corr)
 
-        # if flagging enabled return a list of DataArrays otherwise return a
-        # single dataarray
-        if self.flag:
-            logger.debug("Flagging active")
             # if flagging is activated select data only where flag mask is 0
             processed = self.process_data(ydata)
             y = processed.where(flags == False)
@@ -309,6 +306,8 @@ class DataCoreProcessor:
 
         if self.xaxis == "channel":
             y = y.T
+
+        logger.debug(f"y-axis: {self.yaxis }, data ready")
         return y
 
     def blackbox(self):
@@ -327,16 +326,15 @@ class DataCoreProcessor:
             A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
 
         """
-        logger.debug("DCP: Running blackbox")
-
-        logger.debug("DCP: Getting x-axis data")
+        logger.debug(vu.ctext("Blackbox in"))
+        logger.debug("DCP: blackbox: Getting x-axis data")
 
         Data = namedtuple("Data", "x x_label y y_label y_err")
         x = self.x_only()
         xdata = x.x
         xlabel = x.x_label
 
-        logger.debug("DCP: Getting y-axis data")
+        logger.debug("DCP: blackbox: Getting y-axis data")
         y = self.y_only()
         ydata = y.y
         ylabel = y.y_label
@@ -353,7 +351,7 @@ class DataCoreProcessor:
         d = Data(x=xdata, x_label=xlabel, y=ydata,
                  y_label=ylabel, y_err=(hi, lo))
 
-        logger.debug("Blackbox blackout")
+        logger.debug(vu.ctext("Blackbox out"))
         return d
 
     def act(self):
@@ -427,7 +425,7 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
 
     """
 
-    logger.debug("Getting calibration table")
+    logger.debug(f"Reading calibration table: {tab_name}")
 
     # defining part of the gain table schema
     tab_schema = {"CPARAM": {"dims": ("chan", "corr")},
@@ -456,7 +454,7 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
     if group_cols is None:
         group_cols = ["SPECTRAL_WINDOW_ID", "FIELD_ID", "ANTENNA1"]
 
-    logger.debug(f"Grouping data in: {str(group_cols)}")
+    logger.debug(f"Grouping data by: {' '.join(group_cols) or None}")
     logger.debug(f"TAQL selection: {where}")
 
     try:
@@ -500,7 +498,7 @@ def get_time_range(tab_name, unix_time=True):
 
     ms.close()
 
-    logger.debug(f"Table time range. Initial: {str(i_time)}, final: {str(f_time)}")
+    logger.debug(f"Time range Initial: {str(i_time)}, final: {str(f_time)}")
 
     return i_time, f_time
 
@@ -525,6 +523,8 @@ def get_tooltip_data(xds_table_obj, gtype, freqs):
         scan ids
 
     """
+    logger.debug("Getting tooltip data")
+
     scan_no = xds_table_obj.SCAN_NUMBER.values
     scan_no = scan_no.astype(np.uint16)
     spw_id = np.full(scan_no.shape, xds_table_obj.SPECTRAL_WINDOW_ID,
@@ -539,6 +539,7 @@ def get_tooltip_data(xds_table_obj, gtype, freqs):
         # tile because of different scan numbers available
         scan_no = np.tile(scan_no, nchan)
 
+    logging.debug("Tooltip data ready")
     return spw_id, scan_no
 
 #################### JS callbacks ######################################
@@ -1006,21 +1007,21 @@ def save_selected_callback():
 ####################### Plot Related functions ########################
 
 def condense_legend_items(inlist):
-    """Combine renderers of legend items with the same legend labels. Must be 
-    done in case there are groups of renderers which have the same label due 
-    to iterations, to avoid a case where there are two or more groups of 
+    """Combine renderers of legend items with the same legend labels. Must be
+    done in case there are groups of renderers which have the same label due
+    to iterations, to avoid a case where there are two or more groups of
     renderers containing the same label name.
 
     Parameters
     ----------
     inlist : :obj:`list`
              # bokeh.models.annotations.LegendItem>`_
-             List containing legend items of the form (label, renders) as 
+             List containing legend items of the form (label, renders) as
              described in: `Bokeh legend items <https://bokeh.pydata.org/en/latest/docs/reference/models/annotations.html
     Returns
     -------
     outlist : :obj:`list`
-              A reduction of :attr:`inlist` containing renderers sharing the 
+              A reduction of :attr:`inlist` containing renderers sharing the
               same labels grouped together.
     """
     od = OrderedDict()
@@ -1083,7 +1084,7 @@ def create_legend_batches(num_leg_objs, li_ax1, batch_size=16):
 
         j += batch_size
 
-    logger.debug(f"Ant batches created. Batch size {str(batch_size)}, Num batches {str(num_leg_objs)}")
+    logger.debug(f"Ant batches created. Batch size: {str(batch_size)}, Batches: {str(num_leg_objs)}")
 
     return bax1
 
@@ -1110,7 +1111,7 @@ def create_legend_objs(num_leg_objs, bax1):
     lo_ax1 = {}
 
     l_opts = dict(click_policy="hide", glyph_height=20,
-                  glyph_width=20, label_text_font_size="9pt",
+                  glyph_width=20, label_text_font_size="8pt",
                   label_text_font="monospace", location="top_left",
                   margin=1, orientation="horizontal",
                   level="annotation", spacing=1,
@@ -1198,7 +1199,7 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker="circle_x"):
 
 
 def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
-    """ Link all plots generated by this script. Done to unify interactivity 
+    """ Link all plots generated by this script. Done to unify interactivity
     within the plots such as panning, zoomin etc.
 
     Parameters
@@ -1299,7 +1300,7 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
     yerr : :obj:`numpy.ndarray`, optional
         Y-axis error margins
     yidx : :obj:`int`
-        Current enumerated y-axis number. Used for keeping track of the 
+        Current enumerated y-axis number. Used for keeping track of the
         figures.
 
 
@@ -1417,7 +1418,7 @@ def stats_display(tab_name, yaxis, corr, field, f_names=None,
     f_names : :obj:`list`
         List with all the available field names
     field : :obj:`int`
-        Integer field id of the field being plotted. If a string name was provided, it will be converted within the main function by 
+        Integer field id of the field being plotted. If a string name was provided, it will be converted within the main function by
         :meth:`ragavi.vis_utils.name_2id`.
     flag : :obj:`bool`
         Whether to flag data or not
@@ -1431,7 +1432,8 @@ def stats_display(tab_name, yaxis, corr, field, f_names=None,
     List containing stats
     """
 
-    logger.debug("Starting median stats calculations")
+    logger.debug(vu.ctext("Computing data for stats table"))
+
     subtable, gtype = get_table(tab_name, fid=field, spwid=str(spwid),
                                 group_cols=[], where=[])
     subtable = subtable[0]
@@ -1445,7 +1447,7 @@ def stats_display(tab_name, yaxis, corr, field, f_names=None,
 
     med_y = np.nanmedian(y)
 
-    logger.debug(f"{yaxis}, {f_names[field]}, corr {str(corr)} median: {str(med_y)}")
+    logger.debug(vu.ctext(f"y-axis: {yaxis}, field: {f_names[field]}, corr: {str(corr)} median: {str(med_y)}"))
 
     return [spwid, f_names[field], corr, med_y, yaxis]
 
@@ -1530,7 +1532,7 @@ def save_static_image(name, figs=None):
 
     driver = webdriver.Firefox(options=b_opts)
 
-    logger.debug("Driver succesfully set up")
+    logger.debug("Driver successfully set up")
 
     pren, suffix = name.split('.')
 
@@ -1695,7 +1697,6 @@ def main(**kwargs):
         all_ufsources = []
         all_fsources = []
 
-        logger.info("Acquiring table: {}".format(os.path.basename(tab)))
         subs, gain = get_table(tab, spwid=ddid, where=where, fid=fields,
                                antenna=plotants)
 
@@ -1774,7 +1775,7 @@ def main(**kwargs):
                                       })
                             inv_source = ColumnDataSource(data={})
 
-                            logger.debug(f"Processing data for {legend}")
+                            logger.debug(vu.ctext(f"Processing un-flagged data for {legend}"))
 
                             data_obj = DataCoreProcessor(
                                 sub, tab, gain,
@@ -1784,7 +1785,7 @@ def main(**kwargs):
                             data = data_obj.act()
                             xaxis = data_obj.xaxis
 
-                            logger.debug(f"Processing the flagged data")
+                            logger.debug(f"Processing flagged data")
                             infl_data = DataCoreProcessor(
                                 sub, tab, gain, fid=fid, yaxis=yaxis,
                                 corr=corr, flag=not _FLAG_DATA_,
@@ -1800,8 +1801,6 @@ def main(**kwargs):
                             y_label = data.y_label
 
                             iy = infl_data.y
-
-                            logger.debug(f"Done")
 
                             source.add(x, name='x')
                             source.add(y, name=f"y{_y}")
@@ -2139,22 +2138,22 @@ def plot_table(**kwargs):
     ant : :obj:`str, optional`
         Plot only specific antennas, or comma-separated list of antennas.
     corr : :obj:`int, optional`
-        Correlation index to plot. Can be a single integer or comma separated 
+        Correlation index to plot. Can be a single integer or comma separated
         integers e.g "0,2". Defaults to all.
     cmap : `str, optional`
         Matplotlib colour map to use for antennas. Default is coolwarm
     ddid : :obj:`int`
         SPECTRAL_WINDOW_ID or ddid number. Defaults to all
     doplot : :obj:`str, optional`
-        Plot complex values as amp and phase (ap) or real and imag (ri). 
+        Plot complex values as amp and phase (ap) or real and imag (ri).
         Default is "ap".
     field : :obj:`str, optional`
-        Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4", 
-        "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to 
-        last) or using a field name or comma separated field names. Defaults 
+        Field ID(s) / NAME(s) to plot. Can be specified as "0", "0,2,4",
+        "0~3" (inclusive range), "0:3" (exclusive range), "3:" (from 3 to
+        last) or using a field name or comma separated field names. Defaults
         to all.
     k-xaxis: :obj:`str`
-        Choose the x-xaxis for the K table. Valid choices are: time or 
+        Choose the x-xaxis for the K table. Valid choices are: time or
         antenna. Defaults to time.
     taql: :obj:`str, optional`
         TAQL where clause
