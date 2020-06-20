@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
+import json
+import logging
 
 from collections import namedtuple, OrderedDict
 from datetime import datetime
@@ -7,6 +9,7 @@ from itertools import combinations
 
 import colorcet as cc
 import dask.array as da
+import dask.dataframe as dd
 import daskms as xm
 import datashader as ds
 import numpy as np
@@ -14,6 +17,7 @@ import xarray as xr
 
 from dask import compute, delayed, config as dask_config
 from dask.diagnostics import ProgressBar
+from dask.distributed import Client, LocalCluster
 from daskms.table_schemas import MS_SCHEMA
 
 from bokeh.plotting import figure
@@ -28,19 +32,15 @@ from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
                                 WheelZoomTool, SaveTool)
 
 
-from ragavi.averaging import get_averaged_ms
-from ragavi.plotting import create_bk_fig, add_axis
 import ragavi.utils as vu
 
-from dask.distributed import Client, LocalCluster
+from ragavi.averaging import get_averaged_ms
+from ragavi.plotting import create_bk_fig, add_axis
 
-logger = vu.logger
-excepthook = vu.sys.excepthook
+
+logger = logging.getLogger(__name__)
+
 time_wrapper = vu.time_wrapper
-wrapper = vu.textwrap.TextWrapper(initial_indent='',
-                                  break_long_words=True,
-                                  subsequent_indent=''.rjust(50),
-                                  width=160)
 
 # some variables
 PLOT_WIDTH = int(1920 * 0.95)
@@ -114,9 +114,11 @@ class DataCoreProcessor:
         elif self.xaxis == "amplitude":
             xdata = self.xds_table_obj[self.datacol]
             x_label = "Amplitude"
-        elif self.xaxis == "frequency" or self.xaxis == "channel":
+        elif self.xaxis in ["frequency", "channel"]:
             xdata = vu.get_frequencies(self.ms_name, spwid=self.ddid,
                                        chan=self.chan, cbin=self.cbin)
+            xdata = xdata.chunk(self.xds_table_obj.chunks['chan'])
+
             x_label = "Frequency GHz"
         elif self.xaxis == "imaginary":
             xdata = self.xds_table_obj[self.datacol]
@@ -139,14 +141,14 @@ class DataCoreProcessor:
         elif self.xaxis == "uvwave":
             xdata = self.xds_table_obj.UVW
             try:
-                x_label = "UV Wave [K{}]".format(u"\u03bb")
+                x_label = "UV Wave [{}]".format(u"\u03bb")
             except UnicodeEncodeError:
                 x_label = "UV Wave [K{}]".format(u"\u03bb".encode("utf-8"))
         else:
             logger.error("Invalid xaxis name")
             return
 
-        logger.debug("Done")
+        logger.debug(f"x-axis: {x_label}, column: {xdata.name} selected")
 
         return xdata, x_label
 
@@ -178,22 +180,17 @@ class DataCoreProcessor:
             logger.exception("Column '{}' not Found".format(self.datacol))
             return sys.exit(-1)
 
-        logger.debug("Done")
+        logger.debug(f"y-axis: {y_label}, column: {ydata.name} selected")
 
         return ydata, y_label
 
-    def prep_xaxis_data(self, xdata, freq=None):
+    def prep_xaxis_data(self, xdata):
         """Prepare the x-axis data for plotting. Selections also performed here.
 
         Parameters
         ----------
         xdata: :obj:`xarray.DataArray`
             x-axis data depending  x-axis selected
-        freq: :obj:`xarray.DataArray` or :obj:`float`
-            Frequency(ies) from which corresponding wavelength will be obtained.
-            Note
-            ----
-                Only required when xaxis specified is 'uvwave'
 
         Returns
         -------
@@ -205,17 +202,24 @@ class DataCoreProcessor:
         if self.xaxis == "channel" or self.xaxis == "frequency":
             prepdx = xdata / 1e9
         elif self.xaxis in ["phase", "amplitude", "real", "imaginary"]:
-            prepdx = xdata
+            logger.debug(f"Switching x-axis data prep to y-axis data prep because of x-axis: {self.xaxis}")
+            prepdx = self.prep_yaxis_data(xdata, yaxis=self.xaxis)
         elif self.xaxis == "time":
             prepdx = vu.time_convert(xdata)
         elif self.xaxis == "uvdistance":
             prepdx = vu.calc_uvdist(xdata)
         elif self.xaxis == "uvwave":
-            prepdx = vu.calc_uvwave(xdata, freq) / 1e3
-        elif self.xaxis == "antenna1" or self.xaxis == "antenna2" or self.xaxis == "scan":
+            # compute uvwave using the available selected frequencies
+            freqs = vu.get_frequencies(self.ms_name, spwid=self.ddid,
+                                       chan=self.chan,
+                                       cbin=self.cbin).values
+
+            # results are returned in kilo lamnda
+            prepdx = vu.calc_uvwave(xdata, freqs)
+        elif self.xaxis in ["antenna1", "antenna2", "scan"]:
             prepdx = xdata
 
-        logger.debug("Done")
+        logger.debug("x-axis data ready")
 
         return prepdx
 
@@ -241,8 +245,6 @@ class DataCoreProcessor:
 
         logger.debug("DCP: Preping y-axis data")
 
-        flags = vu.get_flags(self.xds_table_obj)
-
         # Doing this because some of xaxis data must be processed here
         if yaxis is None:
             yaxis = self.yaxis
@@ -250,7 +252,17 @@ class DataCoreProcessor:
         # if flagging enabled return a list of DataArrays otherwise return a
         # single dataarray
         if self.flag:
-            if np.all(flags.values == True):
+            logger.debug("Flagging active. Getting flags")
+
+            flags = self.xds_table_obj.FLAG
+
+            logger.debug("Flags ready. Ensuring there are inactive flags")
+
+            flag_all = da.all(flags).compute()
+
+            logger.debug(f"All selected data flagged? {flag_all}")
+
+            if flag_all:
                 logger.warning(
                     "All data appears to be flagged. Unable to continue.")
                 logger.warning(
@@ -266,7 +278,16 @@ class DataCoreProcessor:
         else:
             y = self.process_data(ydata, yaxis=yaxis, unwrap=False)
 
-        logger.debug("Done")
+        if self.xaxis in ["channel", "frequency"]:
+            # the input shape
+            i_shape = str(y.shape)
+            if y.ndim == 3:
+                y = y.transpose("chan", "row", "corr")
+            else:
+                y = y.T
+            logger.debug(f"xaxis: {self.xaxis}, changing y shape {i_shape} --> {str(y.shape)}")
+
+        logger.debug("y-axis data ready")
 
         return y
 
@@ -327,12 +348,6 @@ class DataCoreProcessor:
         y_prepd = ys.y
         ylabel = ys.ylabel
 
-        if self.xaxis == "channel" or self.xaxis == "frequency":
-            if y_prepd.ndim == 3:
-                y_prepd = y_prepd.transpose("chan", "row", "corr")
-            else:
-                y_prepd = y_prepd.T
-
         d = Data(x=x_prepd, xlabel=xlabel, y=y_prepd, ylabel=ylabel)
 
         return d
@@ -353,19 +368,8 @@ class DataCoreProcessor:
         Data = namedtuple("Data", "x xlabel")
 
         x_data, xlabel = self.get_xaxis_data()
-        if self.xaxis == "uvwave":
-            # compute uvwave using the available selected frequencies
-            freqs = vu.get_frequencies(self.ms_name, spwid=self.ddid,
-                                       chan=self.chan,
-                                       cbin=self.cbin).values
 
-            x = self.prep_xaxis_data(x_data, freq=freqs)
-
-        # if we have x-axes corresponding to ydata
-        elif self.xaxis in ["phase", "amplitude", "real", "imaginary"]:
-            x = self.prep_yaxis_data(x_data, yaxis=self.xaxis)
-        else:
-            x = self.prep_xaxis_data(x_data)
+        x = self.prep_xaxis_data(x_data)
 
         d = Data(x=x, xlabel=xlabel)
 
@@ -415,10 +419,16 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
     # perform data aggregation
     # shaded data and the aggregated data
     logger.info("Launching datashader")
+
     agg = image_callback(df, xr=x_range, yr=y_range, w=c_width, h=c_height,
                          x=x_name, y=y_name, cat=cat)
 
+    # change dtype to uint32 if agg contains a negative number
+    if (agg.values < 0).any():
+        agg = agg.astype(np.uint32)
+
     logger.info("Creating Bokeh Figure")
+
     fig = create_bk_fig(xlab=xlab, ylab=ylab, title=title, x_min=x_min,
                         x_max=x_max,
                         x_axis_type=x_axis_type, x_name=x_name, y_name=y_name,
@@ -526,155 +536,6 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
     fig.add_glyph(cds, image_glyph)
 
     return fig
-
-
-def gen_grid(df, x_min, x_max, y_min, y_max, c_height, c_width, cat=None,
-             cat_vals=None, color=None,  ms_name=None, ncols=9,
-             pw=190, ph=100, title=None, x=None, x_axis_type="linear",
-             x_name=None, xlab=None, y_name=None, ylab=None,
-             xds_table_obj=None):
-    """ Generate bokeh grid of figures"""
-
-    logger.debug("Preparing bokeh grid generation")
-
-    n_grid = []
-
-    nrows = int(np.ceil(cat_vals.size / ncols))
-
-    # my ideal case is 9 columns and for this, the ideal width is 205
-    pw = int(pw / ncols)
-    ph = int(0.83 * pw)
-
-    # if there are more columns than there are items
-    if ncols > cat_vals.size:
-        pw = int((pw * ncols) / cat_vals.size)
-        ph = int(PLOT_HEIGHT * 0.90)
-        ncols = cat_vals.size
-
-    # If there is still space extend height
-    if (nrows * ph) < (PLOT_HEIGHT * 0.85):
-        ph = int((PLOT_HEIGHT * 0.85) / nrows)
-
-    x_range = (x_min, x_max)
-    y_range = (y_min, y_max)
-    dw, dh = x_max - x_min, y_max - y_min
-
-    # shorten some names
-    tf = ds.transfer_functions
-
-    # perform data aggregation
-    # shaded data and the aggregated data
-    logger.info("Launching datashader")
-    agg = image_callback(df, x_range, y_range, c_width, c_height, x=x_name,
-                         y=y_name, cat=cat)
-
-    # get actual field or corr names
-    i_names = None
-    if cat.lower() == "corr":
-        i_names = vu.get_polarizations(ms_name)
-    elif cat.lower() == "field_id":
-        i_names = vu.get_fields(ms_name).values.tolist()
-    elif cat.lower() in ["antenna1", "antenna2"]:
-        i_names = vu.get_antennas(ms_name).values.tolist()
-    elif cat.lower() == "baseline":
-        # get the only bl numbers. This function returns an iterator obj
-        ubl = create_bl_data_array(xds_table_obj, bl_combos=True)
-        ant_names = vu.get_antennas(ms_name).values
-
-        # create list of unique baselines with the ant_names
-        i_names = [f"{bl}: {ant_names[pair[0]]}, {ant_names[pair[1]]}"
-                   for bl, pair in enumerate(ubl)]
-
-    logger.info("Creating Bokeh grid")
-
-    for i, c_val in enumerate(cat_vals):
-
-        logger.debug(f"Item: {i}/{cat_vals.size}, iterating: {cat}")
-        # some text title for the iterated columns
-        p_txtt = Text(x="x", y="y", text="text", text_font="monospace",
-                      text_font_style="bold", text_font_size="10pt",
-                      text_align="center")
-
-        p_txtt_src = ColumnDataSource(data=dict(x=[x_min + (dw * 0.5)],
-                                                y=[y_max * 0.87],
-                                                text=[""]))
-        if i_names:
-            p_txtt_src.add([f"{i_names[c_val]}"], name="text")
-            i_axis_data = [i_names[c_val]]
-        else:
-            p_txtt_src.add([f"{c_val}"], name="text")
-            i_axis_data = [c_val]
-
-        s_agg = agg.sel(**{cat: c_val})
-        s_img = tf.shade(s_agg, cmap=color)
-
-        s_ds = ColumnDataSource(data=dict(image=[s_img.data], x=[x_min],
-                                          i_axis=i_axis_data,
-                                          y=[y_min], dw=[dw], dh=[dh]))
-        s_ds.add(i_axis_data, "i_axis")
-
-        ir = ImageRGBA(image="image", x='x', y='y', dw="dw", dh="dh",
-                       dilate=False)
-
-        # Add x-axis to all items in the last row
-        if (i >= ncols * (nrows - 1)):
-            add_xaxis = True
-        else:
-            add_xaxis = False
-
-        # Add y-axis to all items in the first columns
-        if (i % ncols == 0):
-            add_yaxis = True
-        else:
-            add_yaxis = False
-
-        f = create_bk_fig(xlab=xlab, ylab=ylab, title=title, x_min=x_min,
-                          x_max=x_max,
-                          x_axis_type=x_axis_type, x_name=x_name,
-                          y_name=y_name, fix_plotsize=True,
-                          pw=pw, ph=ph, add_title=False, add_xaxis=add_xaxis,
-                          add_yaxis=add_yaxis)
-
-        f.add_glyph(s_ds, ir)
-        f.add_glyph(p_txtt_src, p_txtt)
-
-        # Add some information on the tooltip
-        h_tool = f.select(name="p_htool")[0]
-        h_tool.tooltips.append((cat, "@i_axis"))
-
-        if add_xaxis:
-            if x_name.lower() in ["channel", "frequency"]:
-                f = add_axis(fig=f, axis_range=x.chan.values,
-                             ax_label="Channel")
-            elif x_name.lower() == "time":
-                xaxis = f.select(name="p_x_axis")[0]
-                xaxis.formatter = DatetimeTickFormatter(hourmin=["%H:%M"])
-            elif x_name.lower() == "phase":
-                xaxis = f.select(name="p_x_axis")[0]
-                xaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
-
-        if add_yaxis:
-            # Set formating if yaxis is phase
-            if y_name.lower() == "phase":
-                yaxis = f.select(name="p_y_axis")[0]
-                yaxis.formatter = PrintfTickFormatter(format=u"%f\u00b0")
-
-        n_grid.append(f)
-
-    # title_div = Div(text=title, align="center", width=PLOT_WIDTH,
-    #                 style={"font-size": "24px", "height": "50px",
-    #                        "text-align": "centre",
-    #                        "font-weight": "bold",
-    #                        "font-family": "monospace"},
-    #                 sizing_mode="stretch_width")
-    n_grid = grid(children=n_grid, ncols=ncols, nrows=nrows,
-                  sizing_mode="stretch_both")
-    n_grid.tags = [ncols, nrows]
-    # final_grid = gridplot(children=[title_div, n_grid], ncols=1)
-
-    logger.debug("Bokeh grid done")
-
-    return n_grid
 
 
 @time_wrapper
@@ -855,7 +716,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
                      title=title, x=x, x_axis_type=x_axis_type, xlab=xlab,
                      x_name=x.name, y_name=y.name, ylab=ylab,
                      xds_table_obj=xds_table_obj, fix_plotsize=True,
-                     add_grid=True, add_subtitle=True, add_title=False)
+                     add_grid=True, add_subtitle=True)
 
     if iter_axis and colour_axis:
         # NOTE!!!
@@ -881,7 +742,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         image = gen_image(xy_df, x_min, x_max, y_min, y_max,
                           cat=colour_axis, ph=plot_height, pw=plot_width,
                           add_cbar=False, add_xaxis=add_xaxis,
-                          add_yaxis=add_yaxis, **im_inputs)
+                          add_yaxis=add_yaxis, add_title=False, **im_inputs)
 
     elif iter_axis:
         # NOTE!!!
@@ -904,7 +765,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
                           ph=plot_height, pw=plot_width, add_cbar=False,
                           add_xaxis=add_xaxis, add_yaxis=add_yaxis,
-                          **im_inputs)
+                          add_title=False, **im_inputs)
 
     elif colour_axis:
         title += f" Colourised By: {colour_axis.capitalize()}"
@@ -915,10 +776,10 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=colour_axis,
                           ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=True,
-                          add_xaxis=True, add_yaxis=True, **im_inputs)
+                          add_xaxis=True, add_yaxis=True, add_title=True,
+                          **im_inputs)
 
     else:
-        logger.info("Creating Dataframe")
         xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
 
         # generate resulting image
@@ -1056,7 +917,7 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
     where: :obj:`str`
         TAQL where clause to be used with the MS.
     chan_select: :obj:`int` or :obj:`slice`
-        Channels to be selected 
+        Channels to be selected
     corr_select: :obj:`int` or :obj:`slice`
         Correlations to be selected
 
@@ -1103,7 +964,7 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
         ms_schema[data_col] = ms_schema["DATA"]
 
     if chunks is None:
-        chunks = dict(row=10000)
+        chunks = dict(row=5000)
     else:
         dims = ["row", "chan", "corr"]
         chunks = {k: int(v) for k, v in zip(dims, chunks.split(','))}
@@ -1165,16 +1026,24 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
                 logger.debug("Selecting correlations")
                 tab_objs = [_.sel(corr=corr_select) for _ in tab_objs]
 
+        if len(tab_objs) == 0:
+            logger.error("No Data found in the MS")
+            logger.error("Please check your selection criteria")
+            sys.exit(-1)
+
         # get some info about the data
-        chunk_sizes = tab_objs[0].FLAG.data.chunksize
+        chunk_sizes = list(tab_objs[0].FLAG.data.chunksize)
+        chunk_sizes = " * ".join([str(_) for _ in chunk_sizes])
         chunk_p = tab_objs[0].FLAG.data.npartitions
 
-        logger.info("Chunk sizes: {}".format(chunk_sizes))
+        logger.info(f"Chunk size: {chunk_sizes}")
         logger.info("Number of Partitions: {}".format(chunk_p))
 
         return tab_objs
     except Exception as ex:
-        logger.error(ex.args[0])
+        logger.error("MS data acquisition failed")
+        for _ in ex.args[0].split("\n"):
+            logger.error(_)
         sys.exit(-1)
 
 
@@ -1214,6 +1083,43 @@ def create_bl_data_array(xds_table_obj, bl_combos=False):
     baseline.name = "Baseline"
     logger.info("Done")
     return baseline
+
+
+def create_dask_df(inp, idx):
+    """
+    Parameters
+    ----------
+    inp: :obj:`dict` 
+        A dictionary containing column name as the key, and the dictionary value is the dask array to be associated with the column name.
+    ids: :obj:`da.array`
+        A dask array to form the index of the resulting dask dataframe
+
+    Returns
+    -------
+    ddf: :obj:`dd.Dataframe`
+        Dask dataframe containing the presented data
+    """
+    series_list = []
+
+    idx = dd.from_dask_array(idx, columns=["Index"])
+
+    for col, darr in inp.items():
+        series = dd.from_dask_array(darr, columns=[col])
+        series_list.append(series)
+
+    series_list.append(idx)
+
+    ddf = dd.concat(series_list, axis=1)
+
+    # logger.info("Indexing Dataframe")
+
+    # Will be activated when indexing is important
+    # with ProgressBar():
+    #     ddf = ddf.set_index("Index", sorted=True)
+
+    # logger.info("Index ready")
+
+    return ddf
 
 
 def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
@@ -1268,7 +1174,7 @@ def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
 
 
 def create_df(x, y, iter_data=None):
-    """Create a dask dataframe from input x, y and iterate columns if 
+    """Create a dask dataframe from input x, y and iterate columns if
     available. This function flattens all the data into 1-D Arrays
 
     Parameters
@@ -1285,7 +1191,6 @@ def create_df(x, y, iter_data=None):
     new_ds: :obj:`dask.Dataframe`
         Dataframe containing the required columns
     """
-
     x_name = x.name
     y_name = y.name
 
@@ -1293,21 +1198,24 @@ def create_df(x, y, iter_data=None):
     nx, ny = massage_data(x, y, get_y=True)
 
     # declare variable names for the xarray dataset
-    var_names = {x_name: ("row", nx),
-                 y_name: ("row", ny)}
+    var_names = {x_name: nx,
+                 y_name: ny}
 
     if iter_data is not None:
         i_name = iter_data.name
         iter_data = massage_data(iter_data, y, get_y=False, iter_ax=i_name)
-        var_names[i_name] = ("row", iter_data)
+        var_names[i_name] = iter_data
 
     logger.info("Creating dataframe")
 
-    new_ds = xr.Dataset(data_vars=var_names)
-    new_ds = new_ds.to_dask_dataframe()
+    # manuanally create a dask array index
+    idx = da.arange(nx.size, chunks=nx.chunksize[0])
+
+    new_ds = create_dask_df(var_names, idx)
+
     new_ds = new_ds.dropna()
 
-    logger.info("Done")
+    logger.info("DataFrame ready")
     return new_ds
 
 
@@ -1498,6 +1406,7 @@ def link_grid_plots(plot_list):
 
 
 ############################## Main Function ###########################
+@time_wrapper
 def main(**kwargs):
     """Main function that launches the visibilities plotter"""
 
@@ -1509,13 +1418,11 @@ def main(**kwargs):
         chunks = options.chunks
         c_width = options.c_width
         c_height = options.c_height
-        colour_axis = validate_axis_inputs(options.colour_axis)
         corr = options.corr
         data_column = options.data_column
         ddid = options.ddid
         fields = options.fields
         flag = options.flag
-        iter_axis = validate_axis_inputs(options.iter_axis)
         html_name = options.html_name
         mycmap = options.mycmap
         mytabs = options.mytabs
@@ -1524,21 +1431,37 @@ def main(**kwargs):
         n_cores = options.n_cores
         scan = options.scan
         where = options.where  # taql where
-        xaxis = validate_axis_inputs(options.xaxis)
         xmin = options.xmin
         xmax = options.xmax
         ymin = options.ymin
         ymax = options.ymax
-        yaxis = validate_axis_inputs(options.yaxis)
         tbin = options.tbin
         cbin = options.cbin
 
+    if options.debug:
+        vu.update_log_levels(logger, "debug")
+    else:
+        vu.update_log_levels(logger, "info")
+
+    if options.logfile:
+        vu.update_logfile_name(logger, options.logfile)
+
     # change iteration axis names to actual column names
+    colour_axis = validate_axis_inputs(options.colour_axis)
     colour_axis = get_colname(colour_axis)
+
+    iter_axis = validate_axis_inputs(options.iter_axis)
     iter_axis = get_colname(iter_axis)
+
+    # validate the x and y axis names
+    xaxis = validate_axis_inputs(options.xaxis)
+    yaxis = validate_axis_inputs(options.yaxis)
 
     # number of processes or threads/ cores
     dask_config.set(num_workers=n_cores, memory_limit=mem_limit)
+
+    logger.info(f"Using {n_cores} cores")
+    logger.info(f"Memory limit per core: {mem_limit}")
 
     if len(mytabs) > 0:
         mytabs = [x.rstrip("/") for x in mytabs]
@@ -1589,14 +1512,34 @@ def main(**kwargs):
         ################################################################
         ################### Iterate over subtables #####################
 
-        # translate corr labels to indices if need be
-        try:
+        if options.corr != None:
+            # translate corr labels to indices if need be
+            if corr.isalpha() or '-' in corr:
+                if corr in ["diag", "diagonal"]:
+                    corr = "xx,yy"
+                elif corr in ["off-diag", "off-diagonal"]:
+                    corr = "xy,yx"
+                else:
+                    logger.error(f"Invalid corr: {corr} selected. Choose from diag / diagonal, or off-diag / off-diagonal.")
+                    sys.exit(-1)
+                corr = corr.upper()
+
+                corr = corr.split(",")
+                corr_labs = vu.get_polarizations(mytab)
+
+                logger.info(f"Available corrs: {str(corr_labs)}")
+
+                for c in range(len(corr)):
+                    try:
+                        corr[c] = corr_labs.index(corr[c])
+                    except ValueError:
+                        logger.warning(f"Chosen corr {corr[c]} is not available")
+                        corr[c] = -1
+                if all(c == -1 for c in corr):
+                    logger.error(
+                        "All selected corrs are not available. Exiting.")
+                    sys.exit(-1)
             corr = vu.slice_data(corr)
-        except ValueError:
-            corr = corr.split(",")
-            corr_labs = vu.get_polarizations(mytab)
-            for c in range(len(corr)):
-                corr[c] = corr_labs.index(corr[c])
 
         # if there are id labels to be gotten, get them
         if iter_axis == "corr":
@@ -1674,6 +1617,9 @@ def main(**kwargs):
             # We check current DATA_DESC_ID
             c_spw = chunk.DATA_DESC_ID
 
+            if isinstance(c_spw, xr.DataArray):
+                c_spw = c_spw.values[0]
+
             logger.info("Starting data processing.")
 
             p_data = DataCoreProcessor(chunk, mytab, xaxis, yaxis, chan=chan,
@@ -1718,7 +1664,14 @@ def main(**kwargs):
             final_plot = column(children=[title_div, pre, final_plot])
 
         else:
-            final_plot = oup_a[0]
+            if len(oup_a) > 1:
+                final_plot = gridplot(
+                    children=oup_a,
+                    sizing_mode="stretch_width", ncols=2,
+                    plot_width=PLOT_WIDTH // len(oup_a),
+                    plot_height=PLOT_HEIGHT // len(oup_a))
+            else:
+                final_plot = oup_a[0]
 
         logger.info("Plotting complete.")
 
@@ -1734,7 +1687,9 @@ def main(**kwargs):
         save(final_plot)
 
         logger.info("Rendered plot to: {}".format(fname))
-        logger.info(wrapper.fill(",\n".join(
-            ["{}: {}".format(k, v) for k, v in options.__dict__.items() if v != None])))
-
-        logger.info(">" * (len(fname) + 19))
+        logger.info("Specified options:")
+        parsed_opts = {k: v for k, v in options.__dict__.items() if v != None}
+        parsed_opts = json.dumps(parsed_opts, indent=2, sort_keys=True)
+        for _x in parsed_opts.split('\n'):
+            logger.info(_x)
+        logger.info(">" * 70)

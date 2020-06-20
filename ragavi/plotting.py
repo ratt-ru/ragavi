@@ -1,3 +1,5 @@
+import logging
+
 from bokeh.models import (BasicTicker, DatetimeAxis, DataRange1d, Grid,
                           Legend, LinearAxis, LinearScale, LogAxis, LogScale,
                           Toolbar, Plot, PrintfTickFormatter, Range1d,
@@ -6,6 +8,8 @@ from bokeh.models.tools import (BoxEditTool, BoxSelectTool, BoxZoomTool,
                                 EditTool, HoverTool, LassoSelectTool, PanTool,
                                 ResetTool, RangeTool, SaveTool, UndoTool,
                                 WheelZoomTool)
+
+logger = logging.getLogger(__name__)
 
 
 def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,

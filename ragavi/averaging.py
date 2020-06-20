@@ -7,6 +7,7 @@ Commit #d653b38
 
 """
 
+import logging
 import dask.array as da
 import daskms as xm
 import numpy as np
@@ -22,7 +23,7 @@ from africanus.averaging.dask import (time_and_channel,
 
 import ragavi.utils as vu
 
-logger = vu.logger
+logger = logging.getLogger(__name__)
 
 
 def _id(array, fill_value=0, dtype_=np.int32):
@@ -82,7 +83,7 @@ def concatenate_row_chunks(array, group_every=4):
 
 
 def output_dataset(avg, field_id, data_desc_id, scan_number,
-                   group_row_chunks):
+                   group_row_chunks, viscolumn=""):
     """
     Parameters
     ----------
@@ -125,10 +126,10 @@ def output_dataset(avg, field_id, data_desc_id, scan_number,
         "INTERVAL": (("row",), avg.interval),
         "TIME_CENTROID": (("row",), avg.time_centroid),
         "EXPOSURE": (("row",), avg.exposure),
-        "UVW": (("row", "[uvw]"), avg.uvw),
+        "UVW": (("row", "uvw"), avg.uvw),
         "WEIGHT": (("row", "corr"), avg.weight),
         "SIGMA": (("row", "corr"), avg.sigma),
-        "DATA": (("row", "chan", "corr"), avg.vis),
+        viscolumn: (("row", "chan", "corr"), avg.vis),
         "FLAG": (("row", "chan", "corr"), avg.flag),
     }
 
@@ -224,7 +225,8 @@ def average_main(main_ds, time_bin_secs, chan_bin_size,
                                         ds.FIELD_ID,
                                         ds.DATA_DESC_ID,
                                         ds.SCAN_NUMBER,
-                                        group_row_chunks))
+                                        group_row_chunks,
+                                        viscolumn=viscolumn))
 
     return output_ds
 
@@ -377,12 +379,9 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
         datas = {k: (v.dims, v.data, v.attrs)
                  for k, v in ams.data_vars.items() if k != "FLAG_CATEGORY"}
 
-        # create datasets and rename dimension "[uvw]"" to "uvw"
         new_ds = xr.Dataset(datas, attrs=ams.attrs, coords=ams.coords)
         new_ds = new_ds.chunk(chunks)
 
-        if "uvw" in new_ds.dims.keys():
-            new_ds = new_ds.rename_dims({"[uvw]": "uvw"})
         x_datasets.append(new_ds)
 
     # data will always be grouped by SPW unless iterating over antenna
@@ -513,7 +512,6 @@ def get_averaged_spws(ms_name, cbin, chan_select=None):
                  for k, v in sub_ds.data_vars.items() if k != "FLAG_CATEGORY"}
 
         new_ds = xr.Dataset(datas, attrs=sub_ds.attrs, coords=sub_ds.coords)
-        new_ds = new_ds.chunk(chunks)
         x_datasets.append(new_ds)
 
     logger.info("Done")

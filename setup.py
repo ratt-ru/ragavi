@@ -3,6 +3,7 @@
 
 import os
 from setuptools import setup
+from ragavi import __version__
 
 pkg = 'ragavi'
 
@@ -21,7 +22,7 @@ def requirements():
         return [pname.strip() for pname in f.readlines()]
 
 setup(name='ragavi',
-      version="0.3.7",
+      version=__version__,
       description='Radio Astronomy Gain and Visibility Inspector',
       long_description=readme(),
       url='https://github.com/ratt-ru/ragavi',
