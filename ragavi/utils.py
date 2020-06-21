@@ -543,7 +543,7 @@ def update_log_levels(in_logger, level):
 
 def update_logfile_name(in_logger, new_name):
     """Change the name of the resulting logfile"""
-    parent_logger = in_logger.parent
+    parent_logger = in_logger.root
 
     for handler in parent_logger.handlers:
         if isinstance(handler, logging.FileHandler):
@@ -553,15 +553,17 @@ def update_logfile_name(in_logger, new_name):
     # append an extension if none is provided
     if os.path.splitext(new_name)[-1] == "":
         new_name += ".log"
-
     parent_logger.removeHandler(fh)
 
     new_fh = logging.FileHandler(new_name)
     f_formatter = logging.Formatter(
         "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
         datefmt="%d.%m.%Y@%H:%M:%S")
+    logger_filter = logging.Filter("ragavi")
+
     new_fh.setFormatter(f_formatter)
     new_fh.setLevel(fh.level)
+    new_fh.addFilter(logger_filter)
 
     parent_logger.addHandler(new_fh)
 
