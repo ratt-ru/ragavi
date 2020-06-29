@@ -86,7 +86,7 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
                       outline_line_width=2, outline_line_color="#017afe",
                       outline_line_alpha=0.4, output_backend="canvas",
                       sizing_mode="stretch_width", title_location="above",
-                      toolbar_location="right")
+                      toolbar_location="above")
     plot_specs.update(pl_specs)
 
     axis_specs = dict(minor_tick_line_alpha=0, axis_label_text_align="center",
