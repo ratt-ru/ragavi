@@ -317,7 +317,8 @@ def gains_argparser():
                          metavar='', help="""Static image name. The suffix of 
                          this name determines the type of plot. If 
                          foo.png, the output will be PNG, else if foo.svg, 
-                         the output will be of the SVG format.""",
+                         the output will be of the SVG format. PDF is also 
+                         accepable""",
                          default=None)
 
     return parser

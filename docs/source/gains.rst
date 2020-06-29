@@ -59,29 +59,7 @@ To use ``ragavi-gains`` in a notebook environment, run in a notebook cell
 
 Generating Static (Non-Interactive) Images
 ==========================================
-It is possible to generate PNG and SVG with ``ragavi-gains`` via two methods. The first method involves generating the HTML format first and then using the save tool found in the toolbar to download the plots. This method requires minimal effort although it may be a necessary redundancy to achieve the static image goal. The second method requires some additional setup, which may be slightly more taxing. 
-
-**Step 1**: Install selenium, which can be done via:
-
-.. code-block:: bash
-
-    pip install selenium
-
-**Step 2**: Download geckodriver for Firefox web browser, or chromedriver for Google chrome browser, and add it's executable to ``PATH``. Because Ubuntu linux ships with Firefox by default, I will demonstrate geckodriver v0.26.0, which is the latest driver at the time of wringing. The download page is `Geckodriver`_ 
-
-.. code-block:: bash
-
-    mkdir gecko && cd gecko
-
-    wget https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux32.tar.gz
-
-    tar -xvzf geckodriver-v0.26.0-linux32.tar.gz
-
-    chmod +x geckodriver
-
-    export PATH=$PATH:/absolute/path/to/gecko
-
-With this setup, one can now supply to ``ragavi-gains`` a ``--plotname`` value, which will result in the generation of PNG/SVG files, depending on the file extension provided. If, for example, the plotname provided is ``foo.png``, ``ragavi-gains`` will assume the desired output should be PNG. The same applies for SVG. If both ``--plotname`` and ``--htmlname`` are provided, ``ragavi`` will generate both static (PNG) and interactive (HTML) outputs simulaneously.
+It is possible to generate png, ps, pdf, svg with ``ragavi-gains`` via two methods. The first method involves generating the HTML format first and then using the save tool found in the toolbar to download the plots. This method requires minimal effort although it may be a necessary redundancy to achieve the static image goal. 
 
 It is necessary to point out that by default, ``ragavi`` uses the canvas image backend for interactive plots, due to performance issues associated with SVG image backend as stated in the Bokeh `docs`_.
 The default plots generated are always in HTML format.

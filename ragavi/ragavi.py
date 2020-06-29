@@ -1505,13 +1505,8 @@ def save_html(name, plot_layout):
     logger.info(f"Rendered HTML: {output}")
 
 
-def save_static_image(name, figs=None):
-    """Save plots in SVG format
-
-    Note
-    ----
-        The number of resulting images depends on `doplot`. By default, this means to objects unless otherwise.
-        For SVG, the python package `selenium`, and node package `phantomjs` are required. More information `Exporting bokeh plots <https://bokeh.pydata.org/en/latest/docs/user_guide/export.html>`_
+def save_static_image(fname, figs=None):
+    """Save plots in png, ps, pdf, svg format
 
     Parameters
     ----------
@@ -1521,68 +1516,37 @@ def save_static_image(name, figs=None):
          A list containing :obj:`bokeh.plotting.Plot` objects (The figures to be plotted.)
 
     """
-    from selenium import webdriver
+    import matplotlib.pyplot as plt
 
-    logger.debug("Setting up Firefox selenium driver")
-    b_opts = webdriver.FirefoxOptions()
-    # Ensure browser is headless
-    b_opts.headless = True
+    logger.debug("Setting up static image")
+    xs = figs[0].renderers[0].data_source.data["x"]
 
-    logger.debug(f"Browser headless mode: {b_opts.headless}")
+    name, ext = fname.split(".")
 
-    driver = webdriver.Firefox(options=b_opts)
+    for y, cds in enumerate(figs):
+        plt.close("all")
+        plt.figsize = [9, 5]
+        for ren in cds.renderers:
+            if f"y{y+1}" in ren.data_source.data.keys():
+                ys = ren.data_source.data[f"y{y+1}"]
+                plt.plot(xs, ys, "o", color=ren.glyph.fill_color,
+                         markersize=1, label=ren.glyph.tags[0])
 
-    logger.debug("Driver successfully set up")
+        plt.xlabel(cds.select(name="p_x_axis")[0].axis_label)
+        plt.ylabel(cds.yaxis.axis_label)
 
-    pren, suffix = name.split('.')
-
-    for _i in range(len(figs)):
-        legs = figs[_i].legend
-
-        for _l in legs:
-            _l.visible = True
-
-        for _r in figs[_i].renderers:
-            _r.visible = True
-            _r.glyph.size = 7
-            if suffix == "svg":
-                if _r.glyph.marker == "circle":
-                    _r.glyph.marker = "square_x"
-                    _r.glyph.line_width = 1
-                    _r.glyph.line_color = "#0f9af0"
-
-        figs[_i].width = 600
-        figs[_i].frame_width = int(0.9 * 600)
-        figs[_i].height = 500
-        figs[_i].frame_height = int(0.9 * 500)
-
-    # some shared options
-    o_opts = dict(filename=f"{pren}.{suffix}",
-                  timeout=30,
-                  webdriver=driver)
-
-    logger.info(f"Attempting to save image in format: {suffix}, name:{pren}")
-    if "png" == suffix.lower():
-        figs = row(figs)
-        store = export_png(obj=figs, **o_opts)
-
-    elif "svg" == suffix.lower():
-        # Bokeh SVG doesn't work with circle markers
-        # Issue is here: https://github.com/bokeh/bokeh/issues/8446
-        logger.info(
-            "All circle markers switched to 'square_x' because of SVG issues")
-        for fig in figs:
-            fig.output_backend = "svg"
-        figs = row(figs)
-        store = export_svgs(figs, **o_opts)
-
-    logger.info(f"Done. Image at: {store}")
-
-    logger.debug("Attempting to close browser")
-    driver.close()
+        plt.title(cds.select(name="p_title")[0].text)
+        handles, labels = plt.gca().get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        plt.legend(by_label.values(), by_label.keys(),
+                   loc=(1.04, 0), ncol=len(cds.legend), markerscale=5, columnspacing=0.1)
+        plt.savefig(f"{name}_{cds.yaxis.axis_label:.4}{y+1}.{ext}", dpi=200, bbox_inches='tight')
+        logger.info(f"Image {y+1}/{len(figs)} stored at: {name}_{cds.yaxis.axis_label:.4}{y+1}.{ext}")
 
 
 ################### Main ###############################################
+
+
 def main(**kwargs):
     """Main function that launches the gains plotter"""
     if "options" in kwargs:
@@ -1817,6 +1781,7 @@ def main(**kwargs):
                                 fid=np.where(field_ids == fid)[0][0],
                                 yerr=y_err,
                                 yidx=_y)
+                            glyphs.tags.append(legend)
 
                             fig_glyphs.append(glyphs)
                             fig_legends.append((legend, []))
@@ -2110,10 +2075,10 @@ def main(**kwargs):
     else:
         if options.image_name and html_name:
             save_html(html_name, final_layout)
-            save_static_image(name=options.image_name, figs=all_figures)
+            save_static_image(fname=options.image_name, figs=all_figures)
 
         elif options.image_name:
-            save_static_image(name=options.image_name, figs=all_figures)
+            save_static_image(fname=options.image_name, figs=all_figures)
         elif html_name:
             save_html(html_name, final_layout)
         else:
