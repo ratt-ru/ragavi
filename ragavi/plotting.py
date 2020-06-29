@@ -57,7 +57,9 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
     add_yaxis: :obj:`bool`
         Add y-axis or not
     fix_plotsize: :obj:`bool`
-        Enforce certain dimensions on plot. This is useful for ensuring a plot is not obscure by axes and other things. If activated, plot's dimensions will not be responsive. It utilises fw and fh.
+        Enforce certain dimensions on plot. This is useful for ensuring a plot 
+        is not obscure by axes and other things. If activated, plot's 
+        dimensions will not be responsive. It utilises fw and fh.
 
     Returns
     -------

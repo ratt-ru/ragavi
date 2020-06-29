@@ -68,10 +68,10 @@ def config_root_logger():
 
     # console handler
     c_handler = logging.StreamHandler()
-    f_handler = logging.FileHandler(LOG_FILE)
+    # f_handler = logging.FileHandler(LOG_FILE)
 
     c_handler.setLevel(ROOT_HANDLER_LEVEL)
-    f_handler.setLevel(ROOT_HANDLER_LEVEL)
+    # f_handler.setLevel(ROOT_HANDLER_LEVEL)
 
     f_formatter = logging.Formatter(
         "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
@@ -80,14 +80,14 @@ def config_root_logger():
     c_handler.setFormatter(f_formatter)
     c_handler.addFilter(logger_filter)
 
-    f_handler.setFormatter(f_formatter)
-    f_handler.addFilter(logger_filter)
+    # f_handler.setFormatter(f_formatter)
+    # f_handler.addFilter(logger_filter)
 
     root_logger.addFilter(logger_filter)
     root_logger.addHandler(c_handler)
-    root_logger.addHandler(f_handler)
+    # root_logger.addHandler(f_handler)
 
-    w_logger.addHandler(f_handler)
+    # w_logger.addHandler(f_handler)
 
 config_root_logger()
 sys.excepthook = _handle_uncaught_exceptions

@@ -298,7 +298,8 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
     MS is then grouped by DDID, FIELD_ID & SCAN_NUMBER and fed into 
     :meth:`average_main` which actually performs the averaging.
 
-    This function returns to  :meth:`ragavi.visibilities.get_ms` and is therefore grouped and column select similarly
+    This function returns to  :meth:`ragavi.visibilities.get_ms` and is 
+    therefore grouped and column select similarly
 
 
     Parameters
@@ -329,7 +330,8 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
     Returns
     -------
     x_dataset: :obj:`list`
-        List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split by Spectral windows and grouped depending on the type of plots.
+        List of :obj:`xarray.Dataset` containing averaged MS. The MSs are split
+         by Spectral windows and grouped depending on the type of plots.
 
     """
 
