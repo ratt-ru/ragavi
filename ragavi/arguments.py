@@ -1,7 +1,6 @@
 import logging
 
 from argparse import ArgumentParser, ArgumentError
-from psutil import cpu_count, virtual_memory
 from ragavi import __version__
 
 logger = logging.getLogger(__name__)
@@ -15,34 +14,6 @@ class MyParser(ArgumentParser):
 
     def error(self, message):
         raise ArgumentParserError(message)
-
-
-def resource_defaults():
-    # Value of 1GB
-    _GB_ = 2**30
-
-    # setting memory limit in GB
-    ml = 1
-
-    # get size of 90% of the RAM available in GB
-    mems = virtual_memory()
-
-    logger.info(f"Total RAM size: ~{(mems.total / _GB_):.2f} GB")
-    total_mem = int((mems.total * 0.9) / _GB_)
-
-    # set cores to half the amount available
-    cores = cpu_count()
-    logger.info(f"Total number of Cores: {cores}")
-    cores = cores / 2
-
-    if cores > 10:
-        cores = 10
-
-    # Because memory is assigned per core
-    if (cores * ml) >= total_mem:
-        cores = total_mem // ml
-
-    return cores, ml
 
 
 # for ragavi-vis
@@ -68,12 +39,13 @@ def vis_argparser():
                     #"chan",
                     ]
 
-    cores, ml = resource_defaults()
-
     parser = MyParser(usage="ragavi-vis [options] <value>",
                       description="A Radio Astronomy Visibilities Inspector")
-    parser.add_argument("-v", "--version", action="version",
-                        version=f"ragavi {__version__}")
+
+    infos = parser.add_argument_group("Information")
+
+    infos.add_argument("-v", "--version", action="version",
+                       version=f"ragavi {__version__}")
 
     required = parser.add_argument_group("Required arguments")
     required.add_argument("--ms", dest="mytabs",
@@ -110,7 +82,7 @@ def vis_argparser():
     pconfig.add_argument("--cols", dest="n_cols", type=int, metavar='',
                          help="""Number of columns in grid if iteration is
                          active. Default is 9.""",
-                         default=9)
+                         default=None)
     pconfig.add_argument("-ca", "--colour-axis", dest="colour_axis", type=str,
                          metavar='',
                          choices=iter_choices,
@@ -184,8 +156,7 @@ def vis_argparser():
                           default=None)
     d_config.add_argument("-if", "--include-flagged", dest="flag",
                           action="store_false",
-                          help="Include flagged data in the plot. (Plots both flagged and unflagged data.)",
-                          default=True)
+                          help="""Include flagged data in the plot. (Plots both flagged and unflagged data.)""")
     d_config.add_argument("-s", "--scan", dest="scan", type=str, metavar='',
                           help="Scan Number to select. Default is all.",
                           default=None)
@@ -228,7 +199,7 @@ def vis_argparser():
                           default=None)
     r_config.add_argument("-ml", "--mem-limit", dest="mem_limit",
                           type=str, metavar='',
-                          default=f"{ml}GB",
+                          default=None,
                           help="""Memory limit per core e.g '1GB' or '128MB'.
                          Default is 1GB""")
     r_config.add_argument("-nc", "--num-cores", dest="n_cores", type=int,
@@ -238,7 +209,7 @@ def vis_argparser():
                         value may change depending on the amount of RAM on 
                         this machine to ensure that:
                         num-cores * mem-limit < total RAM available""",
-                          default=cores)
+                          default=None)
     return parser
 
 
