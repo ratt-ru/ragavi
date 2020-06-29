@@ -1,3 +1,9 @@
+0.4.1
+-----
+**ragavi-gains**
+  
+  - Support PDF and postscript static files
+
 0.4.0
 -----
 **general**
