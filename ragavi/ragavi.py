@@ -1505,7 +1505,7 @@ def save_html(name, plot_layout):
     logger.info(f"Rendered HTML: {output}")
 
 
-def save_static_image(fname, figs=None):
+def save_static_image(fname, figs=None, batch_size=16, cmap="viridis"):
     """Save plots in png, ps, pdf, svg format
 
     Parameters
@@ -1517,31 +1517,63 @@ def save_static_image(fname, figs=None):
 
     """
     import matplotlib.pyplot as plt
+    import matplotlib.cm as cmx
+    import matplotlib.colors as colors
 
     logger.debug("Setting up static image")
-    xs = figs[0].renderers[0].data_source.data["x"]
+
+    ants = np.unique([x.data_source.data["antname"][0]
+                      for x in figs[0].renderers]).tolist()
+
+    cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
+    cmap = cm = cmx.get_cmap(cmap)
+    scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
 
     name, ext = fname.split(".")
 
+    plt.close("all")
+
+    fig = plt.figure(figsize=(20, 8), dpi=300)
+    ax = fig.subplots(ncols=len(figs), sharex=True,
+                      subplot_kw=dict(),
+                      gridspec_kw=dict(wspace=0.1))
+
     for y, cds in enumerate(figs):
-        plt.close("all")
-        plt.figsize = [9, 5]
+        handles = []
         for ren in cds.renderers:
             if f"y{y+1}" in ren.data_source.data.keys():
+                # x-axis
+                xs = ren.data_source.data["x"]
+                # y-axis
                 ys = ren.data_source.data[f"y{y+1}"]
-                plt.plot(xs, ys, "o", color=ren.glyph.fill_color,
-                         markersize=1, label=ren.glyph.tags[0])
+                # antenna name
+                label = ren.data_source.data["antname"][0]
 
-        plt.xlabel(cds.select(name="p_x_axis")[0].axis_label)
-        plt.ylabel(cds.yaxis.axis_label)
+                msize = 5 / (xs.size / 2000)
+                if msize > 5:
+                    msize = 5
+                mscale = 10 // msize
 
-        plt.title(cds.select(name="p_title")[0].text)
-        handles, labels = plt.gca().get_legend_handles_labels()
-        by_label = dict(zip(labels, handles))
-        plt.legend(by_label.values(), by_label.keys(),
-                   loc=(1.04, 0), ncol=len(cds.legend), markerscale=5, columnspacing=0.1)
-        plt.savefig(f"{name}_{cds.yaxis.axis_label:.4}{y+1}.{ext}", dpi=200, bbox_inches='tight')
-        logger.info(f"Image {y+1}/{len(figs)} stored at: {name}_{cds.yaxis.axis_label:.4}{y+1}.{ext}")
+                colour = scalarMap.to_rgba(float(ants.index(label)),
+                                           bytes=False)
+                ax[y].plot(xs, ys, "o", color=colour, markersize=msize,
+                           label=label)
+
+        ax[y].set_xlabel(cds.select(name="p_x_axis")[0].axis_label)
+        ax[y].set_ylabel(cds.yaxis.axis_label)
+
+        ax[y].set_title(cds.select(name="p_title")[0].text)
+
+        handle, labels = ax[y].get_legend_handles_labels()
+        handles.extend(handle)
+
+    ax[0].legend(handles, labels,
+                 loc=(0, 1.1), ncol=batch_size, markerscale=mscale,
+                 fontsize=9,
+                 labelspacing=0.3, title="Antenna", columnspacing=1.0)
+
+    fig.savefig(f"{name}.{ext}", bbox_inches='tight')
+    logger.info(f"Image at: {name}.{ext}")
 
 
 ################### Main ###############################################
@@ -1577,6 +1609,8 @@ def main(**kwargs):
 
     if options.logfile:
         vu.update_logfile_name(logger, options.logfile)
+    else:
+        vu.update_logfile_name(logger, "ragavi.log")
 
     tables = [os.path.abspath(tab) for tab in options.mytabs]
 
@@ -2075,10 +2109,12 @@ def main(**kwargs):
     else:
         if options.image_name and html_name:
             save_html(html_name, final_layout)
-            save_static_image(fname=options.image_name, figs=all_figures)
+            save_static_image(fname=options.image_name, figs=all_figures,
+                              batch_size=_BATCH_SIZE_, cmap=options.mycmap)
 
         elif options.image_name:
-            save_static_image(fname=options.image_name, figs=all_figures)
+            save_static_image(fname=options.image_name, figs=all_figures,
+                              batch_size=_BATCH_SIZE_, cmap=options.mycmap)
         elif html_name:
             save_html(html_name, final_layout)
         else:
