@@ -19,7 +19,7 @@ from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import (Button, CheckboxGroup,
                           ColumnDataSource, CustomJS, HoverTool,
                           Legend, LinearAxis, Toolbar, PrintfTickFormatter,
-                          Slider, Scatter, Toggle, Whisker)
+                          Slider, Scatter, Title, Toggle, Whisker)
 
 from bokeh.models.widgets import DataTable, TableColumn, Div, PreText
 from itertools import product
@@ -1233,6 +1233,7 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
     for f in range(1, n_figs):
         # link the x- ranges
         all_figures[f].x_range = fig1.x_range
+
         # link the titles font sizes
         fig1.select(name="p_title")[0].js_link(
             "text_font_size", all_figures[f].select(name="p_title")[0],
@@ -1505,7 +1506,8 @@ def save_html(name, plot_layout):
     logger.info(f"Rendered HTML: {output}")
 
 
-def save_static_image(fname, figs=None, batch_size=16, cmap="viridis"):
+def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
+                      dpi=None):
     """Save plots in png, ps, pdf, svg format
 
     Parameters
@@ -1522,58 +1524,90 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis"):
 
     logger.debug("Setting up static image")
 
-    ants = np.unique([x.data_source.data["antname"][0]
-                      for x in figs[0].renderers]).tolist()
+    name, ext = os.path.splitext(fname)
 
-    cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
-    cmap = cm = cmx.get_cmap(cmap)
-    scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
+    # set the default extension to png
+    if ext == "":
+        ext = ".png"
 
-    name, ext = fname.split(".")
+    if dpi is None:
+        if "png" in ext.lower():
+            dpi = 300
+        else:
+            dpi = 72
 
-    plt.close("all")
+    logger.debug(f"Setting image dpi to: {dpi}")
 
-    fig = plt.figure(figsize=(20, 8), dpi=300)
-    ax = fig.subplots(ncols=len(figs), sharex=True,
-                      subplot_kw=dict(),
-                      gridspec_kw=dict(wspace=0.1))
+    nrows, ncols = figs.shape
 
-    for y, cds in enumerate(figs):
-        handles = []
-        for ren in cds.renderers:
-            if f"y{y+1}" in ren.data_source.data.keys():
-                # x-axis
-                xs = ren.data_source.data["x"]
-                # y-axis
-                ys = ren.data_source.data[f"y{y+1}"]
-                # antenna name
-                label = ren.data_source.data["antname"][0]
+    for x, row in enumerate(figs):
+        plt.close("all")
+        fi = plt.figure(figsize=(20, 8), dpi=dpi)
+        ax = fi.subplots(nrows=1, ncols=ncols, sharex="row",
+                         squeeze=True,
+                         gridspec_kw=dict(wspace=0.2, hspace=0.3))
+        for y, cds in enumerate(row):
 
-                msize = 5 / (xs.size / 2000)
-                if msize > 5:
-                    msize = 5
-                mscale = 10 // msize
+            ants = np.unique([x.data_source.data["antname"][0]
+                              for x in cds.renderers]).tolist()
+            cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
+            cmap = cm = cmx.get_cmap(cmap)
+            scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
 
-                colour = scalarMap.to_rgba(float(ants.index(label)),
-                                           bytes=False)
-                ax[y].plot(xs, ys, "o", color=colour, markersize=msize,
-                           label=label)
+            handles = []
+            for ren in cds.renderers:
+                if f"y{y+1}" in ren.data_source.data.keys():
+                    # x-axis
+                    xs = ren.data_source.data["x"]
 
-        ax[y].set_xlabel(cds.select(name="p_x_axis")[0].axis_label)
-        ax[y].set_ylabel(cds.yaxis.axis_label)
+                    # y-axis
+                    ys = ren.data_source.data[f"y{y+1}"]
+                    # antenna name
+                    label = ren.data_source.data["antname"][0]
 
-        ax[y].set_title(cds.select(name="p_title")[0].text)
+                    # Set marker size
+                    msize = 5 / (xs.size / 2000)
+                    if msize > 4:
+                        msize = 4
 
-        handle, labels = ax[y].get_legend_handles_labels()
-        handles.extend(handle)
+                    # calculate scale of legend marker : marker size
+                    mscale = 10 // msize
 
-    ax[0].legend(handles, labels,
-                 loc=(0, 1.1), ncol=batch_size, markerscale=mscale,
-                 fontsize=9,
-                 labelspacing=0.3, title="Antenna", columnspacing=1.0)
+                    colour = scalarMap.to_rgba(float(ants.index(label)),
+                                               bytes=False)
+                    ax[y].plot(xs, ys, "o", color=colour, markersize=msize,
+                               label=label)
 
-    fig.savefig(f"{name}.{ext}", bbox_inches='tight')
-    logger.info(f"Image at: {name}.{ext}")
+            if isinstance(xs[0], np.datetime64):
+                import matplotlib.dates as mdates
+                ax[y].xaxis.set_major_formatter(
+                    mdates.DateFormatter("%H:%M"))
+
+            ax[y].set_xlabel(cds.select(name="p_x_axis")[0].axis_label)
+            ax[y].set_ylabel(cds.yaxis.axis_label)
+
+            title = [_ for _ in cds.above if isinstance(_, Title)][0].text
+            ax[y].set_title(title)
+
+            handle, labels = ax[y].get_legend_handles_labels()
+            by_label = OrderedDict(zip(labels, handles))
+            handles.extend(handle)
+
+        # Set the uniquelegend labels
+        labels = np.unique(labels).tolist()
+        ax[0].legend(handles, labels,
+                     loc=(0, 1.2), ncol=batch_size, markerscale=mscale,
+                     fontsize=9,
+                     labelspacing=0.3, title="Antenna", columnspacing=1.0)
+
+        fi.suptitle(f"Table: {row[0].tags[0]}", ha="center")
+
+        if x > 0:
+            # there ia more than one table being plotted
+            fname = f"{name}{x}{ext}"
+
+        fi.savefig(fname, bbox_inches='tight')
+        logger.info(f"Image at: {fname}")
 
 
 ################### Main ###############################################
@@ -1590,8 +1624,6 @@ def main(**kwargs):
         ddid = options.ddid
         doplot = options.doplot
         fields = options.fields
-        html_name = options.html_name
-        image_name = options.image_name
         mytabs = options.mytabs
         plotants = options.plotants
         t0 = options.t0
@@ -1616,6 +1648,9 @@ def main(**kwargs):
 
     # parent container of the items in this pot
     final_layout = []
+
+    # capture all the plots from all available tables
+    final_plots = []
 
     for tab in tables:
 
@@ -1700,8 +1735,11 @@ def main(**kwargs):
 
         if doplot == "ap":
             y_axes = ["amplitude", "phase"]
-        else:
+        elif doplot == "ri":
             y_axes = ["real", "imaginary"]
+        elif doplot == "all":
+            y_axes = ["amplitude", "phase", "real", "imaginary"]
+
         if gain == "K":
             y_axes = ["delay"]
 
@@ -1815,7 +1853,6 @@ def main(**kwargs):
                                 fid=np.where(field_ids == fid)[0][0],
                                 yerr=y_err,
                                 yidx=_y)
-                            glyphs.tags.append(legend)
 
                             fig_glyphs.append(glyphs)
                             fig_legends.append((legend, []))
@@ -1888,6 +1925,11 @@ def main(**kwargs):
                 if fig_ebars[_s]:
                     fig.add_layout(fig_ebars[_s])
 
+            # number of data points
+            n_pts = x.size * len(fig.renderers)
+
+            logger.debug(vu.ctext(f"This plot has: {n_pts/1e3} x 1e3 points"))
+
             n_leg_objs = int(np.ceil(len(ant_ids) / _BATCH_SIZE_))
 
             leg_batches = create_legend_batches(n_leg_objs, fig_legends,
@@ -1899,6 +1941,8 @@ def main(**kwargs):
             for i in reversed(range(n_leg_objs)):
                 fig.add_layout(leg_objs[f"leg_{str(i)}"], "above")
                 all_legends.append(leg_objs[f"leg_{str(i)}"])
+
+            fig.tags.append(tab)
 
             all_glyphs.append(fig_glyphs)
             all_ebars.append(fig_ebars)
@@ -2101,29 +2145,46 @@ def main(**kwargs):
         lay = layout([[tname_div], [all_widgets], [plots]],
                      sizing_mode="stretch_width")
         final_layout.append(lay)
+        final_plots.append(all_figures)
 
         logger.info("Table {} done.".format(tab))
+
+    final_plots = np.array(final_plots)
 
     if _NB_RENDER_:
         return final_layout
     else:
-        if options.image_name and html_name:
-            save_html(html_name, final_layout)
-            save_static_image(fname=options.image_name, figs=all_figures,
+        if options.image_name and options.html_name:
+            save_html(options.html_name, final_layout)
+            save_static_image(fname=options.image_name, figs=final_plots,
                               batch_size=_BATCH_SIZE_, cmap=options.mycmap)
 
         elif options.image_name:
-            save_static_image(fname=options.image_name, figs=all_figures,
+            save_static_image(fname=options.image_name, figs=final_plots,
                               batch_size=_BATCH_SIZE_, cmap=options.mycmap)
-        elif html_name:
-            save_html(html_name, final_layout)
         else:
-            t_name = os.path.basename(tables[0])
-            html_name = f"{t_name}_{doplot}"
-            if len(tables) > 1:
-                t_now = datetime.now().strftime("%Y%m%d_%H%M%S")
-                html_name = html_name.replace(t_name, t_now)
+            if options.html_name:
+                html_name = options.html_name
+            else:
+                t_name = os.path.basename(tables[0])
+                html_name = f"{t_name}_{doplot}"
+                if len(tables) > 1:
+                    t_now = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    html_name = html_name.replace(t_name, t_now)
+
             save_html(html_name, final_layout)
+            if n_pts > 30000:
+                html_name += ".png"
+                logger.info(f"> 30k points ({n_pts/1e3} x 1e3) in each plot")
+                logger.info(vu.ctext(
+                    "Also generating static output because the HTML output will be overwhelmingly large and barely interactive"))
+                logger.info(
+                    "Please consider using the --plotname option for only static image output")
+                logger.info(vu.ctext(f"Static file's name set to: {html_name}"))
+
+                save_static_image(fname=html_name, figs=final_plots,
+                                  batch_size=_BATCH_SIZE_, cmap=options.mycmap)
+
         return 0
 
 
