@@ -4,12 +4,11 @@ import json
 import logging
 import os
 
-from collections import namedtuple, OrderedDict
+from collections import namedtuple
 from datetime import datetime
 from itertools import combinations
 from psutil import cpu_count, virtual_memory
 
-import colorcet as cc
 import dask.array as da
 import dask.dataframe as dd
 import daskms as xm
@@ -17,21 +16,17 @@ import datashader as ds
 import numpy as np
 import xarray as xr
 
-from dask import compute, delayed, config as dask_config
+from dask import compute, config as dask_config
 from dask.diagnostics import ProgressBar
-from dask.distributed import Client, LocalCluster
 from daskms.table_schemas import MS_SCHEMA
 
-from bokeh.plotting import figure
-from bokeh.layouts import column, gridplot, row, grid
-from bokeh.io import (output_file, output_notebook, show, save, curdoc)
-from bokeh.models import (ColorBar, ColumnDataSource,  CustomJS,
-                          DatetimeTickFormatter, Div, Grid, ImageRGBA,
+from bokeh.layouts import column, gridplot
+from bokeh.io import (output_file, save)
+from bokeh.models import (ColorBar, ColumnDataSource,
+                          DatetimeTickFormatter, Div, ImageRGBA,
                           LinearColorMapper, FixedTicker,
                           PrintfTickFormatter, Plot, PreText,
-                          Range1d, Text, Title, Toolbar)
-from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
-                                WheelZoomTool, SaveTool)
+                          Text)
 
 import ragavi.utils as vu
 
@@ -327,7 +322,9 @@ class DataCoreProcessor:
     def blackbox(self):
         """Get raw input data and churn out processed x and y data.
 
-        This function incorporates all function in the class to get the desired result. Takes in all inputs from the instance initialising object. It performs:
+        This function incorporates all function in the class to get the
+        desired result. Takes in all inputs from the instance initialising
+        object. It performs:
 
             - xaxis data preparation and processing
             - yaxis data preparation and processing
@@ -335,7 +332,10 @@ class DataCoreProcessor:
         Returns
         -------
         d : :obj:`collections.namedtuple`
-            A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
+            A named tuple containing all processed x-axis data, errors and
+            label, as well as both pairs of y-axis data, their error margins
+            and labels. Items from this tuple can be gotten by using the dot
+            notation.
         """
 
         Data = namedtuple("Data", "x xlabel y ylabel")
@@ -397,7 +397,8 @@ class DataCoreProcessor:
 
 ##################### Plot related functions ###########################
 
-def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
+def gen_image(df, x_min, x_max, y_min, y_max,
+              c_height, c_width,  cat=None, c_labels=None,
               color=None, i_labels=None, ph=PLOT_HEIGHT, pw=PLOT_WIDTH,
               x_axis_type="linear", x_name=None, x=None, xlab=None,
               y_axis_type="linear", y_name=None, ylab=None, title=None,
@@ -441,8 +442,9 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
         if add_cbar:
             fig.frame_width = int(fig.frame_width * 0.98)
             cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size],
-                             labels=i_labels)
-            fig.add_layout(cbar, "right")
+                             labels=c_labels)
+            if add_yaxis:
+                fig.add_layout(cbar, "right")
     else:
         img = tf.shade(agg, cmap=color)
 
@@ -518,12 +520,14 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
                     [f"{i_labels[chunk_attrs.get(i_axis[0])]}"],
                     name="text")
                 i_axis_data = i_labels[chunk_attrs.get(i_axis[0])]
-                h_tool.tooltips.append((f"{i_axis[0].capitalize()}", "@i_axis"))
+                h_tool.tooltips.append((f"{i_axis[0].capitalize()}",
+                                        "@i_axis"))
 
         else:
             # only get the associated ID
-            p_txtt_src.add([f"{i_axis[0].capitalize()}: {chunk_attrs[i_axis[0]]}"],
-                           name="text")
+            p_txtt_src.add(
+                [f"{i_axis[0].capitalize()}: {chunk_attrs[i_axis[0]]}"],
+                name="text")
             i_axis_data = chunk_attrs[i_axis[0]]
             h_tool.tooltips.append((f"{i_axis[0].capitalize()}", "@i_axis"))
 
@@ -615,7 +619,7 @@ def make_cbar(cats, category, cmap=None, labels=None):
     return cbar
 
 
-def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
+def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
             c_height=None, c_width=None, chunk_no=None, color="blue",
             colour_axis=None, i_labels=None, iter_axis=None, ms_name=None,
             ncols=9, nrows=None, plot_height=None, plot_width=None,
@@ -648,7 +652,8 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
     color :  :obj:`str`, :obj:`colormap`, :obj:`itertools.cycler`
 
     xds_table_obj : :obj:`xarray.Dataset`
-        Dataset object containing the columns of the MS. This is passed on in case there are items required from the actual dataset.
+        Dataset object containing the columns of the MS. This is passed on in
+        case there are items required from the actual dataset.
     ms_name : :obj:`str`
         Name or [can include path] to Measurement Set
     x_min: :obj:`float`
@@ -656,7 +661,9 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
 
         Note
         ----
-        This may be difficult to achieve in the case where :obj:`xaxis` is time because time in ``ragavi-vis`` is converted into milliseconds from epoch for ease of plotting by ``bokeh``.
+        This may be difficult to achieve in the case where :obj:`xaxis` is
+        time because time in ``ragavi-vis`` is converted into milliseconds
+        from epoch for ease of plotting by ``bokeh``.
     x_max: :obj:`float`
         Maximum x value to be plotted
     y_min: :obj:`float`
@@ -699,15 +706,15 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         x_axis_type = "linear"
 
     # setting maximum and minimums if they are not user defined
-    if x_min == None:
+    if x_min is None:
         x_min = x.min().data
-    if x_max == None:
+    if x_max is None:
         x_max = x.max().data
 
-    if y_min == None:
+    if y_min is None:
         y_min = y.min().data
 
-    if y_max == None:
+    if y_max is None:
         y_max = y.max().data
 
     logger.info("Calculating x and y Min and Max ranges")
@@ -722,7 +729,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
     logger.info("Done")
 
     # inputs to gen image
-    im_inputs = dict(c_height=c_height, c_width=c_width,
+    im_inputs = dict(c_labels=c_labels, c_height=c_height, c_width=c_width,
                      chunk_no=chunk_no, color=color, i_labels=i_labels,
                      title=title, x=x, x_axis_type=x_axis_type, xlab=xlab,
                      x_name=x.name, y_name=y.name, ylab=ylab,
@@ -752,7 +759,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max,
                           cat=colour_axis, ph=plot_height, pw=plot_width,
-                          add_cbar=False, add_xaxis=add_xaxis,
+                          add_cbar=True, add_xaxis=add_xaxis,
                           add_subtitle=True,
                           add_yaxis=add_yaxis, add_title=False, **im_inputs)
 
@@ -905,7 +912,8 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
            corr_select=None, colour_axis=None, data_col="DATA", ddid=None,
            fid=None, iter_axis=None, scan=None, tbin=None,  where=None,
            x_axis=None):
-    """Get xarray Dataset objects containing Measurement Set columns of the selected data
+    """Get xarray Dataset objects containing Measurement Set columns of the
+    selected data
 
     Parameters
     ----------
@@ -943,7 +951,8 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
     Returns
     -------
     tab_objs: :obj:`list`
-        A list containing the specified table objects as  :obj:`xarray.Dataset`
+        A list containing the specified table objects as
+        :obj:`xarray.Dataset`
     """
     logger.debug("Starting MS acquisition")
 
@@ -1108,8 +1117,9 @@ def create_dask_df(inp, idx):
     """
     Parameters
     ----------
-    inp: :obj:`dict` 
-        A dictionary containing column name as the key, and the dictionary value is the dask array to be associated with the column name.
+    inp: :obj:`dict`
+        A dictionary containing column name as the key, and the dictionary
+        value is the dask array to be associated with the column name.
     ids: :obj:`da.array`
         A dask array to form the index of the resulting dask dataframe
 
@@ -1344,7 +1354,7 @@ def get_colname(inp, data_col=None):
         "uvdistance": "UVW",
         "uvwave": "UVW"
     }
-    if inp != None:
+    if inp is not None:
         col_name = aliases[inp]
     else:
         col_name = None
@@ -1461,7 +1471,6 @@ def main(**kwargs):
     """Main function that launches the visibilities plotter"""
 
     if "options" in kwargs:
-        NB_RENDER = False
         options = kwargs.get("options", None)
         ants = options.ants
         chan = options.chan
@@ -1509,7 +1518,7 @@ def main(**kwargs):
     if options.n_cols:
         n_cols = options.n_cols
     else:
-        n_cols = 9
+        n_cols = 5
 
     # change iteration axis names to actual column names
     colour_axis = validate_axis_inputs(options.colour_axis)
@@ -1545,39 +1554,7 @@ def main(**kwargs):
         ################################################################
         ############## Form valid selection statements #################
 
-        if fields is not None:
-            if '~' in fields or ':' in fields or fields.isdigit():
-                fields = vu.resolve_ranges(fields)
-            elif ',' in fields:
-                # check if all are digits in fields, if not convert field
-                # name to field id and join all the resulting field ids with a
-                # comma
-                fields = ",".join(
-                    [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
-                fields = vu.resolve_ranges(fields)
-            else:
-                fields = str(vu.name_2id(mytab, fields))
-                fields = vu.resolve_ranges(fields)
-
-        if options.scan != None:
-            scan = vu.resolve_ranges(scan)
-        if options.ants != None:
-            ants = vu.resolve_ranges(ants)
-
-        if options.ddid != None:
-            n_ddid = vu.slice_data(ddid)
-            ddid = vu.resolve_ranges(ddid)
-        else:
-            # set data selection to all unless ddid is specified
-            n_ddid = slice(0, None)
-
-        # capture channels or correlations to be selected
-        chan = vu.slice_data(chan)
-
-        ################################################################
-        ################### Iterate over subtables #####################
-
-        if options.corr != None:
+        if options.corr is not None:
             # translate corr labels to indices if need be
             if corr.isalpha() or '-' in corr:
                 if corr in ["diag", "diagonal"]:
@@ -1606,16 +1583,37 @@ def main(**kwargs):
                     sys.exit(-1)
             corr = vu.slice_data(corr)
 
-        # if there are id labels to be gotten, get them
-        if iter_axis == "corr" or colour_axis == "corr":
-            i_labels = vu.get_polarizations(mytab)
-        elif iter_axis == "FIELD_ID" or colour_axis == "FIELD_ID":
-            i_labels = vu.get_fields(mytab).values.tolist()
-        elif (iter_axis in ["antenna", "ANTENNA1", "ANTENNA2", "Baseline"] or
-              colour_axis in ["antenna", "ANTENNA1", "ANTENNA2", "Baseline"]):
-            i_labels = vu.get_antennas(mytab).values.tolist()
+        if fields is not None:
+            if '~' in fields or ':' in fields or fields.isdigit():
+                fields = vu.resolve_ranges(fields)
+            elif ',' in fields:
+                # check if all are digits in fields, if not convert field
+                # name to field id and join all the resulting field ids with a
+                # comma
+                fields = ",".join(
+                    [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
+                fields = vu.resolve_ranges(fields)
+            else:
+                fields = str(vu.name_2id(mytab, fields))
+                fields = vu.resolve_ranges(fields)
+
+        if options.scan is not None:
+            scan = vu.resolve_ranges(scan)
+        if options.ants is not None:
+            ants = vu.resolve_ranges(ants)
+
+        if options.ddid is not None:
+            n_ddid = vu.slice_data(ddid)
+            ddid = vu.resolve_ranges(ddid)
         else:
-            i_labels = None
+            # set data selection to all unless ddid is specified
+            n_ddid = slice(0, None)
+
+        # capture channels or correlations to be selected
+        chan = vu.slice_data(chan)
+
+        ################################################################
+        ################### Iterate over subtables #####################
 
         # open MS perform averaging and select desired fields, scans and spws
         partitions = get_ms(mytab, ants=ants,
@@ -1624,14 +1622,25 @@ def main(**kwargs):
                             data_col=data_column, ddid=ddid, fid=fields,
                             iter_axis=iter_axis, scan=scan, tbin=tbin,
                             where=where, x_axis=xaxis)
-
         if colour_axis:
             if mycmap:
                 mycmap = vu.get_cmap(mycmap, fall_back="glasbey_bw",
                                      src="colorcet")
             else:
                 mycmap = vu.get_cmap("glasbey_bw", src="colorcet")
+
+            # set the colouring axis labels
+            if colour_axis == "corr":
+                c_labels = vu.get_polarizations(mytab)
+            elif colour_axis == "FIELD_ID":
+                c_labels = vu.get_fields(mytab).values.tolist()
+            elif colour_axis in ["antenna", "ANTENNA1", "ANTENNA2",
+                                 "Baseline"]:
+                c_labels = vu.get_antennas(mytab).values.tolist()
+            else:
+                c_labels = None
         else:
+            c_labels = None
             if mycmap:
                 mycmap = vu.get_cmap(mycmap, fall_back="blues",
                                      src="colorcet")
@@ -1653,12 +1662,21 @@ def main(**kwargs):
             if not c_width:
                 c_width = 200
                 logger.info(
-                    "Shrinking canvas width {} for iteration".format(c_width))
+                    f"""Shrinking canvas width {c_width} for iteration""")
             if not c_height:
                 c_height = 200
-                logger.info(
-                    "Shrinking canvas height to {} for iteration".format(c_height))
+                logger.info(f"Shrinking canvas height to {c_height} for iteration")
+
+            if iter_axis == "corr":
+                i_labels = vu.get_polarizations(mytab)
+            elif iter_axis == "FIELD_ID":
+                i_labels = vu.get_fields(mytab).values.tolist()
+            elif iter_axis in ["antenna", "ANTENNA1", "ANTENNA2", "Baseline"]:
+                i_labels = vu.get_antennas(mytab).values.tolist()
+            else:
+                i_labels = None
         else:
+            i_labels = None
             if not c_width:
                 c_width = 1080
             if not c_height:
@@ -1702,7 +1720,7 @@ def main(**kwargs):
                 x=ready.x, xaxis=xaxis, xlab=ready.xlabel,
                 y=ready.y, yaxis=yaxis, ylab=ready.ylabel,
                 c_height=c_height, c_width=c_width, chunk_no=count,
-                color=mycmap, colour_axis=colour_axis,
+                color=mycmap, colour_axis=colour_axis, c_labels=c_labels,
                 i_labels=i_labels, iter_axis=iter_axis,
                 ms_name=mytab, ncols=n_cols, nrows=n_rows,
                 plot_width=pw, plot_height=ph, xds_table_obj=chunk,
@@ -1759,7 +1777,8 @@ def main(**kwargs):
 
         logger.info("Rendered plot to: {}".format(fname))
         logger.info("Specified options:")
-        parsed_opts = {k: v for k, v in options.__dict__.items() if v != None}
+        parsed_opts = {k: v for k, v in options.__dict__.items()
+                       if v is not None}
         parsed_opts = json.dumps(parsed_opts, indent=2, sort_keys=True)
         for _x in parsed_opts.split('\n'):
             logger.info(_x)
