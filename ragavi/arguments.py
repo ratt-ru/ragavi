@@ -280,9 +280,10 @@ def gains_argparser():
 
     pconfig.add_argument("-d", "--doplot", dest="doplot", type=str,
                          metavar='',
-                         choices=["ap", "ri"],
+                         choices=["ap", "ri", "all"],
                          help="""Plot complex values as amplitude & phase 
-                         (ap) or real and imaginary (ri). Defaults to ap.""",
+                         (ap) or real and imaginary (ri) or both (all).
+                          Defaults to ap.""",
                          default="ap")
     pconfig.add_argument("--debug", dest="debug",
                          action="store_true",
