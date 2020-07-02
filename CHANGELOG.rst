@@ -2,7 +2,15 @@
 -----
 **ragavi-gains**
   
-  - Support PDF and postscript static files
+  - Supports all ``matplotlib`` type static outputs
+  - Generate additional static plot for interactive plots with more than 30,000 points
+  - Multiple tables also supported with static plots
+  - Adds option ``all`` to plot all amplitude, phase, real and imaginary plots in a single plot
+
+**ragavi-vis**
+  
+  - Added colour bar to coloured iterated plots
+  
 
 0.4.0
 -----
