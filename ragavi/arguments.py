@@ -1,6 +1,6 @@
 import logging
 
-from argparse import ArgumentParser, ArgumentError
+from argparse import ArgumentParser
 from ragavi import __version__
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,6 @@ def vis_argparser():
 
     iter_choices = ["ant", "antenna", "ant1", "antenna1", "ant2", "antenna2",
                     "bl", "baseline", "corr", "field", "scan", "spw",
-                    #"chan",
                     ]
 
     parser = MyParser(usage="ragavi-vis [options] <value>",
@@ -53,7 +52,8 @@ def vis_argparser():
                           help="MS to plot. Default is None",
                           default=[])
     required.add_argument('-x', "--xaxis", dest="xaxis", type=str, metavar='',
-                          choices=x_choices, help="""X-axis to plot. See https://ragavi.readthedocs.io/en/dev/vis.html#ragavi-vis for the accepted values.""",
+                          choices=x_choices, help="""X-axis to plot. See
+                          https://ragavi.readthedocs.io/en/dev/vis.html#ragavi-vis for the accepted values.""",
                           default=None, required=True)
     required.add_argument("-y", "--yaxis", dest="yaxis", type=str, metavar='',
                           choices=y_choices, help="Y-axis to plot",
@@ -99,9 +99,9 @@ def vis_argparser():
                          default=None)
     pconfig.add_argument("-lf", "--logfile", dest="logfile", type=str,
                          metavar="",
-                         help="""The name of resulting log file (with 
-                         preferred extension) If no file extension is 
-                         provided, a '.log' extension is appended. The 
+                         help="""The name of resulting log file (with
+                         preferred extension) If no file extension is
+                         provided, a '.log' extension is appended. The
                          default log file name is ragavi.log""",
                          default=None)
     pconfig.add_argument("-o", "--htmlname", dest="html_name", type=str,
@@ -156,7 +156,8 @@ def vis_argparser():
                           default=None)
     d_config.add_argument("-if", "--include-flagged", dest="flag",
                           action="store_false",
-                          help="""Include flagged data in the plot. (Plots both flagged and unflagged data.)""")
+                          help="""Include flagged data in the plot (Plots
+                          both flagged and unflagged data.)""")
     d_config.add_argument("-s", "--scan", dest="scan", type=str, metavar='',
                           help="Scan Number to select. Default is all.",
                           default=None)
@@ -205,8 +206,8 @@ def vis_argparser():
     r_config.add_argument("-nc", "--num-cores", dest="n_cores", type=int,
                           metavar='',
                           help="""Number of CPU cores to be used by Dask.
-                        Default is 10 cores. Unless specified, however, this 
-                        value may change depending on the amount of RAM on 
+                        Default is 10 cores. Unless specified, however, this
+                        value may change depending on the amount of RAM on
                         this machine to ensure that:
                         num-cores * mem-limit < total RAM available""",
                           default=None)
@@ -271,17 +272,17 @@ def gains_argparser():
 
     pconfig = parser.add_argument_group("Plot settings")
     pconfig.add_argument("--cmap", dest="mycmap", type=str, metavar='',
-                         help="""Bokeh or Colorcet colour map to use for 
-                         antennas. List of available colour maps can be 
-                        found at: https://docs.bokeh.org/en/latest/docs/reference/palettes.html or 
-                        https://colorcet.holoviz.org/user_guide/index.html .
+                         help="""Bokeh or Colorcet colour map to use for
+                         antennas. List of available colour maps can be
+                        found at: https://docs.bokeh.org/en/latest/docs/reference/palettes.html or
+                        https://colorcet.holoviz.org/user_guide/index.html.
                         Defaults to coolwarm""",
                          default="coolwarm")
 
     pconfig.add_argument("-d", "--doplot", dest="doplot", type=str,
                          metavar='',
                          choices=["ap", "ri", "all"],
-                         help="""Plot complex values as amplitude & phase 
+                         help="""Plot complex values as amplitude & phase
                          (ap) or real and imaginary (ri) or both (all).
                           Defaults to ap.""",
                          default="ap")
@@ -291,34 +292,34 @@ def gains_argparser():
     pconfig.add_argument("-g", "--gaintype", nargs='*', type=str,
                          metavar=' ', dest="gain_types",
                          choices=['B', 'D', 'G', 'K', 'F'],
-                         help="""Type of table(s) to be plotted. Can be 
-                          specified as a single character e.g. "B" if a 
-                          single table has been provided or space 
-                          separated list e.g B D G if multiple tables have 
+                         help="""Type of table(s) to be plotted. Can be
+                          specified as a single character e.g. "B" if a
+                          single table has been provided or space
+                          separated list e.g B D G if multiple tables have
                           been specified. Valid choices are  B D G K & F""",
                          default=[])
     pconfig.add_argument("-kx", "--k-xaxis", dest="kx", type=str, metavar='',
                          choices=["time", "antenna"],
-                         help="""Choose the x-xaxis for the K table. Valid 
+                         help="""Choose the x-xaxis for the K table. Valid
                         choices are: time or antenna. Defaults to time.""",
                          default="time")
     pconfig.add_argument("-lf", "--logfile", dest="logfile", type=str,
                          metavar="",
-                         help="""The name of resulting log file (with 
-                         preferred extension) If no file extension is 
-                         provided, a '.log' extension is appended. The 
+                         help="""The name of resulting log file (with
+                         preferred extension) If no file extension is
+                         provided, a '.log' extension is appended. The
                          default log file name is ragavi.log""",
                          default=None)
     pconfig.add_argument("-o", "--htmlname", dest="html_name", type=str,
                          metavar='',
-                         help="""Name of the resulting HTML file. The '.html' 
+                         help="""Name of the resulting HTML file. The '.html'
                         prefix will be appended automatically.""",
                          default=None)
     pconfig.add_argument("-p", "--plotname", dest="image_name", type=str,
-                         metavar='', help="""Static image name. The suffix of 
-                         this name determines the type of plot. If 
-                         foo.png, the output will be PNG, else if foo.svg, 
-                         the output will be of the SVG format. PDF is also 
+                         metavar='', help="""Static image name. The suffix of
+                         this name determines the type of plot. If
+                         foo.png, the output will be PNG, else if foo.svg,
+                         the output will be of the SVG format. PDF is also
                          accepable""",
                          default=None)
 

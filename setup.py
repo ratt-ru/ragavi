@@ -21,6 +21,7 @@ def requirements():
     with open(os.path.join(build_root, 'requirements.txt')) as f:
         return [pname.strip() for pname in f.readlines()]
 
+
 setup(name='ragavi',
       version=__version__,
       description='Radio Astronomy Gain and Visibility Inspector',

@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
 """
-This is a module to average the main table of Measurement Sets, as well as the spectral window table. It largely borrows and was adapted from the xova application averager, whose code can be found here:
+This is a module to average the main table of Measurement Sets, as well as
+the spectral window table. It largely borrows and was adapted from the xova
+application averager, whose code can be found here:
 https://github.com/ska-sa/xova/blob/22614b64f0dd8caca20db74ec29705711e347fd0/xova/apps/xova/averaging.py
 Commit #d653b38
 
@@ -13,7 +15,6 @@ import daskms as xm
 import numpy as np
 import xarray as xr
 
-from collections import OrderedDict
 from dask.array.reductions import partial_reduce
 from daskms import Dataset
 from itertools import product, combinations
@@ -286,19 +287,18 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
                     columns=None, chan=None, corr=None, data_col=None,
                     group_cols=None, iter_axis=None):
     """ Performs MS averaging.
-
-    Before averaging is performed, data selections is already performed 
-    during the MS  acquisition process. TAQL (if available) is used to 
-    perform selections for FIELD, SPW/DDID & SCAN. This is the first round of 
-    selection. The second round involves selections over channels and 
-    correlations. This is done via a slicer. With the exception of corr 
-    selectino, all the other selections are done before averaging. This is 
+    Before averaging is performed, data selections is already performed
+    during the MS  acquisition process. TAQL (if available) is used to
+    perform selections for FIELD, SPW/DDID & SCAN. This is the first round of
+    selection. The second round involves selections over channels and
+    correlations. This is done via a slicer. With the exception of corr
+    selectino, all the other selections are done before averaging. This is
     done because the averager requires 3-dimensional data.
 
-    MS is then grouped by DDID, FIELD_ID & SCAN_NUMBER and fed into 
+    MS is then grouped by DDID, FIELD_ID & SCAN_NUMBER and fed into
     :meth:`average_main` which actually performs the averaging.
 
-    This function returns to  :meth:`ragavi.visibilities.get_ms` and is 
+    This function returns to  :meth:`ragavi.visibilities.get_ms` and is
     therefore grouped and column select similarly
 
 
@@ -469,7 +469,7 @@ def get_averaged_ms(ms_name, tbin=None, cbin=None, chunks=None, taql_where='',
             subs = subs.chunk(chunks)
             all_grps.append(subs)
 
-     # select a corr
+    # select a corr
     if corr is not None:
         all_grps = [_.sel(corr=corr) for _ in all_grps]
 
@@ -488,7 +488,7 @@ def get_averaged_spws(ms_name, cbin, chan_select=None):
     cbin : :obj:`int`
         Number of channels to be binned together
     chan_select : :obj:`slicer` or :obj:`int`
-        Which channels to select 
+        Which channels to select
 
     Returns
     -------

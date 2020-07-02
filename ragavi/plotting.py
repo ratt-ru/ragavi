@@ -1,12 +1,12 @@
 import logging
 
 from bokeh.models import (BasicTicker, DatetimeAxis, DataRange1d, Grid,
-                          Legend, LinearAxis, LinearScale, LogAxis, LogScale,
-                          Toolbar, Plot, PrintfTickFormatter, Range1d,
-                          Scatter, Text, Title, Whisker)
-from bokeh.models.tools import (BoxEditTool, BoxSelectTool, BoxZoomTool,
-                                EditTool, HoverTool, LassoSelectTool, PanTool,
-                                ResetTool, RangeTool, SaveTool, UndoTool,
+                          LinearAxis, LinearScale, LogAxis, LogScale,
+                          Toolbar, Plot, Range1d,
+                          Title)
+from bokeh.models.tools import (BoxSelectTool, BoxZoomTool,
+                                HoverTool, LassoSelectTool, PanTool,
+                                ResetTool, SaveTool, UndoTool,
                                 WheelZoomTool)
 
 logger = logging.getLogger(__name__)
@@ -57,8 +57,8 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
     add_yaxis: :obj:`bool`
         Add y-axis or not
     fix_plotsize: :obj:`bool`
-        Enforce certain dimensions on plot. This is useful for ensuring a plot 
-        is not obscure by axes and other things. If activated, plot's 
+        Enforce certain dimensions on plot. This is useful for ensuring a plot
+        is not obscure by axes and other things. If activated, plot's
         dimensions will not be responsive. It utilises fw and fh.
 
     Returns
@@ -105,15 +105,12 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
         fw = int(0.98 * pw)
         fh = int(0.93 * ph)
 
-    # percentage increase in axis ranges
-    inc = 1.00
-
     # define the axes ranges
     x_range = DataRange1d(name="p_x_range", only_visible=True)
 
     y_range = DataRange1d(name="p_y_range", only_visible=True)
 
-    if x_min != None and x_max != None and x_name.lower() in ["channel", "frequency"]:
+    if x_min is not None and x_max is not None and x_name.lower() in ["channel", "frequency"]:
         x_range = Range1d(name="p_x_range", start=x_min, end=x_max)
         y_range.only_visible = False
 

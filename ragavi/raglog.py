@@ -1,5 +1,4 @@
 import logging
-import os
 import sys
 import textwrap
 import traceback as tb
@@ -48,12 +47,6 @@ def config_root_logger():
 
     # capture warnings from all modules
     logging.captureWarnings(True)
-
-    try:
-        cols, rows = os.get_terminal_size(0)
-    except:
-        # for python2
-        cols, rows = (100, 100)
 
     # only get data from ragavi modules
     logger_filter = logging.Filter("ragavi")
