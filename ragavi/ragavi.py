@@ -1,27 +1,23 @@
-import glob
 import logging
 import numpy as np
-import re
 import sys
 import os
 
 from collections import OrderedDict, namedtuple
 from datetime import datetime
 
-import dask.array as da
 import daskms as xm
-import xarray as xr
 
-from dask import delayed, compute
-from bokeh.io import (export_png, export_svgs, output_file, output_notebook,
+from dask import compute
+from bokeh.io import (output_file, output_notebook,
                       save, show)
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import (Button, CheckboxGroup,
-                          ColumnDataSource, CustomJS, HoverTool,
-                          Legend, LinearAxis, Toolbar, PrintfTickFormatter,
-                          Slider, Scatter, Toggle, Whisker)
+                          ColumnDataSource, CustomJS,
+                          Legend, LinearAxis, PrintfTickFormatter,
+                          Slider, Scatter, Title, Whisker)
 
-from bokeh.models.widgets import DataTable, TableColumn, Div, PreText
+from bokeh.models.widgets import DataTable, TableColumn, Div
 from itertools import product
 from pyrap.tables import table
 
@@ -45,7 +41,8 @@ logger = logging.getLogger(__name__)
 #################### Define Dataprocessor ##############################
 
 class DataCoreProcessor:
-    """Process gain table data into forms desirable for visualisation. This class is responsible for:
+    """Process gain table data into forms desirable for visualisation. This
+    class is responsible for:
         * x and y data column selection
         * x and y label generation
         * Preparation of x and y data into ColumnDataSource friendly forms
@@ -73,7 +70,8 @@ class DataCoreProcessor:
     fid : :obj:`int`
         Field id being plotted
     kx : :obj:`str`
-        Applicable to delay (K) tables. Determines the x-axis of the plot. Default is time.
+        Applicable to delay (K) tables. Determines the x-axis of the plot.
+        Default is time.
     """
 
     def __init__(self, xds_table_obj, ms_name, gtype, yaxis, chan=None,
@@ -219,7 +217,8 @@ class DataCoreProcessor:
             x-axis data depending  x-axis selected
 
         freq: :obj:`xarray.DataArray` or :obj:`float`
-            Frequency(ies) from which corresponding wavelength will be obtained.
+            Frequency(ies) from which corresponding wavelength will be
+            obtained.
             Note
             ----
                 Only required when xaxis specified is "uvwave"
@@ -245,7 +244,9 @@ class DataCoreProcessor:
         Returns
         -------
         ydata, y_label : :obj:`xarray.DataArray`, :obj:`str`
-                         :attr:`ydata` containing y-axis data depending  y-axis selected and `y_label` which is the label to appear on the y-axis of the plots.
+                         :attr:`ydata` containing y-axis data depending
+                         y-axis selected and `y_label` which is the label to
+                         appear on the y-axis of the plots.
         """
 
         # default data column
@@ -280,7 +281,9 @@ class DataCoreProcessor:
             * Conversion form complex to the required form
             * Data transposition if `yaxis` is frequency or channel
 
-        Data selection and flagging are done by this function itself, however ap and ri conversion are handled by :meth:`ragavi.ragavi.DataCoreProcessor.compute_ydata`
+        Data selection and flagging are done by this function itself, however
+        ap and ri conversion are handled by
+        :meth:`ragavi.ragavi.DataCoreProcessor.compute_ydata`
 
         Parameters
         ----------
@@ -311,9 +314,11 @@ class DataCoreProcessor:
         return y
 
     def blackbox(self):
-        """ Get raw input data and churn out processed data. Takes in all inputs from the instance initialising object
+        """ Get raw input data and churn out processed data. Takes in all
+        inputs from the instance initialising object
 
-        This function incorporates all function in the class to get the desired result. It performs:
+        This function incorporates all function in the class to get the
+        desired result. It performs:
 
             - xaxis data and error data acquisition
             - xaxis data and error preparation and processing
@@ -323,7 +328,10 @@ class DataCoreProcessor:
         Returns
         -------
         d : :obj:`collections.namedtuple`
-            A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
+            A named tuple containing all processed x-axis data, errors and
+            label, as well as both pairs of y-axis data, their error margins
+            and labels. Items from this tuple can be gotten by using the dot
+            notation.
 
         """
         logger.debug(vu.ctext("Blackbox in"))
@@ -365,7 +373,8 @@ class DataCoreProcessor:
         Returns
         -------
         d : :obj:`collections.namedtuple`
-            Named tuple containing x-axis data and x-axis label. Items in the tuple can be accessed by using the dot notation.
+            Named tuple containing x-axis data and x-axis label. Items in the
+            tuple can be accessed by using the dot notation.
         """
         Data = namedtuple("Data", "x x_label")
         xdata, xlabel = self.get_xaxis_data()
@@ -381,7 +390,8 @@ class DataCoreProcessor:
         Returns
         -------
         d : :obj:`collections.namedtuple`
-            Named tuple containing x-axis data and x-axis label. Items in the tuple can be accessed by using the dot notation.
+            Named tuple containing x-axis data and x-axis label. Items in the
+            tuple can be accessed by using the dot notation.
         """
 
         Data = namedtuple("Data", "y y_label y_err")
@@ -403,7 +413,8 @@ class DataCoreProcessor:
 
 def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
               group_cols=None):
-    """ Get xarray Dataset objects containing gain table columns of the selected data
+    """ Get xarray Dataset objects containing gain table columns of the
+    selected data
 
     Parameters
     ----------
@@ -421,7 +432,8 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
     Returns
     -------
     tab_objs: :obj:`list`
-        A list containing :obj:`xarray.Dataset` objects where each item on the list is determined by how the data is grouped
+        A list containing :obj:`xarray.Dataset` objects where each item on
+        the list is determined by how the data is grouped
 
     """
 
@@ -436,11 +448,11 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
                   }
 
     # where is now a list
-    if antenna != None:
+    if antenna is not None:
         where.append("ANTENNA1 IN {}".format(antenna))
-    if fid != None:
+    if fid is not None:
         where.append("FIELD_ID IN {}".format(fid))
-    if spwid != None:
+    if spwid is not None:
         if spwid.isnumeric():
             spwid = int(spwid)
         else:
@@ -664,7 +676,8 @@ def corr_select_callback():
            ncorrs: number of available correlations
            nfields: number of available fields
            nbatches: total number of available batches
-           ax: List containing glyphs for a single plot for all antennas, fields and correlations
+           ax: List containing glyphs for a single plot for all antennas,
+           fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
 
@@ -1043,7 +1056,10 @@ def condense_legend_items(inlist):
 def create_legend_batches(num_leg_objs, li_ax1, batch_size=16):
     """Automates creation of antenna **batches of 16** each unless otherwise.
 
-    This function takes in a long list containing all the generated legend items from the main function's iteration and divides this list into batches, each of size :attr:`batch_size`. The outputs provides the inputs to
+    This function takes in a long list containing all the generated legend
+    items from the main function's iteration and divides this list into
+    batches, each of size :attr:`batch_size`. The outputs provides the inputs
+    to
     :meth:`ragavi.ragavi.create_legend_objs`.
 
 
@@ -1061,8 +1077,10 @@ def create_legend_batches(num_leg_objs, li_ax1, batch_size=16):
     Returns
     -------
     bax1 : :obj:`list`
-           Tuple containing List of lists which each have :attr:`batch_size` number of legend items for each batch.
-           bax1 are batches for figure1 antenna legends, and ax2 batches for figure2 antenna legends
+           Tuple containing List of lists which each have :attr:`batch_size`
+           number of legend items for each batch.
+           bax1 are batches for figure1 antenna legends, and ax2 batches for
+           figure2 antenna legends
 
            e.g bax1 = [[batch0], [batch1], ...,  [batch_numOfBatches]]
     """
@@ -1179,7 +1197,8 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker="circle_x"):
     Returns
     -------
     masked_markers_arr : :obj:`numpy.ndarray`
-        Returns an n-d array of shape :code:`y.shape` containing markers for valid data and :attr:`fmarker` where the data was NaN.
+        Returns an n-d array of shape :code:`y.shape` containing markers for
+        valid data and :attr:`fmarker` where the data was NaN.
     """
 
     # fill an array with the unflagged marker value
@@ -1233,6 +1252,7 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
     for f in range(1, n_figs):
         # link the x- ranges
         all_figures[f].x_range = fig1.x_range
+
         # link the titles font sizes
         fig1.select(name="p_title")[0].js_link(
             "text_font_size", all_figures[f].select(name="p_title")[0],
@@ -1272,10 +1292,11 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
             fig1.renderers[_i].js_link("visible",
                                        all_figures[f].renderers[_i],
                                        "visible")
-            fig1.renderers[_i].glyph.js_link("size",
-                                             all_figures[f].renderers[_i].glyph, "size")
-            fig1.renderers[_i].glyph.js_link("fill_alpha",
-                                             all_figures[f].renderers[_i].glyph, "fill_alpha")
+            fig1.renderers[_i].glyph.js_link(
+                "size", all_figures[f].renderers[_i].glyph, "size")
+            fig1.renderers[_i].glyph.js_link(
+                "fill_alpha", all_figures[f].renderers[_i].glyph,
+                "fill_alpha")
             if fig1_ebars[_i]:
                 fig1_ebars[_i].js_link("visible", all_ebars[f][_i], "visible")
             all_ufsrc.append(shared_cds)
@@ -1358,7 +1379,8 @@ def create_stats_table(stats, yaxes):
     Parameters
     ----------
     stats : :obj:`list`
-        List of lists containing data stats for each iterations from :func:`ragavi.ragavi.stats_display`
+        List of lists containing data stats for each iterations from
+        :func:`ragavi.ragavi.stats_display`
     yaxes : :obj:`list`
         Contains y-axes for the current plot
 
@@ -1405,7 +1427,8 @@ def make_table_name(tab_name):
 def stats_display(tab_name, yaxis, corr, field, f_names=None,
                   flag=True, spwid=None):
     """Display some statistics on the plots.
-    These statistics are derived from a specific correlation and a specified field of the data.
+    These statistics are derived from a specific correlation and a specified
+    field of the data.
 
     Note
     ----
@@ -1418,7 +1441,8 @@ def stats_display(tab_name, yaxis, corr, field, f_names=None,
     f_names : :obj:`list`
         List with all the available field names
     field : :obj:`int`
-        Integer field id of the field being plotted. If a string name was provided, it will be converted within the main function by
+        Integer field id of the field being plotted. If a string name was
+        provided, it will be converted within the main function by
         :meth:`ragavi.vis_utils.name_2id`.
     flag : :obj:`bool`
         Whether to flag data or not
@@ -1505,88 +1529,117 @@ def save_html(name, plot_layout):
     logger.info(f"Rendered HTML: {output}")
 
 
-def save_static_image(name, figs=None):
-    """Save plots in SVG format
-
-    Note
-    ----
-        The number of resulting images depends on `doplot`. By default, this means to objects unless otherwise.
-        For SVG, the python package `selenium`, and node package `phantomjs` are required. More information `Exporting bokeh plots <https://bokeh.pydata.org/en/latest/docs/user_guide/export.html>`_
+def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
+                      dpi=None):
+    """Save plots in png, ps, pdf, svg format
 
     Parameters
     ----------
     name : :obj:`str`
         Desired image name
     figs : :obj:`list`
-         A list containing :obj:`bokeh.plotting.Plot` objects (The figures to be plotted.)
+         A list containing :obj:`bokeh.plotting.Plot` objects (The figures to
+         be plotted.)
 
     """
-    from selenium import webdriver
+    import matplotlib.pyplot as plt
+    import matplotlib.cm as cmx
+    import matplotlib.colors as colors
 
-    logger.debug("Setting up Firefox selenium driver")
-    b_opts = webdriver.FirefoxOptions()
-    # Ensure browser is headless
-    b_opts.headless = True
+    logger.debug("Setting up static image")
 
-    logger.debug(f"Browser headless mode: {b_opts.headless}")
+    name, ext = os.path.splitext(fname)
 
-    driver = webdriver.Firefox(options=b_opts)
+    # set the default extension to png
+    if ext == "":
+        ext = ".png"
 
-    logger.debug("Driver successfully set up")
+    if dpi is None:
+        if "png" in ext.lower():
+            dpi = 300
+        else:
+            dpi = 72
 
-    pren, suffix = name.split('.')
+    logger.debug(f"Setting image dpi to: {dpi}")
 
-    for _i in range(len(figs)):
-        legs = figs[_i].legend
+    nrows, ncols = figs.shape
 
-        for _l in legs:
-            _l.visible = True
+    for x, row in enumerate(figs):
+        plt.close("all")
+        fi = plt.figure(figsize=(20, 8), dpi=dpi)
+        ax = fi.subplots(nrows=1, ncols=ncols, sharex="row",
+                         squeeze=True,
+                         gridspec_kw=dict(wspace=0.2, hspace=0.3))
+        for y, cds in enumerate(row):
 
-        for _r in figs[_i].renderers:
-            _r.visible = True
-            _r.glyph.size = 7
-            if suffix == "svg":
-                if _r.glyph.marker == "circle":
-                    _r.glyph.marker = "square_x"
-                    _r.glyph.line_width = 1
-                    _r.glyph.line_color = "#0f9af0"
+            ants = np.unique([x.data_source.data["antname"][0]
+                              for x in cds.renderers]).tolist()
+            cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
+            cmap = cmx.get_cmap(cmap)
+            scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
 
-        figs[_i].width = 600
-        figs[_i].frame_width = int(0.9 * 600)
-        figs[_i].height = 500
-        figs[_i].frame_height = int(0.9 * 500)
+            handles = []
+            for ren in cds.renderers:
+                if f"y{y+1}" in ren.data_source.data.keys():
+                    # x-axis
+                    xs = ren.data_source.data["x"]
 
-    # some shared options
-    o_opts = dict(filename=f"{pren}.{suffix}",
-                  timeout=30,
-                  webdriver=driver)
+                    # y-axis
+                    ys = ren.data_source.data[f"y{y+1}"]
+                    # antenna name
+                    label = ren.data_source.data["antname"][0]
 
-    logger.info(f"Attempting to save image in format: {suffix}, name:{pren}")
-    if "png" == suffix.lower():
-        figs = row(figs)
-        store = export_png(obj=figs, **o_opts)
+                    # Set marker size
+                    msize = 5 / (xs.size / 2000)
+                    if msize > 4:
+                        msize = 4
 
-    elif "svg" == suffix.lower():
-        # Bokeh SVG doesn't work with circle markers
-        # Issue is here: https://github.com/bokeh/bokeh/issues/8446
-        logger.info(
-            "All circle markers switched to 'square_x' because of SVG issues")
-        for fig in figs:
-            fig.output_backend = "svg"
-        figs = row(figs)
-        store = export_svgs(figs, **o_opts)
+                    # calculate scale of legend marker : marker size
+                    mscale = 10 // msize
 
-    logger.info(f"Done. Image at: {store}")
+                    colour = scalarMap.to_rgba(float(ants.index(label)),
+                                               bytes=False)
+                    ax[y].plot(xs, ys, "o", color=colour, markersize=msize,
+                               label=label)
 
-    logger.debug("Attempting to close browser")
-    driver.close()
+            if isinstance(xs[0], np.datetime64):
+                import matplotlib.dates as mdates
+                ax[y].xaxis.set_major_formatter(
+                    mdates.DateFormatter("%H:%M"))
+
+            ax[y].set_xlabel(cds.select(name="p_x_axis")[0].axis_label)
+            ax[y].set_ylabel(cds.yaxis.axis_label)
+
+            title = [_ for _ in cds.above if isinstance(_, Title)][0].text
+            ax[y].set_title(title)
+
+            handle, labels = ax[y].get_legend_handles_labels()
+            handles.extend(handle)
+
+        # Set the uniquelegend labels
+        labels = np.unique(labels).tolist()
+        ax[0].legend(handles, labels,
+                     loc=(0, 1.2), ncol=batch_size, markerscale=mscale,
+                     fontsize=9,
+                     labelspacing=0.3, title="Antenna", columnspacing=1.0)
+
+        fi.suptitle(f"Table: {row[0].tags[0]}", ha="center")
+
+        if x > 0:
+            # there ia more than one table being plotted
+            fname = f"{name}{x}{ext}"
+
+        fi.savefig(fname, bbox_inches='tight')
+        logger.info(f"Image at: {fname}")
 
 
 ################### Main ###############################################
+
+
 def main(**kwargs):
     """Main function that launches the gains plotter"""
     if "options" in kwargs:
-        NB_RENDER = False
+        _NB_RENDER_ = False
         # capture the parser options
         options = kwargs.get("options", None)
 
@@ -1594,14 +1647,11 @@ def main(**kwargs):
         ddid = options.ddid
         doplot = options.doplot
         fields = options.fields
-        html_name = options.html_name
-        image_name = options.image_name
         mytabs = options.mytabs
         plotants = options.plotants
         t0 = options.t0
         t1 = options.t1
         where = options.where
-        kx = options.kx
 
     if isinstance(options.fields, list):
         fields = ",".join(fields)
@@ -1613,11 +1663,16 @@ def main(**kwargs):
 
     if options.logfile:
         vu.update_logfile_name(logger, options.logfile)
+    else:
+        vu.update_logfile_name(logger, "ragavi.log")
 
     tables = [os.path.abspath(tab) for tab in options.mytabs]
 
     # parent container of the items in this pot
     final_layout = []
+
+    # capture all the plots from all available tables
+    final_plots = []
 
     for tab in tables:
 
@@ -1628,7 +1683,8 @@ def main(**kwargs):
                 fields = vu.resolve_ranges(fields)
             elif ',' in fields:
                 """
-                 convert field name to field id and join all the resulting field ids with a comma
+                 convert field name to field id and join all the resulting
+                 field ids with a comma
                 """
                 fields = ",".join([str(vu.name_2id(tab, x))
                                    if not x.isnumeric() else x
@@ -1702,8 +1758,11 @@ def main(**kwargs):
 
         if doplot == "ap":
             y_axes = ["amplitude", "phase"]
-        else:
+        elif doplot == "ri":
             y_axes = ["real", "imaginary"]
+        elif doplot == "all":
+            y_axes = ["amplitude", "phase", "real", "imaginary"]
+
         if gain == "K":
             y_axes = ["delay"]
 
@@ -1785,7 +1844,7 @@ def main(**kwargs):
                             data = data_obj.act()
                             xaxis = data_obj.xaxis
 
-                            logger.debug(f"Processing flagged data")
+                            logger.debug("Processing flagged data")
                             infl_data = DataCoreProcessor(
                                 sub, tab, gain, fid=fid, yaxis=yaxis,
                                 corr=corr, flag=not _FLAG_DATA_,
@@ -1889,6 +1948,11 @@ def main(**kwargs):
                 if fig_ebars[_s]:
                     fig.add_layout(fig_ebars[_s])
 
+            # number of data points
+            n_pts = x.size * len(fig.renderers)
+
+            logger.debug(vu.ctext(f"This plot has: {n_pts/1e3} x 1e3 points"))
+
             n_leg_objs = int(np.ceil(len(ant_ids) / _BATCH_SIZE_))
 
             leg_batches = create_legend_batches(n_leg_objs, fig_legends,
@@ -1900,6 +1964,8 @@ def main(**kwargs):
             for i in reversed(range(n_leg_objs)):
                 fig.add_layout(leg_objs[f"leg_{str(i)}"], "above")
                 all_legends.append(leg_objs[f"leg_{str(i)}"])
+
+            fig.tags.append(tab)
 
             all_glyphs.append(fig_glyphs)
             all_ebars.append(fig_ebars)
@@ -2102,27 +2168,46 @@ def main(**kwargs):
         lay = layout([[tname_div], [all_widgets], [plots]],
                      sizing_mode="stretch_width")
         final_layout.append(lay)
+        final_plots.append(all_figures)
 
         logger.info("Table {} done.".format(tab))
+
+    final_plots = np.array(final_plots)
 
     if _NB_RENDER_:
         return final_layout
     else:
-        if options.image_name and html_name:
-            save_html(html_name, final_layout)
-            save_static_image(name=options.image_name, figs=all_figures)
+        if options.image_name and options.html_name:
+            save_html(options.html_name, final_layout)
+            save_static_image(fname=options.image_name, figs=final_plots,
+                              batch_size=_BATCH_SIZE_, cmap=options.mycmap)
 
         elif options.image_name:
-            save_static_image(name=options.image_name, figs=all_figures)
-        elif html_name:
-            save_html(html_name, final_layout)
+            save_static_image(fname=options.image_name, figs=final_plots,
+                              batch_size=_BATCH_SIZE_, cmap=options.mycmap)
         else:
-            t_name = os.path.basename(tables[0])
-            html_name = f"{t_name}_{doplot}"
-            if len(tables) > 1:
-                t_now = datetime.now().strftime("%Y%m%d_%H%M%S")
-                html_name = html_name.replace(t_name, t_now)
+            if options.html_name:
+                html_name = options.html_name
+            else:
+                t_name = os.path.basename(tables[0])
+                html_name = f"{t_name}_{doplot}"
+                if len(tables) > 1:
+                    t_now = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    html_name = html_name.replace(t_name, t_now)
+
             save_html(html_name, final_layout)
+            if n_pts > 30000:
+                html_name += ".png"
+                logger.info(f"> 30k points ({n_pts/1e3} x 1e3) in each plot")
+                logger.info(vu.ctext(
+                    "Also generating static output because the HTML output will be overwhelmingly large and barely interactive"))
+                logger.info(
+                    "Please consider using the --plotname option for only static image output")
+                logger.info(vu.ctext(f"Static file's name set to: {html_name}"))
+
+                save_static_image(fname=html_name, figs=final_plots,
+                                  batch_size=_BATCH_SIZE_, cmap=options.mycmap)
+
         return 0
 
 

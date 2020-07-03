@@ -2,9 +2,6 @@
 import logging
 import os
 import re
-import sys
-import textwrap
-import warnings
 
 import dask.array as da
 import numpy as np
@@ -14,7 +11,6 @@ import colorcet as cc
 import xarray as xr
 import daskms as xm
 
-from datetime import datetime
 from time import time
 
 logger = logging.getLogger(__name__)
@@ -132,8 +128,8 @@ def calc_uvdist(uvw):
 
 
 def calc_uvwave(uvw, freq):
-    """Calculate uv distance in wavelength for availed frequency. This 
-    function also calculates the corresponding wavelength. Uses output from 
+    """Calculate uv distance in wavelength for availed frequency. This
+    function also calculates the corresponding wavelength. Uses output from
     :func:`ragavi.vis_utils.calc_uvdist`
 
     Parameters
@@ -202,7 +198,8 @@ def get_antennas(ms_name):
     Returns
     -------
     ant_names : :obj:`xarray.DataArray`
-        A :obj:`xarray.DataArray` containing names for all the antennas available.
+        A :obj:`xarray.DataArray` containing names for all the antennas
+        available.
 
     """
     logger.debug("Getting antenna names")
@@ -247,18 +244,22 @@ def get_frequencies(ms_name, spwid=None, chan=None, cbin=None):
     Parameters
     ----------
     chan : :obj:`slice` or :obj:`numpy.ndarray`
-        A slice object or numpy array to select some or all of the channels. Default is all the channels
+        A slice object or numpy array to select some or all of the channels.
+        Default is all the channels
     cbin: :obj:`int`
-        Number of channels to be binned together. If a value is provided, averaging is assumed to be turned on
+        Number of channels to be binned together. If a value is provided,
+        averaging is assumed to be turned on
     ms_name : :obj:`str`
         Name of MS or table
     spwid : :obj:`int` of :obj:`slice`
-        Spectral window id number. Defaults to 0. If slicer is specified, frequencies from a range of spectral windows will be returned.
+        Spectral window id number. Defaults to 0. If slicer is specified,
+        frequencies from a range of spectral windows will be returned.
 
     Returns
     -------
     frequencies : :obj:`xarray.DataArray`
-        Channel centre frequencies for specified spectral window or all the frequencies for all spectral windows if one is not specified
+        Channel centre frequencies for specified spectral window or all the
+        frequencies for all spectral windows if one is not specified
     """
 
     logger.debug("Gettting Frequencies for selected SPWS and channels")
@@ -333,7 +334,8 @@ def get_polarizations(ms_name):
 
 
 def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
-    """ Get Flag values from the FLAG column. Allow for selections in the channel dimension or the correlation dimension
+    """ Get Flag values from the FLAG column. Allow for selections in the
+    channel dimension or the correlation dimension
 
     Parameters
     ----------
@@ -345,7 +347,8 @@ def get_flags(xds_table_obj, corr=None, chan=slice(0, None)):
     Returns
     -------
     flags : :obj:`xarray.DataArray`
-        Data array containing values from FLAG column selected by correlation if index is available.
+        Data array containing values from FLAG column selected by correlation
+        if index is available.
 
     """
     logger.debug("Getting flags")
@@ -403,12 +406,15 @@ def resolve_ranges(inp):
     Parameters
     ----------
     inp : :obj:`str`
-        A range of values to be constructed. Can be in the form of: "5", "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range), "5:" (from 5 to last)
+        A range of values to be constructed. Can be in the form of: "5",
+        "5,6,7", "5~7" (inclusive range), "5:8" (exclusive range),
+         "5:" (from 5 to last)
 
     Returns
     -------
     res : :obj:`str`
-        Interval string conforming to TAQL sets and intervals as shown in `Casa TAQL Notes <https://casa.nrao.edu/aips2_docs/notes/199/node5.html#TAQL:EXPRESSIONS>`_
+        Interval string conforming to TAQL sets and intervals as shown in
+        `Casa TAQL Notes <https://casa.nrao.edu/aips2_docs/notes/199/node5.html#TAQL:EXPRESSIONS>`_
     """
 
     if '~' in inp:
@@ -425,12 +431,16 @@ def resolve_ranges(inp):
 
 
 def slice_data(inp):
-    """Creates a slicer for an array. To be used to get a data subset such as correlation or channel subsets.
+    """Creates a slicer for an array. To be used to get a data subset such as
+    correlation or channel subsets.
 
     Parameters
     ----------
     inp : :obj:`str`
-        This can be of the form "5", "10~20" (10 to 20 inclusive), "10:21" (same), "10:" (from 10 to end), ":10:2" (0 to 9 inclusive, stepped by 2), "~9:2" (same)
+        This can be of the form "5", "10~20" (10 to 20 inclusive), "10:21"
+        (same),
+        "10:" (from 10 to end), ":10:2" (0 to 9 inclusive, stepped by 2),
+        "~9:2" (same)
 
     Returns
     -------
@@ -491,7 +501,9 @@ def time_convert(xdata):
     so unix_time = MJD - munix
     munix = 3506716800.0 = (40857 * 86400)
 
-    The value 40587 is the number of days between the MJD epoch (1858-11-17) and the Unix epoch (1970-01-01), and 86400 is the number of seconds in a day
+    The value 40587 is the number of days between the MJD epoch (1858-11-17)
+    and the Unix epoch (1970-01-01), and 86400 is the number of seconds in a
+    day
     """
 
     # get first time instance
@@ -543,29 +555,35 @@ def update_log_levels(in_logger, level):
 
 def update_logfile_name(in_logger, new_name):
     """Change the name of the resulting logfile"""
-    parent_logger = in_logger.parent
+    parent_logger = in_logger.root
 
     for handler in parent_logger.handlers:
         if isinstance(handler, logging.FileHandler):
             fh = handler
             break
+        else:
+            fh = None
 
     # append an extension if none is provided
     if os.path.splitext(new_name)[-1] == "":
         new_name += ".log"
 
-    parent_logger.removeHandler(fh)
+    if fh:
+        parent_logger.removeHandler(fh)
 
     new_fh = logging.FileHandler(new_name)
     f_formatter = logging.Formatter(
         "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
         datefmt="%d.%m.%Y@%H:%M:%S")
+    logger_filter = logging.Filter("ragavi")
+
     new_fh.setFormatter(f_formatter)
-    new_fh.setLevel(fh.level)
+    new_fh.setLevel(parent_logger.level)
+    new_fh.addFilter(logger_filter)
 
     parent_logger.addHandler(new_fh)
 
-    logger.debug(f"Logfile changed from {fh.baseFilename} --> {new_name}")
+    logger.debug(f"Logfile changed to: {new_name}")
 
 
 ########################################################################
@@ -651,8 +669,8 @@ linear_colours = ['bgy', 'bgyw', 'kbc', 'blues', 'bmw', 'bmy', 'kgy', 'gray',
 
 
 def get_cmap(cmap, fall_back="coolwarm", src="bokeh"):
-    """Get Hex colors that form a certain cmap. 
-    This function checks for the requested cmap in bokeh.palettes 
+    """Get Hex colors that form a certain cmap.
+    This function checks for the requested cmap in bokeh.palettes
     and colorcet.palettes.
     List of valid names can be found at:
     https: // colorcet.holoviz.org / user_guide / index.html

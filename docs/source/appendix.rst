@@ -13,4 +13,4 @@ Visibilites
 ===========
 .. automodule:: ragavi.visibilities
    :members:
-   :exclude-members: DataCoreProcessor, hv_plotter
+   :exclude-members: DataCoreProcessor, plotter

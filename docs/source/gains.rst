@@ -35,11 +35,10 @@ This will yield an output HTML file, with plots in the order
 | table4   |   0    |    F |
 +----------+--------+------+
 
-Note
-----
-* At least a single field, spectral window and correlation **must** be selected in order for plots to show up.
-* While antenna data can be made visible through clicking its corresponding legend, this behaviour is not linked to the field, SPW, correlation selection checkboxes. Therefore, clicking the legend for a specific antenna will make data from all fields, SPWs and correlation for that antenna visible. As a workaround, data points can be identified using tooltip information
-* Unless **all** the available fields, SPWs and correlations have not been selected, the antenna legends will appear greyed-out. This is because a single legend is attached to multiple data for each of the available categories. Therefore, clicking on legends without meeting the preceeding condition may lead to some awkward results (a toggling effect).
+.. note::
+    * At least a single field, spectral window and correlation **must** be selected in order for plots to show up.
+    * While antenna data can be made visible through clicking its corresponding legend, this behaviour is not linked to the field, SPW, correlation selection checkboxes. Therefore, clicking the legend for a specific antenna will make data from all fields, SPWs and correlation for that antenna visible. As a workaround, data points can be identified using tooltip information
+    * Unless **all** the available fields, SPWs and correlations have not been selected, the antenna legends will appear greyed-out. This is because a single legend is attached to multiple data for each of the available categories. Therefore, clicking on legends without meeting the preceeding condition may lead to some awkward results (a toggling effect).
 
 
 Use in Jupyter Notebooks
@@ -59,32 +58,24 @@ To use ``ragavi-gains`` in a notebook environment, run in a notebook cell
 
 Generating Static (Non-Interactive) Images
 ==========================================
-It is possible to generate PNG and SVG with ``ragavi-gains`` via two methods. The first method involves generating the HTML format first and then using the save tool found in the toolbar to download the plots. This method requires minimal effort although it may be a necessary redundancy to achieve the static image goal. The second method requires some additional setup, which may be slightly more taxing. 
+It is possible to generate png, ps, pdf, svg with ``ragavi-gains`` via two methods. The first method involves generating the HTML format first and then using the save tool found in the toolbar to download the plots. This method requires minimal effort although it may be a necessary redundancy to achieve the static image goal. 
 
-**Step 1**: Install selenium, which can be done via:
+The second method involves supplying the ``--plotname`` argument, including 
+the desired file extension. For example, ``--plotname test.png``. If only 
+this argument is supplied, then only a single static plot is generated. In 
+case of multiple tables, multiple static files will be generated. However, 
+in case one wants both static and interactive plots, both ``--htmlname`` and
+ ``--plotname`` must be supplied.
 
-.. code-block:: bash
-
-    pip install selenium
-
-**Step 2**: Download geckodriver for Firefox web browser, or chromedriver for Google chrome browser, and add it's executable to ``PATH``. Because Ubuntu linux ships with Firefox by default, I will demonstrate geckodriver v0.26.0, which is the latest driver at the time of wringing. The download page is `Geckodriver`_ 
-
-.. code-block:: bash
-
-    mkdir gecko && cd gecko
-
-    wget https://github.com/mozilla/geckodriver/releases/download/v0.26.0/geckodriver-v0.26.0-linux32.tar.gz
-
-    tar -xvzf geckodriver-v0.26.0-linux32.tar.gz
-
-    chmod +x geckodriver
-
-    export PATH=$PATH:/absolute/path/to/gecko
-
-With this setup, one can now supply to ``ragavi-gains`` a ``--plotname`` value, which will result in the generation of PNG/SVG files, depending on the file extension provided. If, for example, the plotname provided is ``foo.png``, ``ragavi-gains`` will assume the desired output should be PNG. The same applies for SVG. If both ``--plotname`` and ``--htmlname`` are provided, ``ragavi`` will generate both static (PNG) and interactive (HTML) outputs simulaneously.
-
-It is necessary to point out that by default, ``ragavi`` uses the canvas image backend for interactive plots, due to performance issues associated with SVG image backend as stated in the Bokeh `docs`_.
+By default, ``ragavi`` uses the canvas image backend for interactive plots, due to performance issues associated with SVG image backend as stated in the Bokeh `docs`_.
 The default plots generated are always in HTML format.
+
+.. warning::
+    If the gain tables supplied contain more than 30,000 points, interactive plots become extremely large and barely interactive (and unresponsive).
+
+    In an attempt to overcome this, ``ragavi-gains`` generates static plots, 
+    in addition to interactive plots, in this case. It is advisable to 
+    **avoid opening the large (upto hundreds of MBs) HTML as they may cause the browser to hang**. Instead, **inspect the static plot first** and **then make an interactive plot containing the antenna / field / corr etc. of your interest** by using the selection arguments provided.
 
 
 Help
@@ -131,7 +122,7 @@ The full help output for ``ragavi-gains`` is:
                           https://colorcet.holoviz.org/user_guide/index.html .
                           Defaults to coolwarm
     -d , --doplot         Plot complex values as amplitude & phase (ap) or real
-                          and imaginary (ri). Defaults to ap.
+                          and imaginary (ri) or both (all). Defaults to ap.
     --debug               Enable debug messages
     -g [  [  ...]], --gaintype [  [  ...]]
                           Type of table(s) to be plotted. Can be specified as a
@@ -151,7 +142,44 @@ The full help output for ``ragavi-gains`` is:
                           the type of plot. If foo.png, the output will be PNG,
                           else if foo.svg, the output will be of the SVG format.
 
+Examples
+========
+This subsection demonstrates the kind of plots that are generated
 
+Interactive plots
+-----------------
+
+Command:
+:code:`ragavi-gains --table test.B0 --doplot ap --htmlname test`
+
+.. image:: examples/gplot_html.png
+    :width: 800
+    :alt: Interactive plot with ``--doplot ap``
+
+Command:
+:code:`ragavi-gains --table test.B0 --doplot all --htmlname test`
+
+.. image:: examples/gplot_all_html.png
+    :width: 800
+    :alt: Interactive plot with ``--doplot all``
+
+
+Static plots
+------------
+
+Command:
+:code:`ragavi-gains --table test.B0 --doplot ap --plotname test.png`
+
+.. image:: examples/gplot.png
+    :width: 800
+    :alt: Static plot with ``--doplot ap`` and ``--plotname test.png``
+
+Command:
+:code:`ragavi-gains --table test.B0 --doplot all --plotname test.png`
+
+.. image:: examples/gplot_all.png
+    :width: 800
+    :alt: Static plot with ``--doplot all`` and ``--plotname test.png``
 
 Useful function
 ===============

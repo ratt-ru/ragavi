@@ -2,12 +2,13 @@
 import sys
 import json
 import logging
+import os
 
-from collections import namedtuple, OrderedDict
+from collections import namedtuple
 from datetime import datetime
 from itertools import combinations
+from psutil import cpu_count, virtual_memory
 
-import colorcet as cc
 import dask.array as da
 import dask.dataframe as dd
 import daskms as xm
@@ -15,28 +16,22 @@ import datashader as ds
 import numpy as np
 import xarray as xr
 
-from dask import compute, delayed, config as dask_config
+from dask import compute, config as dask_config
 from dask.diagnostics import ProgressBar
-from dask.distributed import Client, LocalCluster
 from daskms.table_schemas import MS_SCHEMA
 
-from bokeh.plotting import figure
-from bokeh.layouts import column, gridplot, row, grid
-from bokeh.io import (output_file, output_notebook, show, save, curdoc)
-from bokeh.models import (BasicTicker, ColorBar, ColumnDataSource,  CustomJS,
-                          DatetimeTickFormatter, Div, Grid, ImageRGBA,
-                          LinearAxis, LinearColorMapper,
+from bokeh.layouts import column, gridplot
+from bokeh.io import (output_file, save)
+from bokeh.models import (ColorBar, ColumnDataSource,
+                          DatetimeTickFormatter, Div, ImageRGBA,
+                          LinearColorMapper, FixedTicker,
                           PrintfTickFormatter, Plot, PreText,
-                          Range1d, Text, Title, Toolbar)
-from bokeh.models.tools import (BoxZoomTool, HoverTool, ResetTool, PanTool,
-                                WheelZoomTool, SaveTool)
-
+                          Text)
 
 import ragavi.utils as vu
 
 from ragavi.averaging import get_averaged_ms
 from ragavi.plotting import create_bk_fig, add_axis
-
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +39,7 @@ time_wrapper = vu.time_wrapper
 
 # some variables
 PLOT_WIDTH = int(1920 * 0.95)
-PLOT_HEIGHT = int(1080 * 0.85)
+PLOT_HEIGHT = int(1080 * 0.84)
 
 
 class DataCoreProcessor:
@@ -258,7 +253,8 @@ class DataCoreProcessor:
 
             logger.debug("Flags ready. Ensuring there are inactive flags")
 
-            flag_all = da.all(flags).compute()
+            # flag_row is true if an entire row is flagged
+            flag_all = da.all(self.xds_table_obj.FLAG_ROW.data).compute()
 
             logger.debug(f"All selected data flagged? {flag_all}")
 
@@ -266,7 +262,7 @@ class DataCoreProcessor:
                 logger.warning(
                     "All data appears to be flagged. Unable to continue.")
                 logger.warning(
-                    "Please use -nf or --no-flagged to deactivate flagging if you still wish to generate this plot.")
+                    "Please use -if or --include-flagged to deactivate flagging if you still wish to generate this plot.")
                 logger.warning(" Exiting.")
                 sys.exit(0)
 
@@ -326,7 +322,9 @@ class DataCoreProcessor:
     def blackbox(self):
         """Get raw input data and churn out processed x and y data.
 
-        This function incorporates all function in the class to get the desired result. Takes in all inputs from the instance initialising object. It performs:
+        This function incorporates all function in the class to get the
+        desired result. Takes in all inputs from the instance initialising
+        object. It performs:
 
             - xaxis data preparation and processing
             - yaxis data preparation and processing
@@ -334,7 +332,10 @@ class DataCoreProcessor:
         Returns
         -------
         d : :obj:`collections.namedtuple`
-            A named tuple containing all processed x-axis data, errors and label, as well as both pairs of y-axis data, their error margins and labels. Items from this tuple can be gotten by using the dot notation.
+            A named tuple containing all processed x-axis data, errors and
+            label, as well as both pairs of y-axis data, their error margins
+            and labels. Items from this tuple can be gotten by using the dot
+            notation.
         """
 
         Data = namedtuple("Data", "x xlabel y ylabel")
@@ -396,7 +397,8 @@ class DataCoreProcessor:
 
 ##################### Plot related functions ###########################
 
-def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
+def gen_image(df, x_min, x_max, y_min, y_max,
+              c_height, c_width,  cat=None, c_labels=None,
               color=None, i_labels=None, ph=PLOT_HEIGHT, pw=PLOT_WIDTH,
               x_axis_type="linear", x_name=None, x=None, xlab=None,
               y_axis_type="linear", y_name=None, ylab=None, title=None,
@@ -438,8 +440,11 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
     if cat:
         img = tf.shade(agg, color_key=color[:agg[cat].size])
         if add_cbar:
-            cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size])
-            fig.add_layout(cbar, "right")
+            fig.frame_width = int(fig.frame_width * 0.98)
+            cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size],
+                             labels=c_labels)
+            if add_yaxis:
+                fig.add_layout(cbar, "right")
     else:
         img = tf.shade(agg, cmap=color)
 
@@ -515,12 +520,14 @@ def gen_image(df, x_min, x_max, y_min, y_max,  c_height, c_width,  cat=None,
                     [f"{i_labels[chunk_attrs.get(i_axis[0])]}"],
                     name="text")
                 i_axis_data = i_labels[chunk_attrs.get(i_axis[0])]
-                h_tool.tooltips.append((f"{i_axis[0].capitalize()}", "@i_axis"))
+                h_tool.tooltips.append((f"{i_axis[0].capitalize()}",
+                                        "@i_axis"))
 
         else:
             # only get the associated ID
-            p_txtt_src.add([f"{i_axis[0].capitalize()}: {chunk_attrs[i_axis[0]]}"],
-                           name="text")
+            p_txtt_src.add(
+                [f"{i_axis[0].capitalize()}: {chunk_attrs[i_axis[0]]}"],
+                name="text")
             i_axis_data = chunk_attrs[i_axis[0]]
             h_tool.tooltips.append((f"{i_axis[0].capitalize()}", "@i_axis"))
 
@@ -555,7 +562,7 @@ def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
     return agg
 
 
-def make_cbar(cats, category, cmap=None):
+def make_cbar(cats, category, cmap=None, labels=None):
     """Initiate a colorbar for categorical data
     Parameters
     ----------
@@ -565,17 +572,20 @@ def make_cbar(cats, category, cmap=None):
         Name of the categorizing axis
     cmap: :obj:`matplotlib.cmap`
         Matplotlib colormap
-
+    labels: :obj:`list`
+        Labels containing names for the iterated stuff
     Returns
     -------
     cbar: :obj:`bokeh.models`
         Colorbar instance
     """
-    lo = np.min(cats)
-    hi = np.max(cats)
-    cats = cats.astype(str)
+    cats = cats.tolist()
+
+    lo = min(cats)
+    hi = max(cats)
+    ncats = len(cats)
+
     category = category.capitalize()
-    ncats = cats.size
 
     # format the cateogry name for cbar title
     if "_" in category:
@@ -584,10 +594,14 @@ def make_cbar(cats, category, cmap=None):
         else:
             category = category.split("_")[0]
 
+    if labels is not None:
+        label_orides = {k: v for k, v in zip(cats, labels)}
+    else:
+        label_orides = {}
+
     # not using categorical because we'll need to define our own colors
     cmapper = LinearColorMapper(palette=cmap[:ncats], low=lo, high=hi)
-    b_ticker = BasicTicker(desired_num_ticks=ncats,
-                           num_minor_ticks=0)
+    b_ticker = FixedTicker(ticks=cats, num_minor_ticks=None)
 
     logger.debug("Creating colour bar")
 
@@ -596,14 +610,16 @@ def make_cbar(cats, category, cmap=None):
                     location=(0, 0), title=category, title_standoff=5,
                     title_text_font_size="10pt", title_text_align="left",
                     title_text_font="monospace", minor_tick_line_width=0,
-                    title_text_font_style="normal")
+                    title_text_font_style="normal",
+                    major_label_text_font_style="bold",
+                    major_label_overrides=label_orides)
 
     logger.debug("Done")
 
     return cbar
 
 
-def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
+def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
             c_height=None, c_width=None, chunk_no=None, color="blue",
             colour_axis=None, i_labels=None, iter_axis=None, ms_name=None,
             ncols=9, nrows=None, plot_height=None, plot_width=None,
@@ -636,7 +652,8 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
     color :  :obj:`str`, :obj:`colormap`, :obj:`itertools.cycler`
 
     xds_table_obj : :obj:`xarray.Dataset`
-        Dataset object containing the columns of the MS. This is passed on in case there are items required from the actual dataset.
+        Dataset object containing the columns of the MS. This is passed on in
+        case there are items required from the actual dataset.
     ms_name : :obj:`str`
         Name or [can include path] to Measurement Set
     x_min: :obj:`float`
@@ -644,7 +661,9 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
 
         Note
         ----
-        This may be difficult to achieve in the case where :obj:`xaxis` is time because time in ``ragavi-vis`` is converted into milliseconds from epoch for ease of plotting by ``bokeh``.
+        This may be difficult to achieve in the case where :obj:`xaxis` is
+        time because time in ``ragavi-vis`` is converted into milliseconds
+        from epoch for ease of plotting by ``bokeh``.
     x_max: :obj:`float`
         Maximum x value to be plotted
     y_min: :obj:`float`
@@ -687,36 +706,35 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         x_axis_type = "linear"
 
     # setting maximum and minimums if they are not user defined
-    if x_min == None:
+    if x_min is None:
         x_min = x.min().data
-
-    if x_max == None:
+    if x_max is None:
         x_max = x.max().data
 
-    if x_min == x_max:
-        x_max += 1
-
-    if y_min == None:
+    if y_min is None:
         y_min = y.min().data
 
-    if y_max == None:
+    if y_max is None:
         y_max = y.max().data
-
-    if y_min == y_max:
-        y_max += 1
 
     logger.info("Calculating x and y Min and Max ranges")
     with ProgressBar():
         x_min, x_max, y_min, y_max = compute(x_min, x_max, y_min, y_max)
+
+    if x_min == x_max:
+        x_max += 1
+    if y_min == y_max:
+        y_max += 1
+
     logger.info("Done")
 
     # inputs to gen image
-    im_inputs = dict(c_height=c_height, c_width=c_width,
+    im_inputs = dict(c_labels=c_labels, c_height=c_height, c_width=c_width,
                      chunk_no=chunk_no, color=color, i_labels=i_labels,
                      title=title, x=x, x_axis_type=x_axis_type, xlab=xlab,
                      x_name=x.name, y_name=y.name, ylab=ylab,
                      xds_table_obj=xds_table_obj, fix_plotsize=True,
-                     add_grid=True, add_subtitle=True)
+                     add_grid=True)
 
     if iter_axis and colour_axis:
         # NOTE!!!
@@ -741,7 +759,8 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max,
                           cat=colour_axis, ph=plot_height, pw=plot_width,
-                          add_cbar=False, add_xaxis=add_xaxis,
+                          add_cbar=True, add_xaxis=add_xaxis,
+                          add_subtitle=True,
                           add_yaxis=add_yaxis, add_title=False, **im_inputs)
 
     elif iter_axis:
@@ -765,7 +784,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
                           ph=plot_height, pw=plot_width, add_cbar=False,
                           add_xaxis=add_xaxis, add_yaxis=add_yaxis,
-                          add_title=False, **im_inputs)
+                          add_title=False, add_subtitle=True, **im_inputs)
 
     elif colour_axis:
         title += f" Colourised By: {colour_axis.capitalize()}"
@@ -777,7 +796,11 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=colour_axis,
                           ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=True,
                           add_xaxis=True, add_yaxis=True, add_title=True,
-                          **im_inputs)
+                          add_subtitle=False, **im_inputs)
+        # allow resizing
+        image.frame_width = None
+        image.frame_height = None
+        image.select(name="p_title")[0].text = title
 
     else:
         xy_df = create_df(x, y, iter_data=None)[[x.name, y.name]]
@@ -787,6 +810,9 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='',
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
                           ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=False,
                           add_xaxis=True, add_yaxis=True, **im_inputs)
+        # allow resizing
+        image.frame_width = None
+        image.frame_height = None
 
     return image, title
 
@@ -812,7 +838,7 @@ def antenna_iter(ms_name, columns, **kwargs):
 
     taql_where = kwargs.get("taql_where", "")
     table_schema = kwargs.get("table_schema", None)
-    chunks = kwargs.get("chunks", 1000)
+    chunks = kwargs.get("chunks", 5000)
 
     # Shall be prepended to the later antenna selection
     if taql_where:
@@ -886,7 +912,8 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
            corr_select=None, colour_axis=None, data_col="DATA", ddid=None,
            fid=None, iter_axis=None, scan=None, tbin=None,  where=None,
            x_axis=None):
-    """Get xarray Dataset objects containing Measurement Set columns of the selected data
+    """Get xarray Dataset objects containing Measurement Set columns of the
+    selected data
 
     Parameters
     ----------
@@ -924,7 +951,8 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
     Returns
     -------
     tab_objs: :obj:`list`
-        A list containing the specified table objects as  :obj:`xarray.Dataset`
+        A list containing the specified table objects as
+        :obj:`xarray.Dataset`
     """
     logger.debug("Starting MS acquisition")
 
@@ -933,7 +961,7 @@ def get_ms(ms_name,  ants=None, cbin=None, chan_select=None, chunks=None,
     # Always group by DDID
     group_cols.update({"DATA_DESC_ID"})
 
-    sel_cols = {"FLAG"}
+    sel_cols = {"FLAG", "FLAG_ROW"}
 
     if iter_axis and iter_axis not in ["corr", "antenna"]:
         if iter_axis == "Baseline":
@@ -1089,8 +1117,9 @@ def create_dask_df(inp, idx):
     """
     Parameters
     ----------
-    inp: :obj:`dict` 
-        A dictionary containing column name as the key, and the dictionary value is the dask array to be associated with the column name.
+    inp: :obj:`dict`
+        A dictionary containing column name as the key, and the dictionary
+        value is the dask array to be associated with the column name.
     ids: :obj:`da.array`
         A dask array to form the index of the resulting dask dataframe
 
@@ -1174,7 +1203,8 @@ def create_categorical_df(it_axis, x_data, y_data, xds_table_obj):
 
 
 def create_df(x, y, iter_data=None):
-    """Create a dask dataframe from input x, y and iterate columns if
+    """
+    Create a dask dataframe from input x, y and iterate columns if
     available. This function flattens all the data into 1-D Arrays
 
     Parameters
@@ -1324,7 +1354,7 @@ def get_colname(inp, data_col=None):
         "uvdistance": "UVW",
         "uvwave": "UVW"
     }
-    if inp != None:
+    if inp is not None:
         col_name = aliases[inp]
     else:
         col_name = None
@@ -1378,6 +1408,7 @@ def validate_axis_inputs(inp):
     return oup
 
 
+######################### Random functions #############################
 def link_grid_plots(plot_list):
     """Link all the plots in the X and Y axes
 
@@ -1405,13 +1436,41 @@ def link_grid_plots(plot_list):
     return 0
 
 
+def resource_defaults():
+    # Value of 1GB
+    _GB_ = 2**30
+
+    # setting memory limit in GB
+    ml = 1
+
+    # get size of 90% of the RAM available in GB
+    mems = virtual_memory()
+
+    logger.info(f"Total RAM size: ~{(mems.total / _GB_):.2f} GB")
+    total_mem = int((mems.total * 0.9) / _GB_)
+
+    # set cores to half the amount available
+    cores = cpu_count()
+    logger.info(f"Total number of Cores: {cores}")
+    cores = cores / 2
+
+    if cores > 10:
+        cores = 10
+
+    # Because memory is assigned per core
+    if (cores * ml) >= total_mem:
+        cores = int(total_mem // ml)
+
+    ml = f"{ml}GB"
+    return cores, ml
+
+
 ############################## Main Function ###########################
 @time_wrapper
 def main(**kwargs):
     """Main function that launches the visibilities plotter"""
 
     if "options" in kwargs:
-        NB_RENDER = False
         options = kwargs.get("options", None)
         ants = options.ants
         chan = options.chan
@@ -1426,9 +1485,6 @@ def main(**kwargs):
         html_name = options.html_name
         mycmap = options.mycmap
         mytabs = options.mytabs
-        mem_limit = options.mem_limit
-        n_cols = options.n_cols
-        n_cores = options.n_cores
         scan = options.scan
         where = options.where  # taql where
         xmin = options.xmin
@@ -1438,13 +1494,31 @@ def main(**kwargs):
         tbin = options.tbin
         cbin = options.cbin
 
+    # Set the debug level
     if options.debug:
         vu.update_log_levels(logger, "debug")
     else:
         vu.update_log_levels(logger, "info")
 
+    # Default logfile name is ragavi.log
     if options.logfile:
         vu.update_logfile_name(logger, options.logfile)
+    else:
+        vu.update_logfile_name(logger, "ragavi.log")
+
+    # set defaults unless otherwise
+    n_cores, mem_limit = resource_defaults()
+
+    if options.n_cores:
+        n_cores = options.n_cores
+
+    if options.mem_limit:
+        mem_limit = options.mem_limit
+
+    if options.n_cols:
+        n_cols = options.n_cols
+    else:
+        n_cols = 5
 
     # change iteration axis names to actual column names
     colour_axis = validate_axis_inputs(options.colour_axis)
@@ -1480,39 +1554,7 @@ def main(**kwargs):
         ################################################################
         ############## Form valid selection statements #################
 
-        if fields is not None:
-            if '~' in fields or ':' in fields or fields.isdigit():
-                fields = vu.resolve_ranges(fields)
-            elif ',' in fields:
-                # check if all are digits in fields, if not convert field
-                # name to field id and join all the resulting field ids with a
-                # comma
-                fields = ",".join(
-                    [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
-                fields = vu.resolve_ranges(fields)
-            else:
-                fields = str(vu.name_2id(mytab, fields))
-                fields = vu.resolve_ranges(fields)
-
-        if options.scan != None:
-            scan = vu.resolve_ranges(scan)
-        if options.ants != None:
-            ants = vu.resolve_ranges(ants)
-
-        if options.ddid != None:
-            n_ddid = vu.slice_data(ddid)
-            ddid = vu.resolve_ranges(ddid)
-        else:
-            # set data selection to all unless ddid is specified
-            n_ddid = slice(0, None)
-
-        # capture channels or correlations to be selected
-        chan = vu.slice_data(chan)
-
-        ################################################################
-        ################### Iterate over subtables #####################
-
-        if options.corr != None:
+        if options.corr is not None:
             # translate corr labels to indices if need be
             if corr.isalpha() or '-' in corr:
                 if corr in ["diag", "diagonal"]:
@@ -1541,15 +1583,37 @@ def main(**kwargs):
                     sys.exit(-1)
             corr = vu.slice_data(corr)
 
-        # if there are id labels to be gotten, get them
-        if iter_axis == "corr":
-            i_labels = vu.get_polarizations(mytab)
-        elif iter_axis == "FIELD_ID":
-            i_labels = vu.get_fields(mytab).values.tolist()
-        elif iter_axis in ["antenna", "ANTENNA1", "ANTENNA2", "Baseline"]:
-            i_labels = vu.get_antennas(mytab).values.tolist()
+        if fields is not None:
+            if '~' in fields or ':' in fields or fields.isdigit():
+                fields = vu.resolve_ranges(fields)
+            elif ',' in fields:
+                # check if all are digits in fields, if not convert field
+                # name to field id and join all the resulting field ids with a
+                # comma
+                fields = ",".join(
+                    [str(vu.name_2id(mytab, x)) if not x.isdigit() else x for x in fields.split(',')])
+                fields = vu.resolve_ranges(fields)
+            else:
+                fields = str(vu.name_2id(mytab, fields))
+                fields = vu.resolve_ranges(fields)
+
+        if options.scan is not None:
+            scan = vu.resolve_ranges(scan)
+        if options.ants is not None:
+            ants = vu.resolve_ranges(ants)
+
+        if options.ddid is not None:
+            n_ddid = vu.slice_data(ddid)
+            ddid = vu.resolve_ranges(ddid)
         else:
-            i_labels = None
+            # set data selection to all unless ddid is specified
+            n_ddid = slice(0, None)
+
+        # capture channels or correlations to be selected
+        chan = vu.slice_data(chan)
+
+        ################################################################
+        ################### Iterate over subtables #####################
 
         # open MS perform averaging and select desired fields, scans and spws
         partitions = get_ms(mytab, ants=ants,
@@ -1558,14 +1622,25 @@ def main(**kwargs):
                             data_col=data_column, ddid=ddid, fid=fields,
                             iter_axis=iter_axis, scan=scan, tbin=tbin,
                             where=where, x_axis=xaxis)
-
         if colour_axis:
             if mycmap:
                 mycmap = vu.get_cmap(mycmap, fall_back="glasbey_bw",
                                      src="colorcet")
             else:
                 mycmap = vu.get_cmap("glasbey_bw", src="colorcet")
+
+            # set the colouring axis labels
+            if colour_axis == "corr":
+                c_labels = vu.get_polarizations(mytab)
+            elif colour_axis == "FIELD_ID":
+                c_labels = vu.get_fields(mytab).values.tolist()
+            elif colour_axis in ["antenna", "ANTENNA1", "ANTENNA2",
+                                 "Baseline"]:
+                c_labels = vu.get_antennas(mytab).values.tolist()
+            else:
+                c_labels = None
         else:
+            c_labels = None
             if mycmap:
                 mycmap = vu.get_cmap(mycmap, fall_back="blues",
                                      src="colorcet")
@@ -1587,12 +1662,21 @@ def main(**kwargs):
             if not c_width:
                 c_width = 200
                 logger.info(
-                    "Shrinking canvas width {} for iteration".format(c_width))
+                    f"""Shrinking canvas width {c_width} for iteration""")
             if not c_height:
                 c_height = 200
-                logger.info(
-                    "Shrinking canvas height to {} for iteration".format(c_height))
+                logger.info(f"Shrinking canvas height to {c_height} for iteration")
+
+            if iter_axis == "corr":
+                i_labels = vu.get_polarizations(mytab)
+            elif iter_axis == "FIELD_ID":
+                i_labels = vu.get_fields(mytab).values.tolist()
+            elif iter_axis in ["antenna", "ANTENNA1", "ANTENNA2", "Baseline"]:
+                i_labels = vu.get_antennas(mytab).values.tolist()
+            else:
+                i_labels = None
         else:
+            i_labels = None
             if not c_width:
                 c_width = 1080
             if not c_height:
@@ -1636,7 +1720,7 @@ def main(**kwargs):
                 x=ready.x, xaxis=xaxis, xlab=ready.xlabel,
                 y=ready.y, yaxis=yaxis, ylab=ready.ylabel,
                 c_height=c_height, c_width=c_width, chunk_no=count,
-                color=mycmap, colour_axis=colour_axis,
+                color=mycmap, colour_axis=colour_axis, c_labels=c_labels,
                 i_labels=i_labels, iter_axis=iter_axis,
                 ms_name=mytab, ncols=n_cols, nrows=n_rows,
                 plot_width=pw, plot_height=ph, xds_table_obj=chunk,
@@ -1673,6 +1757,12 @@ def main(**kwargs):
             else:
                 final_plot = oup_a[0]
 
+            info_text = f"MS: {mytab}"
+            pre = PreText(text=info_text, width=int(PLOT_WIDTH * 0.95),
+                          height=50, align="start", margin=(0, 0, 0, 0))
+            final_plot = column([pre, final_plot],
+                                sizing_mode="stretch_width")
+
         logger.info("Plotting complete.")
 
         if html_name:
@@ -1680,15 +1770,15 @@ def main(**kwargs):
                 html_name += ".html"
             fname = html_name
         else:
-            fname = "{}_{}_{}.html".format(
-                mytab.split('/')[-1], yaxis, xaxis)
-
+            # Naming format: ms_name-yaxis_vs_xaxis-colour_axis-iter_axis-dcol
+            fname = f"""{os.path.basename(mytab)}_{yaxis:.3}_vs_{xaxis:.3}_color_{options.colour_axis}_iterate_{options.iter_axis}_{options.data_column}_flagged_{options.flag}.html"""
         output_file(fname, title=fname)
         save(final_plot)
 
         logger.info("Rendered plot to: {}".format(fname))
         logger.info("Specified options:")
-        parsed_opts = {k: v for k, v in options.__dict__.items() if v != None}
+        parsed_opts = {k: v for k, v in options.__dict__.items()
+                       if v is not None}
         parsed_opts = json.dumps(parsed_opts, indent=2, sort_keys=True)
         for _x in parsed_opts.split('\n'):
             logger.info(_x)
