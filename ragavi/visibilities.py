@@ -22,12 +22,12 @@ from daskms.table_schemas import MS_SCHEMA
 
 from bokeh.layouts import column, gridplot
 from bokeh.io import (output_file, save)
-from bokeh.models import (ColorBar, ColumnDataSource,
-                          DatetimeTickFormatter, Div, ImageRGBA,
+from bokeh.models import (ColorBar, ColumnDataSource, CheckboxGroup,
+                          DataRange1d, Line, Legend, LegendItem,
+                          CustomJS, DatetimeTickFormatter, Div, ImageRGBA,
                           LinearColorMapper, FixedTicker,
                           PrintfTickFormatter, Plot, PreText,
                           Text)
-
 import ragavi.utils as vu
 
 from ragavi.averaging import get_averaged_ms
@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 time_wrapper = vu.time_wrapper
 
 # some variables
-PLOT_WIDTH = int(1920 * 0.95)
-PLOT_HEIGHT = int(1080 * 0.84)
+PLOT_WIDTH = 1920
+PLOT_HEIGHT = 1080
 
 
 class DataCoreProcessor:
@@ -253,18 +253,22 @@ class DataCoreProcessor:
 
             logger.debug("Flags ready. Ensuring there are inactive flags")
 
-            # flag_row is true if an entire row is flagged
-            flag_all = da.all(self.xds_table_obj.FLAG_ROW.data).compute()
+            """
+            # Checking if there is any un-flagged data
+            # active flags eval to True, inverting data so that active flags
+              eval to false and in-active eval to true
+            # np.any only checks for where values are true
+            # will return true if there is any un-flagged data
+            # Invert all_flagged to make gramatical sense.
 
-            logger.debug(f"All selected data flagged? {flag_all}")
+            """
+            all_flagged = not np.any(np.logical_not(flags.data)).compute()
 
-            if flag_all:
-                logger.warning(
-                    "All data appears to be flagged. Unable to continue.")
-                logger.warning(
-                    "Please use -if or --include-flagged to deactivate flagging if you still wish to generate this plot.")
-                logger.warning(" Exiting.")
-                sys.exit(0)
+            logger.debug(f"Any un-flagged data? {all_flagged}")
+
+            if all_flagged:
+                logger.warning(f"All {yaxis} data is flagged. Use -if or --include-flagged to also plot flagged data")
+                logger.warning(vu.ctext("Plot will be empty", 'r'))
 
             processed = self.process_data(ydata, yaxis=yaxis, unwrap=False)
 
@@ -437,19 +441,32 @@ def gen_image(df, x_min, x_max, y_min, y_max,
                         pw=pw, ph=ph, add_title=add_title,
                         add_xaxis=add_xaxis, add_yaxis=add_yaxis,
                         fix_plotsize=True)
+
     if cat:
-        img = tf.shade(agg, color_key=color[:agg[cat].size])
-        if add_cbar:
-            fig.frame_width = int(fig.frame_width * 0.98)
-            cbar = make_cbar(agg[cat].values, cat, cmap=color[:agg[cat].size],
-                             labels=c_labels)
-            if add_yaxis:
-                fig.add_layout(cbar, "right")
+        n_cats = agg[cat].size
+
+        if np.max(agg.values) > 0:
+            img = tf.shade(agg, color_key=color[:n_cats])
+
+            if add_cbar:
+                fig.frame_width = int(fig.frame_width * 0.98)
+                cbar = make_cbar(cats=agg[cat].values, category=cat,
+                                 cmap=color[:n_cats], labels=c_labels,
+                                 ax=fig, x_min=x_min, y_min=y_min)
+                if add_yaxis:
+                    fig.add_layout(cbar, "right")
+
+        else:
+            # when no data is available remove extra categorical dim
+            # failure to do this will cause a ValueError
+            img = tf.shade(agg[:, :, 0], color_key=color[:n_cats])
+
     else:
         img = tf.shade(agg, cmap=color)
 
     cds = ColumnDataSource(data=dict(image=[img.data], x=[x_min],
-                                     y=[y_min], dw=[dw], dh=[dh]))
+                                     y=[y_min], dw=[dw], dh=[dh]),
+                           name="image_data")
 
     image_glyph = ImageRGBA(image="image", x='x', y='y', dw="dw", dh="dh",
                             dilate=False)
@@ -501,34 +518,39 @@ def gen_image(df, x_min, x_max, y_min, y_max,
                       text_font_style="bold", text_font_size="10pt",
                       text_align="center")
 
-        p_txtt_src = ColumnDataSource(data=dict(x=[x_min + (dw * 0.5)],
-                                                y=[y_max * 0.87]))
+        p_txtt_src = ColumnDataSource(
+            name="p_sub_data",
+            data=dict(x=[x_min + (dw * 0.5)], y=[y_max * 0.87]))
+
+        # Are there associated names? e.g ant / field / corr names
         if i_labels is not None:
             # Only in the case of a baseline
             if {"ANTENNA1", "ANTENNA2"} <= set(i_axis):
                 i_axis.sort()
-                # Don't split the next line, will result in bad formatting
-                p_txtt_src.add(
-                    [f"""{i_labels[chunk_attrs.get(i_axis[0])]}, {i_labels[chunk_attrs.get(i_axis[1])]}"""],
-                    name="text")
-                i_axis_data = f"""{ i_labels[chunk_attrs[i_axis[0]]] },
-                { i_labels[chunk_attrs.get(i_axis[1])] }"""
+
+                a1 = i_labels[chunk_attrs.get(i_axis[0])]
+                a2 = i_labels[chunk_attrs.get(i_axis[1])]
+
+                p_txtt_src.add([f"{a1}, {a2}"], name="text")
+
+                i_axis_data = f"{ a1 }, { a2 }"
 
                 h_tool.tooltips.append(("Baseline", "@i_axis"))
             else:
-                p_txtt_src.add(
-                    [f"{i_labels[chunk_attrs.get(i_axis[0])]}"],
-                    name="text")
-                i_axis_data = i_labels[chunk_attrs.get(i_axis[0])]
-                h_tool.tooltips.append((f"{i_axis[0].capitalize()}",
-                                        "@i_axis"))
+                it_val = i_labels[chunk_attrs.get(i_axis[0])]
+
+                p_txtt_src.add([f"{it_val}"], name="text")
+                i_axis_data = it_val
+                h_tool.tooltips.append(
+                    (f"{i_axis[0].capitalize()}", "@i_axis"))
 
         else:
-            # only get the associated ID
-            p_txtt_src.add(
-                [f"{i_axis[0].capitalize()}: {chunk_attrs[i_axis[0]]}"],
-                name="text")
-            i_axis_data = chunk_attrs[i_axis[0]]
+            # only get the associated ID: it_val:iterator value
+            it_val = chunk_attrs[i_axis[0]]
+
+            p_txtt_src.add([f"{i_axis[0].capitalize()}: {it_val}"],
+                           name="text")
+            i_axis_data = it_val
             h_tool.tooltips.append((f"{i_axis[0].capitalize()}", "@i_axis"))
 
         if "DATA_DESC_ID" not in i_axis:
@@ -536,6 +558,13 @@ def gen_image(df, x_min, x_max, y_min, y_max,
             h_tool.tooltips.append(("Spw", "@spw"))
 
         cds.add([i_axis_data], "i_axis")
+
+        # Add some statistics to the iterated plot
+        if x_name != "Time":
+            h_tool.tooltips.append(
+                ("(min_x, max_x)", f"({x_min:.2f}, {x_max:.2f})"))
+        h_tool.tooltips.append(
+            ("(min_y, max_y)", f"({y_min:.2f}, {y_max:.2f})"))
 
         fig.add_glyph(p_txtt_src, p_txtt)
 
@@ -562,7 +591,7 @@ def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
     return agg
 
 
-def make_cbar(cats, category, cmap=None, labels=None):
+def make_cbar(cats, category, cmap, ax, x_min, y_min, labels=None):
     """Initiate a colorbar for categorical data
     Parameters
     ----------
@@ -574,16 +603,17 @@ def make_cbar(cats, category, cmap=None, labels=None):
         Matplotlib colormap
     labels: :obj:`list`
         Labels containing names for the iterated stuff
+    ax: :obj:`bokeh.models.figure`
+        Figure to append the color bar to
     Returns
     -------
-    cbar: :obj:`bokeh.models`
-        Colorbar instance
+    legend: :obj:`bokeh.models`
+        Legend instance instance
     """
-    cats = cats.tolist()
 
-    lo = min(cats)
-    hi = max(cats)
-    ncats = len(cats)
+    logger.debug("Adding colour bar")
+
+    cats = cats.tolist()
 
     category = category.capitalize()
 
@@ -595,28 +625,36 @@ def make_cbar(cats, category, cmap=None, labels=None):
             category = category.split("_")[0]
 
     if labels is not None:
-        label_orides = {k: v for k, v in zip(cats, labels)}
+        labels = np.array(labels)[cats].tolist()
     else:
-        label_orides = {}
+        labels = [str(_c) for _c in cats]
 
-    # not using categorical because we'll need to define our own colors
-    cmapper = LinearColorMapper(palette=cmap[:ncats], low=lo, high=hi)
-    b_ticker = FixedTicker(ticks=cats, num_minor_ticks=None)
+    rends = []
 
-    logger.debug("Creating colour bar")
+    # legend height
+    lh = int((ax.frame_height / len(cats)) * 0.95)
 
-    cbar = ColorBar(color_mapper=cmapper, label_standoff=12,
-                    border_line_color=None, ticker=b_ticker,
-                    location=(0, 0), title=category, title_standoff=5,
-                    title_text_font_size="10pt", title_text_align="left",
-                    title_text_font="monospace", minor_tick_line_width=0,
-                    title_text_font_style="normal",
-                    major_label_text_font_style="bold",
-                    major_label_overrides=label_orides)
+    for _c in cmap:
+        ssq = ColumnDataSource(data=dict(x=[x_min, x_min], y=[y_min, y_min]))
+        sq = Line(x="x", y="y", line_color=_c, line_width=lh)
+        ren = ax.add_glyph(ssq, sq)
+        rends.append(ren)
+
+    legend = Legend(
+        name="p_legend", title_standoff=2, border_line_width=1,
+        title=category, glyph_height=lh, glyph_width=25,
+        title_text_line_height=0.3, padding=4,
+        title_text_font="monospace", title_text_font_style="normal",
+        title_text_font_size="10pt", title_text_align="left",
+        label_text_font_style="bold", spacing=0, margin=0,
+        label_height=5, label_width=10,
+        items=[LegendItem(label=lab, renderers=[ren])
+               for lab, ren in zip(labels, rends)]
+    )
 
     logger.debug("Done")
 
-    return cbar
+    return legend
 
 
 def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
@@ -713,7 +751,6 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
 
     if y_min is None:
         y_min = y.min().data
-
     if y_max is None:
         y_max = y.max().data
 
@@ -722,11 +759,19 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
         x_min, x_max, y_min, y_max = compute(x_min, x_max, y_min, y_max)
 
     if x_min == x_max:
+        logger.debug("Incrementing x-max + 1 because x-min==x-max")
         x_max += 1
     if y_min == y_max:
+        logger.debug("Incrementing y-max + 1 one because y-min==y-max")
         y_max += 1
 
+    logger.info(vu.ctext(f"x: {xaxis:.4}, min: {x_min:10.2f}, max: {x_max:10.2f}"))
+    logger.info(vu.ctext(f"y: {yaxis:.4}, min: {y_min:10.2f}, max: {y_max:10.2f}"))
     logger.info("Done")
+
+    if np.isnan(y_min) or np.isnan(y_max):
+        y_min = x_min = 0
+        y_max = x_max = 1
 
     # inputs to gen image
     im_inputs = dict(c_labels=c_labels, c_height=c_height, c_width=c_width,
@@ -741,17 +786,8 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
         # Iterations are done over daskms groupings except for chan & corr
         # Colouring can therefore be done here by categorization
         title += f""" Iterated By: {iter_axis.capitalize()} Colourised By: {colour_axis.capitalize()}"""
-        # Add x-axis to all items in the last row
-        if (chunk_no >= ncols * (nrows - 1)):
-            add_xaxis = True
-        else:
-            add_xaxis = False
 
-        # Add y-axis to all items in the first columns
-        if (chunk_no % ncols == 0):
-            add_yaxis = True
-        else:
-            add_yaxis = False
+        add_xaxis = add_yaxis = True
 
         xy_df, cat_values = create_categorical_df(colour_axis, x, y,
                                                   xds_table_obj)
@@ -768,16 +804,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
         # Iterations are done over daskms groupings except for chan & corr
         title += f" Iterated By: {iter_axis.capitalize()}"
 
-        if (chunk_no >= ncols * (nrows - 1)):
-            add_xaxis = True
-        else:
-            add_xaxis = False
-
-        # Add y-axis to all items in the first columns
-        if (chunk_no % ncols == 0):
-            add_yaxis = True
-        else:
-            add_yaxis = False
+        add_xaxis = add_yaxis = True
 
         xy_df = create_df(x, y, iter_data=None)
 
@@ -794,7 +821,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
 
         # generate resulting image
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=colour_axis,
-                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=True,
+                          ph=plot_height, pw=plot_width, add_cbar=True,
                           add_xaxis=True, add_yaxis=True, add_title=True,
                           add_subtitle=False, **im_inputs)
         # allow resizing
@@ -808,7 +835,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
         # generate resulting image
         im_inputs.update(dict(add_subtitle=False, add_title=True))
         image = gen_image(xy_df, x_min, x_max, y_min, y_max, cat=None,
-                          ph=PLOT_HEIGHT, pw=PLOT_WIDTH, add_cbar=False,
+                          ph=plot_height, pw=plot_width, add_cbar=False,
                           add_xaxis=True, add_yaxis=True, **im_inputs)
         # allow resizing
         image.frame_width = None
@@ -1409,7 +1436,7 @@ def validate_axis_inputs(inp):
 
 
 ######################### Random functions #############################
-def link_grid_plots(plot_list):
+def link_grid_plots(plot_list, ncols, nrows):
     """Link all the plots in the X and Y axes
 
     """
@@ -1424,16 +1451,111 @@ def link_grid_plots(plot_list):
     else:
         plots = plot_list
 
-    n_plots = len(plots)
-    init_xr = plots[0].x_range
-    init_yr = plots[0].y_range
-    for i in range(1, n_plots):
-        plots[i].x_range = init_xr
-        plots[i].y_range = init_yr
+    maxxs, maxys, minxs, minys = [], [], [], []
 
-    logger.debug("Done")
+    # get the global maxs and mins
+    for _p in plots:
+        # See how image glyph is specified for justification
+        im_data = _p.select(name="image_data")[0].data
 
-    return 0
+        if np.max(im_data["image"]) > 0:
+            maxxs.append(im_data["x"][0] + im_data["dw"][0])
+            maxys.append(im_data["y"][0] + im_data["dh"][0])
+            minxs.append(im_data["x"][0])
+            minys.append(im_data["y"][0])
+
+    minx = np.min(minxs)
+    miny = np.min(minys)
+    maxx = np.max(maxxs)
+    maxy = np.max(maxys)
+
+    # initialise the shared data ranges
+    init_xr = DataRange1d(start=minx, end=maxx, only_visible=True)
+    init_yr = DataRange1d(start=miny, end=maxy, only_visible=True)
+
+    for _i, _p in enumerate(plots):
+
+        # make plots share their ranges
+        _p.x_range = init_xr
+        _p.y_range = init_yr
+
+        # move plot subtitle depending on universal min/max
+        im_data = _p.select(name="image_data")[0].data
+        p_sub_data = _p.select(name="p_sub_data")[0]
+
+        if (_i < ncols * (nrows - 1)):
+            _p.xaxis.visible = False
+
+        # Add y-axis to all items in the first columns
+        if (_i % ncols != 0):
+            _p.yaxis.visible = False
+
+        if _p.legend:
+            p_legend = _p.select(name="p_legend")[0]
+            # legends to be on the last col items
+            if _i % ncols != ncols - 1:
+                p_legend.visible = False
+
+        if np.max(im_data["image"]) < 1:
+            # This means the image is empty
+            p_sub_data.data.update(x=[np.mean([minx, maxx])],
+                                   y=[np.mean([miny, maxy])])
+        else:
+            p_sub_data.data.update(x=[np.mean([minx, maxx])],
+                                   y=[0.85 * maxy])
+
+    logger.debug("Plots linked")
+
+
+def mod_unlinked_grid_plots(plot_list, nrows, ncols):
+    """
+    * Move tick marks into the plots
+    * Reduce frame size of plots
+    * Switch on only axis label for first item in row
+    """
+
+    for _i, _p in enumerate(plot_list):
+        # move tick marks into plot
+        _p.xaxis.major_label_standoff = 2
+        _p.xaxis.major_tick_out = 0
+        _p.xaxis.major_tick_in = 4
+
+        _p.yaxis.major_label_standoff = 2
+        _p.yaxis.major_tick_out = 0
+        _p.yaxis.major_tick_in = 4
+
+        if _p.legend:
+            p_legend = _p.select(name="p_legend")[0]
+            # legends to be on the last col items
+            if _i % ncols != ncols - 1:
+                p_legend.visible = False
+
+        if _i % ncols != 0:
+            _p.yaxis.axis_label = ""
+
+        if (_i < ncols * (nrows - 1)):
+            _p.xaxis.axis_label = ""
+
+        pw = int((PLOT_WIDTH * 0.99) / ncols)
+        ph = int(0.85 * pw)
+
+        if (nrows * ph) < (PLOT_HEIGHT * 0.715):
+            ph = int((PLOT_HEIGHT * 0.715) / nrows)
+
+        _p.plot_width = pw
+        _p.plot_height = ph
+
+        _p.frame_width = int(pw * 0.80)
+        _p.frame_height = int(ph * 0.80)
+        _p.sizing_mode = "fixed"
+
+        im_data = _p.select(name="image_data")[0].data
+        p_sub_data = _p.select(name="p_sub_data")[0]
+
+        if np.max(im_data["image"]) < 1:
+            # This means the image is empty
+            p_sub_data.data.update(x=[0.5],
+                                   y=[0.5])
 
 
 def resource_defaults():
@@ -1561,9 +1683,7 @@ def main(**kwargs):
                     corr = "xx,yy"
                 elif corr in ["off-diag", "off-diagonal"]:
                     corr = "xy,yx"
-                else:
-                    logger.error(f"Invalid corr: {corr} selected. Choose from diag / diagonal, or off-diag / off-diagonal.")
-                    sys.exit(-1)
+
                 corr = corr.upper()
 
                 corr = corr.split(",")
@@ -1573,14 +1693,16 @@ def main(**kwargs):
 
                 for c in range(len(corr)):
                     try:
-                        corr[c] = corr_labs.index(corr[c])
+                        corr[c] = str(corr_labs.index(corr[c]))
                     except ValueError:
                         logger.warning(f"Chosen corr {corr[c]} is not available")
-                        corr[c] = -1
-                if all(c == -1 for c in corr):
+                        corr[c] = "-1"
+                if all(c == "-1" for c in corr):
                     logger.error(
-                        "All selected corrs are not available. Exiting.")
+                        f"All selected corrs: {options.corr} are not available. Exiting.")
                     sys.exit(-1)
+                else:
+                    corr = ",".join(corr)
             corr = vu.slice_data(corr)
 
         if fields is not None:
@@ -1650,15 +1772,22 @@ def main(**kwargs):
         # configure number of rows and columns for grid
         n_partitions = len(partitions)
         n_rows = int(np.ceil(n_partitions / n_cols))
-        # n_cols known from argparser
-
-        pw = PLOT_WIDTH
-        ph = PLOT_HEIGHT
 
         if iter_axis:
-            # my ideal case is 9 columns and for this, the ideal width is 205
-            pw = int((205 * 9) / n_cols)
+            pw = int((PLOT_WIDTH * 0.961) / n_cols)
             ph = int(0.83 * pw)
+
+            # if there are more columns than there are items
+            if n_cols > n_partitions:
+                pw = int((PLOT_WIDTH * 0.961) / n_partitions)
+                ph = int(PLOT_HEIGHT * 0.755)
+                # because the grid is not generated by dask-ms iteration
+                n_cols = n_partitions
+
+            # If there is still space extend height
+            if (n_rows * ph) < (PLOT_HEIGHT * 0.715):
+                ph = int((PLOT_HEIGHT * 0.715) / n_rows)
+
             if not c_width:
                 c_width = 200
                 logger.info(
@@ -1676,22 +1805,14 @@ def main(**kwargs):
             else:
                 i_labels = None
         else:
+            pw = int(PLOT_WIDTH * 0.95)
+            ph = int(PLOT_HEIGHT * 0.84)
+
             i_labels = None
             if not c_width:
                 c_width = 1080
             if not c_height:
                 c_height = 720
-
-        # if there are more columns than there are items
-        if n_cols > n_partitions:
-            pw = int((pw * n_cols) / n_partitions)
-            ph = int(PLOT_HEIGHT * 0.90)
-            # because the grid is not generated by daskms iteration
-            n_cols = n_partitions
-
-        # If there is still space extend height
-        if (n_rows * ph) < (PLOT_HEIGHT * 0.85):
-            ph = int((PLOT_HEIGHT * 0.85) / n_rows)
 
         oup_a = []
 
@@ -1711,7 +1832,7 @@ def main(**kwargs):
                                        datacol=data_column, cbin=cbin)
             ready = p_data.act()
 
-            logger.info(f"\033[92m Plotting {count+1}/{n_partitions}.")
+            logger.info(vu.ctext(f"Plotting {count+1}/{n_partitions}"))
             logger.info(f"{chunk.attrs}\033[0m")
 
             # black box returns an plottable element / composite element
@@ -1737,11 +1858,17 @@ def main(**kwargs):
                                    "font-family": "monospace"},
                             sizing_mode="stretch_width")
 
-            # Link all the plots
-            link_grid_plots(oup_a)
+            if options.link_plots:
+                # Link all the plots
+                link_grid_plots(oup_a, ncols=n_cols, nrows=n_rows)
+            else:
+                mod_unlinked_grid_plots(oup_a, ncols=n_cols, nrows=n_rows)
 
-            info_text = f"MS: {mytab}\nGrid size: {n_cols} x {n_rows}"
-            pre = PreText(text=info_text, width=int(PLOT_WIDTH * 0.95),
+            info_text = f"MS       : {mytab}\n"
+            info_text += f"Grid size: {n_cols} x {n_rows}"
+            info_text += f" | Linked: {options.link_plots}"
+
+            pre = PreText(text=info_text, width=int(PLOT_WIDTH * 0.961),
                           height=50, align="start", margin=(0, 0, 0, 0))
             final_plot = gridplot(children=oup_a, ncols=n_cols,
                                   sizing_mode="stretch_width")
@@ -1758,7 +1885,7 @@ def main(**kwargs):
                 final_plot = oup_a[0]
 
             info_text = f"MS: {mytab}"
-            pre = PreText(text=info_text, width=int(PLOT_WIDTH * 0.95),
+            pre = PreText(text=info_text, width=int(PLOT_WIDTH * 0.961),
                           height=50, align="start", margin=(0, 0, 0, 0))
             final_plot = column([pre, final_plot],
                                 sizing_mode="stretch_width")
@@ -1772,6 +1899,7 @@ def main(**kwargs):
         else:
             # Naming format: ms_name-yaxis_vs_xaxis-colour_axis-iter_axis-dcol
             fname = f"""{os.path.basename(mytab)}_{yaxis:.3}_vs_{xaxis:.3}_color_{options.colour_axis}_iterate_{options.iter_axis}_{options.data_column}_flagged_{options.flag}.html"""
+
         output_file(fname, title=fname)
         save(final_plot)
 
