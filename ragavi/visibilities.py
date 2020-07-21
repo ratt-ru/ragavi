@@ -608,7 +608,7 @@ def make_cbar(cats, category, cmap, ax, x_min, y_min, labels=None):
     Returns
     -------
     legend: :obj:`bokeh.models`
-        Legend instance instance
+        Legend instance
     """
 
     logger.debug("Adding colour bar")
