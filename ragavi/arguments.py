@@ -104,6 +104,11 @@ def vis_argparser():
                          provided, a '.log' extension is appended. The
                          default log file name is ragavi.log""",
                          default=None)
+    pconfig.add_argument("-lp", "--link-plots", dest="link_plots",
+                         action="store_true",
+                         help="""Lock axis ranges for the iterated plots. All 
+                        the plots will share the x- and y-axes. This is 
+                        disabled by default""")
     pconfig.add_argument("-o", "--htmlname", dest="html_name", type=str,
                          metavar='',
                          help="Output HTML file name (without '.html')",

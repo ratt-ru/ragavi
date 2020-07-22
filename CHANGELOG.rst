@@ -1,3 +1,14 @@
+0.4.2
+-----
+**ragavi-vis**
+  
+  - Fixes correlation selection using corr label bug
+  - Fixes mismatched colour map labels for coloured plots
+  - Improved appearance of colour bar
+  - Prevents crash if all data in a plot is flagged
+  - Iterated plots now not linked by default. Added argument ``-lp / --link-plots`` to allow plots to be linked. All plots thus have independent axes by default.
+  
+
 0.4.1
 -----
 **ragavi-gains**

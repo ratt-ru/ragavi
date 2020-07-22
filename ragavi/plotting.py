@@ -119,6 +119,10 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
                                   (y_name, "$y")],
                         name="p_htool", point_policy="snap_to_data")
 
+    if x_name.lower() == "time":
+        p_htool.tooltips[0] = (x_name, "$x{%d-%m-%Y %H:%M}")
+        p_htool.formatters = {"$x": "datetime"}
+
     p_toolbar = Toolbar(name="p_toolbar",
                         tools=[p_htool, BoxSelectTool(), BoxZoomTool(),
                                # EditTool(), # BoxEditTool(), # RangeTool(),
