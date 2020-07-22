@@ -6,7 +6,7 @@ import os
 
 from collections import namedtuple
 from datetime import datetime
-from itertools import combinations
+from itertools import combinations, cycle
 from psutil import cpu_count, virtual_memory
 
 import dask.array as da
@@ -445,16 +445,21 @@ def gen_image(df, x_min, x_max, y_min, y_max,
     if cat:
         n_cats = agg[cat].size
 
+        color = cycle(color[:n_cats])
+
+        if cat == "Baseline":
+            bls = create_bl_data_array(xds_table_obj, bl_combos=True)
+            for _b in range(len(bls)):
+                bls[_b] = ", ".join(np.array(c_labels)[[bls[_b]]].tolist())
+            c_labels = bls
+
         if np.max(agg.values) > 0:
-            img = tf.shade(agg, color_key=color[:n_cats])
+            img = tf.shade(agg, color_key=color)
 
             if add_cbar:
-                fig.frame_width = int(fig.frame_width * 0.98)
-                cbar = make_cbar(cats=agg[cat].values, category=cat,
-                                 cmap=color[:n_cats], labels=c_labels,
-                                 ax=fig, x_min=x_min, y_min=y_min)
-                if add_yaxis:
-                    fig.add_layout(cbar, "right")
+                append_cbar(cats=agg[cat].values, category=cat,
+                            cmap=color, labels=c_labels,
+                            ax=fig, x_min=x_min, y_min=y_min)
 
         else:
             # when no data is available remove extra categorical dim
@@ -581,7 +586,7 @@ def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
 
     if cat:
         with ProgressBar():
-            agg = cvs.points(xy_df, x, y, ds.count_cat(cat))
+            agg = cvs.points(xy_df, x, y, ds.by(cat, ds.count()))
     else:
         with ProgressBar():
             agg = cvs.points(xy_df, x, y, ds.count())
@@ -591,8 +596,8 @@ def image_callback(xy_df, xr, yr, w, h, x=None, y=None, cat=None):
     return agg
 
 
-def make_cbar(cats, category, cmap, ax, x_min, y_min, labels=None):
-    """Initiate a colorbar for categorical data
+def append_cbar(cats, category, cmap, ax, x_min, y_min, labels=None):
+    """Add a colourbar for categorical data
     Parameters
     ----------
     cats: :obj:`np.ndarray`
@@ -605,11 +610,8 @@ def make_cbar(cats, category, cmap, ax, x_min, y_min, labels=None):
         Labels containing names for the iterated stuff
     ax: :obj:`bokeh.models.figure`
         Figure to append the color bar to
-    Returns
-    -------
-    legend: :obj:`bokeh.models`
-        Legend instance
     """
+    ax.frame_width = int(ax.frame_width * 0.98)
 
     logger.debug("Adding colour bar")
 
@@ -634,9 +636,9 @@ def make_cbar(cats, category, cmap, ax, x_min, y_min, labels=None):
     # legend height
     lh = int((ax.frame_height / len(cats)) * 0.95)
 
-    for _c in cmap:
+    for _c in range(len(cats)):
         ssq = ColumnDataSource(data=dict(x=[x_min, x_min], y=[y_min, y_min]))
-        sq = Line(x="x", y="y", line_color=_c, line_width=lh)
+        sq = Line(x="x", y="y", line_color=next(cmap), line_width=lh)
         ren = ax.add_glyph(ssq, sq)
         rends.append(ren)
 
@@ -647,14 +649,13 @@ def make_cbar(cats, category, cmap, ax, x_min, y_min, labels=None):
         title_text_font="monospace", title_text_font_style="normal",
         title_text_font_size="10pt", title_text_align="left",
         label_text_font_style="bold", spacing=0, margin=0,
-        label_height=5, label_width=10,
+        label_height=5, label_width=10, label_text_font_size="8pt",
         items=[LegendItem(label=lab, renderers=[ren])
                for lab, ren in zip(labels, rends)]
     )
 
+    ax.add_layout(legend, "right")
     logger.debug("Done")
-
-    return legend
 
 
 def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
@@ -687,7 +688,7 @@ def plotter(x, y, xaxis, xlab='', yaxis="amplitude", ylab='', c_labels=None,
     iter_axis : :obj:`str`
         Column in the dataset over which to iterate.
 
-    color :  :obj:`str`, :obj:`colormap`, :obj:`itertools.cycler`
+    color :  :obj:`str`, :obj:`colormap`, :obj:`itertools.cycle`
 
     xds_table_obj : :obj:`xarray.Dataset`
         Dataset object containing the columns of the MS. This is passed on in
@@ -1120,9 +1121,15 @@ def create_bl_data_array(xds_table_obj, bl_combos=False):
     ant1 = xds_table_obj.ANTENNA1
     ant2 = xds_table_obj.ANTENNA2
 
-    u_ants = np.unique(np.hstack((np.unique(ant1), np.unique(ant2))))
-    u_bls_combos = combinations(np.arange(u_ants.size), 2)
+    u_ants = np.unique(np.hstack((ant1, ant2)))
 
+    uniques = list(combinations(u_ants, 2))
+
+    u_bls_combos = []
+    for _p in np.unique(ant1):
+        for p, q in uniques:
+            if _p == p:
+                u_bls_combos.append((p, q))
     if bl_combos:
         return u_bls_combos
 
