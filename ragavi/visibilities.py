@@ -30,6 +30,7 @@ from bokeh.models import (ColorBar, ColumnDataSource, CheckboxGroup,
                           Text)
 import ragavi.utils as vu
 
+from ragavi import __version__
 from ragavi.averaging import get_averaged_ms
 from ragavi.plotting import create_bk_fig, add_axis
 
@@ -1871,7 +1872,8 @@ def main(**kwargs):
             else:
                 mod_unlinked_grid_plots(oup_a, ncols=n_cols, nrows=n_rows)
 
-            info_text = f"MS       : {mytab}\n"
+            info_text = f"ragavi   : v{__version__}\n"
+            info_text += f"MS       : {mytab}\n"
             info_text += f"Grid size: {n_cols} x {n_rows}"
             info_text += f" | Linked: {options.link_plots}"
 
