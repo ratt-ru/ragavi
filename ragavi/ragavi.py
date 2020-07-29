@@ -844,26 +844,22 @@ def flag_callback():
     """
 
     code = """
-            //sources: list of all different sources for the different antennas and available sources
-            //n_sources: number of sources
-            //flagging: status of flag_data
-
-            let n_ax = uf_sources.length;
-
-            let n_sources =  uf_sources.length;
-
-            for (let n=0; n<n_ax; n++){
-                for (let i=0; i<uf_sources[n].length; i++){
-                    if (cb_obj.active.includes(0)){
-                        uf_sources[n][i].data.y1 = f_sources[n][i].data.iy1;
-                        uf_sources[n][i].change.emit();
-                    }
-                    else{
-                        uf_sources[n][i].data.y1 = f_sources[n][i].data.y1;
-                        uf_sources[n][i].change.emit();
-                    }
+        //f_sources: Flagged data source
+        //n_ax: number of figures available
+        //uf_sources: unflagged data source
+  
+        for (let n=1; n<=n_ax; n++){
+            for (let i=0; i<uf_sources.length; i++){
+                if (cb_obj.active.includes(0)){
+                    uf_sources[i].data[`y${n}`] = f_sources[i].data[`iy${n}`];
+                    uf_sources[i].change.emit();
+                }
+                else{
+                    uf_sources[i].data[`y${n}`] = f_sources[i].data[`y${n}`];
+                    uf_sources[i].change.emit();
                 }
             }
+        }
 
            """
     return code
@@ -2130,7 +2126,8 @@ def main(**kwargs):
 
         toggle_flag.js_on_change("active", CustomJS(
             args=dict(f_sources=all_fsources,
-                      uf_sources=all_ufsources),
+                      uf_sources=all_ufsources,
+                      n_ax=len(all_figures)),
             code=flag_callback()))
 
         save_selected.js_on_click(CustomJS(args=dict(
