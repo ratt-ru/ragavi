@@ -1,3 +1,11 @@
+0.4.3
+-----
+**ragavi-gains**
+  
+  - Fix bug in flagged data display
+  - Fixes link between batch selection and other selections
+
+
 0.4.2
 -----
 **ragavi-vis**
