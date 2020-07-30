@@ -13,7 +13,7 @@ from bokeh.io import (output_file, output_notebook,
                       save, show)
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import (Button, CheckboxGroup,
-                          ColumnDataSource, CustomJS,
+                          ColumnDataSource, CustomJS, PreText,
                           Legend, LinearAxis, PrintfTickFormatter,
                           Slider, Scatter, Title, Whisker)
 
@@ -22,6 +22,8 @@ from itertools import product
 from pyrap.tables import table
 
 import ragavi.utils as vu
+
+from ragavi import __version__
 from ragavi.plotting import create_bk_fig, add_axis
 
 # defining some constants
@@ -567,7 +569,9 @@ def ant_select_callback():
     """
 
     code = """
-            /*ax: list containing glyph renderers
+            /*
+              Make all the Antennas available active
+              ax: list containing glyph renderers
               bsel: batch selection group button
               nbatches: Number of batches available
               fsel: field_selector widget,
@@ -577,28 +581,29 @@ def ant_select_callback():
               ncorrs: Number of avaiblable corrs,
               nspws: Number of spectral windows,
             */
-            let nplots = ax.length;
             if (cb_obj.active.includes(0))
                 {
-                    for(let i=0; i<nplots; i++){
+
+                    for(let i=0; i<ax.length; i++){
                         ax[i].visible = true;
                     }
                     //activate all the checkboxes whose antennas are active
-                    bsel.active = [...Array(nbatches).keys()]
-                    csel.active = [...Array(ncorrs).keys()]
-                    fsel.active = [...Array(nfields).keys()]
-                    ssel.active = [...Array(nspws).keys()]
+                    bsel.active = [...Array(nbatches).keys()];
+                    csel.active = [...Array(ncorrs).keys()];
+                    fsel.active = [...Array(nfields).keys()];
+                    ssel.active = [...Array(nspws).keys()];
 
                 }
             else{
-                    for(let i=0; i<nplots; i++){
+                    for(let i=0; i<ax.length; i++){
                        ax[i].visible = false;
                     }
 
-                    bsel.active = []
-                    csel.active = []
-                    fsel.active = []
-                    ssel.active = []
+                    bsel.active = [];
+                    csel.active = [];
+                    fsel.active = [];
+                    ssel.active = [];
+
                 }
             """
 
@@ -625,7 +630,6 @@ def batch_select_callback():
            ax: List containing glyphs for all antennas, fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
-
         let count = 0;
         let new_bsize;
         for (let sp=0; sp<nspws; sp++){
@@ -684,18 +688,26 @@ def corr_select_callback():
         let count = 0;
         let new_bsize;
         for (let sp=0; sp<nspws; sp++){
+
             for (let f=0; f<nfields; f++){
+
                 for (let c=0; c<ncorrs; c++){
+
                     //re-initialise new batch size
                     new_bsize = bsize;
+
                     for(let n=0; n<nbatches; n++){
+
                         // Reduce new_bsize to the size of the final batch
                         if (n == nbatches-1 && nants!=bsize){
                             new_bsize = nants % bsize;
                         }
+                        
                         for(let b=0; b<new_bsize; b++){
+
                             if (cb_obj.active.includes(c) && fsel.active.includes(f) &&
-                                ssel.active.includes(sp)){
+                                ssel.active.includes(sp) &&
+                                bsel.active.includes(n)){
                                 ax[count].visible = true;
                                 }
                             else{
@@ -744,7 +756,8 @@ def field_selector_callback():
                         }
                         for(let b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(f) && csel.active.includes(c) &&
-                                ssel.active.includes(sp)){
+                                ssel.active.includes(sp) &&
+                                bsel.active.includes(n)){
                                 ax[count].visible = true;
                                 }
                             else{
@@ -775,12 +788,12 @@ def spw_select_callback():
            ax: List containing glyphs for all antennas, fields and correlations
            count: keeping a cumulative sum of the traverse number
         */
-
         let count = 0;
         let new_bsize;
         for (let sp=0; sp<nspws; sp++){
             for (let f=0; f<nfields; f++){
                 for (let c=0; c<ncorrs; c++){
+                    
                     //re-initialise new batch size
                     new_bsize = bsize;
 
@@ -791,11 +804,12 @@ def spw_select_callback():
                         }
                         for(let b=0; b<new_bsize; b++){
                             if (cb_obj.active.includes(sp) && fsel.active.includes(f) &&
-                                csel.active.includes(c)){
+                                csel.active.includes(c) &&
+                                bsel.active.includes(n)){
                                 ax[count].visible = true;
                                 }
                             else{
-                                ax[count].visible = false
+                                ax[count].visible = false;
                             }
                             count = count + 1;
                         }
@@ -804,12 +818,13 @@ def spw_select_callback():
             }
 
             //Make the extra y-axes visible only if corresponding spw selected
-            if (cb_obj.active.includes(sp)){
-                ex_ax[sp].visible=true;
-            }
-            else{
-                ex_ax[sp].visible=false;
-
+            if (ex_ax.length>0){
+                if (cb_obj.active.includes(sp)){
+                    ex_ax[sp].visible=true;
+                }
+                else{
+                    ex_ax[sp].visible=false;
+                }
             }
 
         }
@@ -827,29 +842,25 @@ def flag_callback():
     -------
     code : :obj:`str`
     """
+
     code = """
-            //sources: list of all different sources for the different antennas and available sources
-            //n_sources: number of sources
-            //flagging: status of flag_data
-
-            let n_sources =  uf_sources.length;
-
-            if (cb_obj.active.includes(0)){
-                for (let i=0; i<n_sources; i++){
-                    uf_sources[i].data.y1 = f_sources[i].data.iy1;
-                    uf_sources[i].data.y2 = f_sources[i].data.iy2;
+        //f_sources: Flagged data source
+        //n_ax: number of figures available
+        //uf_sources: unflagged data source
+  
+        for (let n=1; n<=n_ax; n++){
+            for (let i=0; i<uf_sources.length; i++){
+                if (cb_obj.active.includes(0)){
+                    uf_sources[i].data[`y${n}`] = f_sources[i].data[`iy${n}`];
+                    uf_sources[i].change.emit();
+                }
+                else{
+                    uf_sources[i].data[`y${n}`] = f_sources[i].data[`y${n}`];
                     uf_sources[i].change.emit();
                 }
             }
-            else{
-                for (let i=0; i<n_sources; i++){
-                    uf_sources[i].data.y1 = f_sources[i].data.y1;
-                    uf_sources[i].data.y2 = f_sources[i].data.y2;
-                    uf_sources[i].change.emit();
-                }
+        }
 
-
-            }
            """
     return code
 
@@ -868,7 +879,7 @@ def toggle_err_callback():
                 {
                     for(let i=0; i<n_glyphs; i++){
                         //only switch on if corresponding plot is on
-                        if(ax[i].visible){
+                        if(ax[i].visible && ax_err[i] != null){
                             ax_err[i].visible = true;
                         }
 
@@ -876,7 +887,9 @@ def toggle_err_callback():
                 }
             else{
                     for(let i=0; i<n_glyphs; i++){
-                        ax_err[i].visible = false;
+                        if (ax_err[i] != null){
+                            ax_err[i].visible = false;
+                            }
                     }
                 }
             """
@@ -1420,7 +1433,7 @@ def create_stats_table(stats, yaxes):
 
 def make_table_name(tab_name):
     """Create div for stats data table"""
-    div = Div(text="Table: {}".format(tab_name))
+    div = PreText(text=f"ragavi: v{__version__}\nTable : {tab_name}")
     return div
 
 
@@ -2113,7 +2126,8 @@ def main(**kwargs):
 
         toggle_flag.js_on_change("active", CustomJS(
             args=dict(f_sources=all_fsources,
-                      uf_sources=all_ufsources),
+                      uf_sources=all_ufsources,
+                      n_ax=len(all_figures)),
             code=flag_callback()))
 
         save_selected.js_on_click(CustomJS(args=dict(
