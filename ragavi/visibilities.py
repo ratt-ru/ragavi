@@ -1592,7 +1592,7 @@ def resource_defaults():
         cores = int(total_mem // ml)
 
     ml = f"{ml}GB"
-    return cores, ml
+    return int(cores), ml
 
 
 ############################## Main Function ###########################
