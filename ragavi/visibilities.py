@@ -1640,7 +1640,7 @@ def main(**kwargs):
     n_cores, mem_limit = resource_defaults()
 
     if options.n_cores:
-        n_cores = options.n_cores
+        n_cores = int(options.n_cores)
 
     if options.mem_limit:
         mem_limit = options.mem_limit

@@ -1,3 +1,10 @@
+0.4.4
+-----
+**ragavi-vis**
+
+  - Fix corr selector again
+
+  
 0.4.3
 -----
 **ragavi-gains**
