@@ -22,7 +22,6 @@ from itertools import product
 from pyrap.tables import table
 
 import ragavi.utils as vu
-
 from ragavi import __version__
 from ragavi.plotting import create_bk_fig, add_axis
 
@@ -1522,6 +1521,16 @@ def gen_checkbox_labels(batch_size, num_leg_objs, antnames):
 
 ################## Saving Plot funcs ###################################
 
+def set_tempdir(name):
+    """Set the current dir as the temp dir also"""
+    import tempfile
+    if os.path.isfile(name):
+        t_dir = os.path.dirname(os.path.abspath(name))
+    else:
+        t_dir = name
+    tempfile.tempdir = t_dir
+
+
 def save_html(name, plot_layout):
     """Save plots in HTML format
 
@@ -2191,6 +2200,9 @@ def main(**kwargs):
     if _NB_RENDER_:
         return final_layout
     else:
+        # set output dir to temp dir also
+        set_tempdir((options.html_name or os.getcwd()))
+
         if options.image_name and options.html_name:
             save_html(options.html_name, final_layout)
             save_static_image(fname=options.image_name, figs=final_plots,
