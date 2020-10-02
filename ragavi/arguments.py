@@ -284,30 +284,24 @@ def gains_argparser():
                         Defaults to coolwarm""",
                          default="coolwarm")
 
-    pconfig.add_argument("-d", "--doplot", dest="doplot", type=str,
-                         metavar='',
-                         choices=["ap", "ri", "all"],
-                         help="""Plot complex values as amplitude & phase
-                         (ap) or real and imaginary (ri) or both (all).
-                          Defaults to ap.""",
+    pconfig.add_argument("-y", "--yaxis", "-d", "--doplot", dest="doplot",
+                         type=str, metavar='',
+                         help="""Plot complex values as any amplitude (a),
+                         phase (p), real (r), imaginary (i). For a combination
+                         of multiple plots, specify as a single string. e.g.
+                         To plot both amplitude and phase, set this to 'ap'.
+                         To plot all at once, set this to 'all'.
+                         Defaults to ap.""",
                          default="ap")
     pconfig.add_argument("--debug", dest="debug",
                          action="store_true",
                          help="""Enable debug messages""")
-    pconfig.add_argument("-g", "--gaintype", nargs='*', type=str,
-                         metavar=' ', dest="gain_types",
-                         choices=['B', 'D', 'G', 'K', 'F'],
-                         help="""Type of table(s) to be plotted. Can be
-                          specified as a single character e.g. "B" if a
-                          single table has been provided or space
-                          separated list e.g B D G if multiple tables have
-                          been specified. Valid choices are  B D G K & F""",
-                         default=[])
-    pconfig.add_argument("-kx", "--k-xaxis", dest="kx", type=str, metavar='',
-                         choices=["time", "antenna"],
-                         help="""Choose the x-xaxis for the K table. Valid
-                        choices are: time or antenna. Defaults to time.""",
-                         default="time")
+    pconfig.add_argument("-x", "--xaxis", dest="kx", type=str, metavar='',
+                         help="""Choose an x-xaxis Valid choices are: 
+                         time, antenna, channel. If this is not supplied, an
+                         appropriate one will be selected automatically
+                         depending on the type of gains being plotted.""",
+                         default=None)
     pconfig.add_argument("-lf", "--logfile", dest="logfile", type=str,
                          metavar="",
                          help="""The name of resulting log file (with

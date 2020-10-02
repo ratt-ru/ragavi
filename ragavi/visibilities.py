@@ -1592,7 +1592,7 @@ def resource_defaults():
         cores = int(total_mem // ml)
 
     ml = f"{ml}GB"
-    return cores, ml
+    return int(cores), ml
 
 
 ############################## Main Function ###########################
@@ -1640,7 +1640,7 @@ def main(**kwargs):
     n_cores, mem_limit = resource_defaults()
 
     if options.n_cores:
-        n_cores = options.n_cores
+        n_cores = int(options.n_cores)
 
     if options.mem_limit:
         mem_limit = options.mem_limit
@@ -1684,33 +1684,36 @@ def main(**kwargs):
         ################################################################
         ############## Form valid selection statements #################
 
-        if options.corr is not None:
-            # translate corr labels to indices if need be
-            if corr.isalpha() or '-' in corr:
-                if corr in ["diag", "diagonal"]:
-                    corr = "xx,yy"
-                elif corr in ["off-diag", "off-diagonal"]:
-                    corr = "xy,yx"
+        if options.corr:
+            if options.corr in ["diag", "diagonal"]:
+                corr = "xx,yy"
+            elif options.corr in ["off-diag", "off-diagonal"]:
+                corr = "xy,yx"
 
-                corr = corr.upper()
+            corr_labs = vu.get_polarizations(mytab)
+            corr = corr.upper().split(",")
 
-                corr = corr.split(",")
-                corr_labs = vu.get_polarizations(mytab)
+            logger.info(f"Available corrs: {','.join(corr_labs)}")
 
-                logger.info(f"Available corrs: {str(corr_labs)}")
-
-                for c in range(len(corr)):
+            for _ci, _corr in enumerate(corr):
+                if _corr.isalpha():
                     try:
-                        corr[c] = str(corr_labs.index(corr[c]))
+                        corr[_ci] = corr_labs.index(_corr)
                     except ValueError:
-                        logger.warning(f"Chosen corr {corr[c]} is not available")
-                        corr[c] = "-1"
-                if all(c == "-1" for c in corr):
-                    logger.error(
-                        f"All selected corrs: {options.corr} are not available. Exiting.")
-                    sys.exit(-1)
+                        logger.warning(f"Chosen corr {_corr} not available")
+                        corr[_ci] = -1
                 else:
-                    corr = ",".join(corr)
+                    corr[_ci] = int(_corr)
+
+            corr = [str(_c) for _c in corr if _c != -1]
+
+            if len(corr) == 0:
+                logger.error(
+                    f"Selected corrs: {options.corr} unavailable. Exiting.")
+                sys.exit(-1)
+            else:
+                corr = ",".join(corr)
+
             corr = vu.slice_data(corr)
 
         if fields is not None:

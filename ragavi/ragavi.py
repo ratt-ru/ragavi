@@ -22,7 +22,6 @@ from itertools import product
 from pyrap.tables import table
 
 import ragavi.utils as vu
-
 from ragavi import __version__
 from ragavi.plotting import create_bk_fig, add_axis
 
@@ -96,15 +95,18 @@ class DataCoreProcessor:
             self.xds_table_obj, self.ms_name, self.gtype, self.yaxis)
 
     def set_xaxis(self):
-        if self.gtype in ['B', 'D']:
-            xaxis = "channel"
-        elif self.gtype in ['G', 'F']:
-            xaxis = "time"
-        elif self.gtype == "K":
-            if self.kx == "time":
-                xaxis = "time"
-            else:
-                xaxis = "antenna"
+        gains = {
+            "B": "channel",
+            "D": "channel",
+            "Xf": "channel",
+            "Df": "channel",
+            "G": "time",
+            "F": "time",
+            "K": "time",
+            "Kcross": "time",
+        }
+        # kx should take precedence over the other
+        xaxis = self.kx or gains[self.gtype]
         return xaxis
 
     def process_data(self, ydata, yaxis=None):
@@ -131,7 +133,7 @@ class DataCoreProcessor:
             y = vu.calc_phase(ydata, unwrap=False)
         elif yaxis == "real":
             y = vu.calc_real(ydata)
-        elif yaxis == "delay" or yaxis == "error":
+        elif yaxis in ["delay", "error"]:
             y = ydata
 
         return y
@@ -207,7 +209,6 @@ class DataCoreProcessor:
         else:
             logger.error("Invalid x-axis name")
             return
-
         return xdata, x_label
 
     def prep_xaxis_data(self, xdata, freq=None):
@@ -398,16 +399,19 @@ class DataCoreProcessor:
 
         Data = namedtuple("Data", "y y_label y_err")
         ydata, y_label = self.get_yaxis_data()
-        p_ydata = self.prep_yaxis_data(ydata)
+
+        # prepare the y-data
+        p_ydata = self.prep_yaxis_data(ydata).data
         if add_error:
             err_data = self.get_errors()
-            hi = self.prep_yaxis_data(ydata + err_data)
-            lo = self.prep_yaxis_data(ydata - err_data)
+            # add error to the raw complex value beforehand
+            hi = self.prep_yaxis_data(ydata + err_data).data
+            lo = self.prep_yaxis_data(ydata - err_data).data
         else:
             hi = None
             lo = None
 
-        d = Data(y=p_ydata.data, y_label=y_label, y_err=(hi.data, lo.data))
+        d = Data(y=p_ydata, y_label=y_label, y_err=(hi, lo))
         return d
 
 
@@ -517,13 +521,13 @@ def get_time_range(tab_name, unix_time=True):
     return i_time, f_time
 
 
-def get_tooltip_data(xds_table_obj, gtype, freqs):
+def get_tooltip_data(xds_table_obj, xaxis, freqs):
     """Get the data to be displayed on the tool-tip of the plots
 
     Parameters
     ----------
-    gtype: :obj:`str`
-        Type of gain table being plotted
+    xaxis: :obj:`str`
+        Current xaxis
     xds_table_obj : `xarray.Dataset`
         xarray-ms table object
     freqs : :obj:`np.array`
@@ -538,7 +542,6 @@ def get_tooltip_data(xds_table_obj, gtype, freqs):
 
     """
     logger.debug("Getting tooltip data")
-
     scan_no = xds_table_obj.SCAN_NUMBER.values
     scan_no = scan_no.astype(np.uint16)
     spw_id = np.full(scan_no.shape, xds_table_obj.SPECTRAL_WINDOW_ID,
@@ -547,12 +550,11 @@ def get_tooltip_data(xds_table_obj, gtype, freqs):
     # get the number of channels
     nchan = freqs.size
 
-    if gtype in ['B', 'D']:
+    if xaxis == "channel":
         # extend array to accommodate for multiple time slots
         spw_id = np.array(spw_id).repeat(nchan, axis=0)
         # tile because of different scan numbers available
         scan_no = np.tile(scan_no, nchan)
-
     logging.debug("Tooltip data ready")
     return spw_id, scan_no
 
@@ -1522,6 +1524,16 @@ def gen_checkbox_labels(batch_size, num_leg_objs, antnames):
 
 ################## Saving Plot funcs ###################################
 
+def set_tempdir(name):
+    """Set the current dir as the temp dir also"""
+    import tempfile
+    if os.path.isfile(name):
+        t_dir = os.path.dirname(os.path.abspath(name))
+    else:
+        t_dir = name
+    tempfile.tempdir = t_dir
+
+
 def save_html(name, plot_layout):
     """Save plots in HTML format
 
@@ -1583,6 +1595,10 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
         ax = fi.subplots(nrows=1, ncols=ncols, sharex="row",
                          squeeze=True,
                          gridspec_kw=dict(wspace=0.2, hspace=0.3))
+
+        # Ensure ax is iterable because of plotting
+        if not isinstance(ax, (np.ndarray, list)):
+            ax = np.array([ax])
         for y, cds in enumerate(row):
 
             ants = np.unique([x.data_source.data["antname"][0]
@@ -1769,20 +1785,20 @@ def main(**kwargs):
         subs, gain = get_table(tab, spwid=ddid, where=where, fid=fields,
                                antenna=plotants)
 
-        if doplot == "ap":
-            y_axes = ["amplitude", "phase"]
-        elif doplot == "ri":
-            y_axes = ["real", "imaginary"]
-        elif doplot == "all":
-            y_axes = ["amplitude", "phase", "real", "imaginary"]
+        doplots = {
+            "a": "amplitude",
+            "p": "phase",
+            "r": "real",
+            "i": "imaginary",
+        }
 
-        if gain == "K":
-            y_axes = ["delay"]
-
-        if gain in ["G", "F"] or (options.kx == "time" and gain == "K"):
-            x_axis_type = "datetime"
+        if doplot == "all":
+            y_axes = [doplots[_] for _ in "apri"]
         else:
-            x_axis_type = "linear"
+            y_axes = [doplots[_] for _ in doplot]
+
+        if gain in ["K", "Kcross"]:
+            y_axes = ["delay"]
 
         # confirm a populous table is selected
         try:
@@ -1835,18 +1851,6 @@ def main(**kwargs):
                         if (sub.SPECTRAL_WINDOW_ID == spw and
                                 sub.FIELD_ID == fid and
                                 sub.ANTENNA1 == ant):
-                            # for tooltips
-                            spw_id, scan = get_tooltip_data(sub, gain, freqs)
-                            source = ColumnDataSource(
-                                data={"scanid": scan,
-                                      "corr":  np.full(scan.shape, corr,
-                                                       dtype=np.uint8),
-                                      "field": np.full(scan.shape, fname),
-                                      "spw": spw_id,
-                                      "antname": np.full(scan.shape, legend)
-                                      })
-                            inv_source = ColumnDataSource(data={})
-
                             logger.debug(vu.ctext(f"Processing un-flagged data for {legend}"))
 
                             data_obj = DataCoreProcessor(
@@ -1873,7 +1877,17 @@ def main(**kwargs):
                             y_label = data.y_label
 
                             iy = infl_data.y
-
+                            # for tooltips
+                            spw_id, scan = get_tooltip_data(sub, xaxis, freqs)
+                            source = ColumnDataSource(
+                                data={"scanid": scan,
+                                      "corr":  np.full(scan.shape, corr,
+                                                       dtype=np.uint8),
+                                      "field": np.full(scan.shape, fname),
+                                      "spw": spw_id,
+                                      "antname": np.full(scan.shape, legend)
+                                      })
+                            inv_source = ColumnDataSource(data={})
                             source.add(x, name='x')
                             source.add(y, name=f"y{_y}")
 
@@ -1896,6 +1910,7 @@ def main(**kwargs):
                             sub.close()
 
             title = f"{yaxis.capitalize()} vs {xaxis.capitalize()}"
+            x_axis_type = "datetime" if xaxis == "time" else "linear"
             fig = create_bk_fig(xlab=x_label, ylab=y_label, title=title,
                                 x_min=x.min(), x_max=x.max(),
                                 x_axis_type=x_axis_type, x_name=xaxis,
@@ -2191,6 +2206,9 @@ def main(**kwargs):
     if _NB_RENDER_:
         return final_layout
     else:
+        # set output dir to temp dir also
+        set_tempdir((options.html_name or os.getcwd()))
+
         if options.image_name and options.html_name:
             save_html(options.html_name, final_layout)
             save_static_image(fname=options.image_name, figs=final_plots,

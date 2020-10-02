@@ -1,3 +1,18 @@
+0.5.0
+-----
+**ragavi-vis**
+
+  - Fix corr selector again
+
+**ragavi-gains**
+
+  - Remove the `--gaintype` argument
+  - Adds polcal tables Kcross, Xf and Df to allowed plots
+  - Changes `-kx/--k-xaxis` to `-x\--xaxis` to allow for arbitrary specification of desired x-axis
+  - Adds `-y/ --yaxis` as an alternative to `-d/--doplot`
+  - Forces the temp directory ragavi uses to be the same as where ragavi is being ran. Attempt to fix "Out of memory error"
+
+  
 0.4.3
 -----
 **ragavi-gains**
