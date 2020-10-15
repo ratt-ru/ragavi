@@ -507,7 +507,6 @@ def get_tooltip_data(xds_table_obj, xaxis, freqs):
 
     """
     logger.debug("Getting tool tip data")
-
     scan_no = xds_table_obj.SCAN_NUMBER.values
     if scan_no.size != xds_table_obj.FLAG.sel(corr=0).size:
         scan_no = np.tile(
@@ -663,7 +662,7 @@ def corr_select_callback():
                         if (n == nbatches-1 && nants!=bsize){
                             new_bsize = nants % bsize;
                         }
-                        
+
                         for(let b=0; b<new_bsize; b++){
 
                             if (cb_obj.active.includes(c) && fsel.active.includes(f) &&
@@ -754,7 +753,7 @@ def spw_select_callback():
         for (let sp=0; sp<nspws; sp++){
             for (let f=0; f<nfields; f++){
                 for (let c=0; c<ncorrs; c++){
-                    
+
                     //re-initialise new batch size
                     new_bsize = bsize;
 
@@ -808,7 +807,7 @@ def flag_callback():
         //f_sources: Flagged data source
         //n_ax: number of figures available
         //uf_sources: unflagged data source
-  
+
         for (let n=1; n<=n_ax; n++){
             for (let i=0; i<uf_sources.length; i++){
                 if (cb_obj.active.includes(0)){
@@ -1751,6 +1750,7 @@ def main(**kwargs):
             "r": "real",
             "i": "imaginary",
         }
+
         if doplot == "all":
             y_axes = [doplots[_] for _ in "apri"]
         elif set(doplot.split(",")).issubset(set(doplots.values())):
