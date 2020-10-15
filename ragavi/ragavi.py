@@ -95,7 +95,7 @@ class DataCoreProcessor:
     def set_xaxis(self):
         gains = {
             "B": "channel",
-            "D": "channel",
+            "D": "time",
             "Xf": "channel",
             "Df": "channel",
             "G": "time",
