@@ -1,3 +1,12 @@
+0.5.1
+-----
+**ragavi-gains**
+
+  - Gives default x-axis to unknown tables
+  - Fixes partially hidden widget box sizes
+  - Changes default x-axis for D-tables to time
+
+
 0.5.0
 -----
 **ragavi-vis**

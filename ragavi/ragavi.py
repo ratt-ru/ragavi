@@ -2,12 +2,11 @@ import logging
 import numpy as np
 import sys
 import os
-
 from collections import OrderedDict, namedtuple
 from datetime import datetime
+from itertools import product
 
 import daskms as xm
-
 from dask import compute
 from bokeh.io import (output_file, output_notebook,
                       save, show)
@@ -18,7 +17,6 @@ from bokeh.models import (Button, CheckboxGroup,
                           Slider, Scatter, Title, Whisker)
 
 from bokeh.models.widgets import DataTable, TableColumn, Div
-from itertools import product
 from pyrap.tables import table
 
 import ragavi.utils as vu
@@ -97,7 +95,7 @@ class DataCoreProcessor:
     def set_xaxis(self):
         gains = {
             "B": "channel",
-            "D": "channel",
+            "D": "time",
             "Xf": "channel",
             "Df": "channel",
             "G": "time",
@@ -106,7 +104,8 @@ class DataCoreProcessor:
             "Kcross": "time",
         }
         # kx should take precedence over the other
-        xaxis = self.kx or gains[self.gtype]
+        # default axis will be time
+        xaxis = self.kx or gains.get(self.gtype, "time")
         return xaxis
 
     def process_data(self, ydata, yaxis=None):
@@ -137,44 +136,6 @@ class DataCoreProcessor:
             y = ydata
 
         return y
-
-    def flatten_bandpass_data(self, y, x=None):
-        """ Massage B table with multiple unique times into a shape
-        that works with BokehJS. Returns on x if x input is present
-        otherwise returns y.
-
-        Parameters
-        ----------
-        x : :obj:`np.array`
-            1-D Array containing data for the x-axis
-        y : :obj:`np.array`
-            2-D Array containing y-axis data.
-
-        Returns
-        -------
-        x : :obj:`np.array`
-            1-D Array containing repeated data for the x-axis
-        y : :obj:`np.array`
-            1-D Array containing y-axis flattened data.
-
-
-        """
-        logger.debug(f"Flattening bandpass: In y shape {str(y.shape)}")
-        if y.ndim > 1:
-            # no of unique times available in the bandpass
-            # last index because y is transposed to (chan, time)
-            nrows = y.shape[1]
-
-        if x is not None:
-            logger.debug(f"Flattening bandpass: In x shape {str(x.shape)}")
-            x = np.tile(x, (nrows))
-            logger.debug(f"Out x shape: {str(x.shape)}")
-            return x
-        else:
-            # TODO check if this flattening works proper
-            y = y.T.flatten()
-            logger.debug(f"Out y shape: {str(y.shape)}")
-            return y
 
     def get_errors(self):
         """Get error data from PARAMERR column.
@@ -253,7 +214,10 @@ class DataCoreProcessor:
         """
 
         # default data column
-        datacol = "CPARAM"
+        if "CPARAM" in self.xds_table_obj.variables:
+            datacol = "CPARAM"
+        else:
+            datacol = "FPARAM"
 
         if self.yaxis == "amplitude":
             y_label = "Amplitude"
@@ -264,7 +228,6 @@ class DataCoreProcessor:
         elif self.yaxis == "real":
             y_label = "Real"
         elif self.yaxis == "delay":
-            datacol = "FPARAM"
             y_label = "Delay[ns]"
         # attempt to get the specified column from the table
         try:
@@ -351,13 +314,15 @@ class DataCoreProcessor:
         ylabel = y.y_label
         hi, lo = y.y_err
 
-        if self.xaxis == "channel":
-            xdata = self.flatten_bandpass_data(ydata, x=xdata)
-            ydata = self.flatten_bandpass_data(ydata)
-            hi = self.flatten_bandpass_data(hi)
-            lo = self.flatten_bandpass_data(lo)
+        # make sure x and y-data have the same shape
+        if xdata.size != ydata.size:
+            fac = ydata.size // xdata.size
+            # xdata = xdata.repeat(fac)
+            xdata = xdata[:, np.newaxis].repeat(fac, axis=1)
+            xdata = xdata.T if xdata.shape != ydata.shape else xdata
 
-        xdata, ydata, hi, lo = compute(xdata, ydata, hi, lo)
+        xdata, ydata, hi, lo = compute(xdata.flatten(), ydata.flatten(),
+                                       hi.flatten(), lo.flatten())
 
         d = Data(x=xdata, x_label=xlabel, y=ydata,
                  y_label=ylabel, y_err=(hi, lo))
@@ -541,20 +506,13 @@ def get_tooltip_data(xds_table_obj, xaxis, freqs):
         scan ids
 
     """
-    logger.debug("Getting tooltip data")
+    logger.debug("Getting tool tip data")
     scan_no = xds_table_obj.SCAN_NUMBER.values
-    scan_no = scan_no.astype(np.uint16)
+    if scan_no.size != xds_table_obj.FLAG.sel(corr=0).size:
+        scan_no = np.tile(
+            scan_no, xds_table_obj.FLAG.chan.size).astype(np.uint8)
     spw_id = np.full(scan_no.shape, xds_table_obj.SPECTRAL_WINDOW_ID,
                      dtype=np.uint8)
-
-    # get the number of channels
-    nchan = freqs.size
-
-    if xaxis == "channel":
-        # extend array to accommodate for multiple time slots
-        spw_id = np.array(spw_id).repeat(nchan, axis=0)
-        # tile because of different scan numbers available
-        scan_no = np.tile(scan_no, nchan)
     logging.debug("Tooltip data ready")
     return spw_id, scan_no
 
@@ -704,7 +662,7 @@ def corr_select_callback():
                         if (n == nbatches-1 && nants!=bsize){
                             new_bsize = nants % bsize;
                         }
-                        
+
                         for(let b=0; b<new_bsize; b++){
 
                             if (cb_obj.active.includes(c) && fsel.active.includes(f) &&
@@ -795,7 +753,7 @@ def spw_select_callback():
         for (let sp=0; sp<nspws; sp++){
             for (let f=0; f<nfields; f++){
                 for (let c=0; c<ncorrs; c++){
-                    
+
                     //re-initialise new batch size
                     new_bsize = bsize;
 
@@ -849,7 +807,7 @@ def flag_callback():
         //f_sources: Flagged data source
         //n_ax: number of figures available
         //uf_sources: unflagged data source
-  
+
         for (let n=1; n<=n_ax; n++){
             for (let i=0; i<uf_sources.length; i++){
                 if (cb_obj.active.includes(0)){
@@ -1426,7 +1384,7 @@ def create_stats_table(stats, yaxes):
     dtab = DataTable(source=source, columns=columns,
                      fit_columns=True, height=150,
                      max_height=180, max_width=600,
-                     sizing_mode="stretch_both", width=500)
+                     sizing_mode="stretch_width")
     t_title = Div(text="Median Statistics")
 
     logger.debug("Stats table generated")
@@ -1435,7 +1393,8 @@ def create_stats_table(stats, yaxes):
 
 def make_table_name(tab_name):
     """Create div for stats data table"""
-    div = PreText(text=f"ragavi: v{__version__}\nTable : {tab_name}")
+    div = PreText(text=f"ragavi: v{__version__} | Table: {tab_name}",
+                  margin=(1, 1, 1, 1))
     return div
 
 
@@ -1794,6 +1753,8 @@ def main(**kwargs):
 
         if doplot == "all":
             y_axes = [doplots[_] for _ in "apri"]
+        elif set(doplot.split(",")).issubset(set(doplots.values())):
+            y_axes = [_ for _ in doplot.split(",")]
         else:
             y_axes = [doplots[_] for _ in doplot]
 
@@ -2049,6 +2010,7 @@ def main(**kwargs):
 
         save_selected = Button(label="Download data selection",
                                button_type="success", margin=(7, 5, 3, 5),
+                               sizing_mode="fixed",
                                **w_dims)
 
         # configuring toggle button for showing all the errors
@@ -2188,10 +2150,10 @@ def main(**kwargs):
                 [batch_select, field_selector, spw_select, corr_select]
             ])
 
-        all_widgets = row([w_box, save_selected, stats_table],
-                          sizing_mode=None, spacing=10, max_height=180)
+        all_widgets = grid([w_box, save_selected, None, stats_table],
+                           sizing_mode="stretch_width", nrows=1)
 
-        plots = gridplot([all_figures], toolbar_location="above",
+        plots = gridplot([all_figures], toolbar_location="right",
                          sizing_mode="stretch_width")
 
         lay = layout([[tname_div], [all_widgets], [plots]],
