@@ -283,7 +283,13 @@ def gains_argparser():
                         https://colorcet.holoviz.org/user_guide/index.html.
                         Defaults to coolwarm""",
                          default="coolwarm")
-
+    pconfig.add_argument("-g", "--gaintype", nargs='*', type=str,
+                         metavar=' ', dest="gain_types",
+                         choices=['B', 'D', 'G', 'K', 'F'],
+                         help="""Type of table(s) to be plotted. This is now
+                         auto-detected and this argument will soon be
+                         deprecated""",
+                         default=[])
     pconfig.add_argument("-y", "--yaxis", "-d", "--doplot", dest="doplot",
                          type=str, metavar='',
                          help="""Plot complex values as any amplitude (a),
@@ -296,7 +302,8 @@ def gains_argparser():
     pconfig.add_argument("--debug", dest="debug",
                          action="store_true",
                          help="""Enable debug messages""")
-    pconfig.add_argument("-x", "--xaxis", dest="kx", type=str, metavar='',
+    pconfig.add_argument("-x", "--xaxis", "-kx", "--k-xaxis", dest="kx",
+                         type=str, metavar='',
                          help="""Choose an x-xaxis Valid choices are: 
                          time, antenna, channel. If this is not supplied, an
                          appropriate one will be selected automatically
