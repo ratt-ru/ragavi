@@ -2040,6 +2040,8 @@ def main(**kwargs):
                                   bar_color="#6F95C3", **w_dims)
 
         tname_div = make_table_name(tab)
+        wbox_sizing_div = Div(text="", height=200, width=10,
+                              sizing_mode="fixed")
 
         ######################################################################
         ############## Defining widget Callbacks ############################
@@ -2150,7 +2152,8 @@ def main(**kwargs):
                 [batch_select, field_selector, spw_select, corr_select]
             ])
 
-        all_widgets = grid([w_box, save_selected, None, stats_table],
+        all_widgets = grid([w_box, save_selected, wbox_sizing_div,
+                            stats_table],
                            sizing_mode="stretch_width", nrows=1)
 
         plots = gridplot([all_figures], toolbar_location="right",

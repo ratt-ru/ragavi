@@ -1,3 +1,10 @@
+0.5.2
+-----
+**ragavi-gains**
+
+  - Return -g/--gaintype and -kx/--k-xaxis for backward compatibility
+
+
 0.5.1
 -----
 **ragavi-gains**
