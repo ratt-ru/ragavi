@@ -285,7 +285,6 @@ def gains_argparser():
                          default="coolwarm")
     pconfig.add_argument("-g", "--gaintype", nargs='*', type=str,
                          metavar=' ', dest="gain_types",
-                         choices=['B', 'D', 'G', 'K', 'F'],
                          help="""Type of table(s) to be plotted. This is now
                          auto-detected and this argument will soon be
                          deprecated""",
