@@ -260,12 +260,15 @@ class FigRag(BaseFigure):
         data.add(data.data[dim] - errors, name="lower")
 
         ebar = Whisker(source=data, base=base, lower="lower", upper="upper",
-                name=f"fig{self.f_num}_er{self.rend_idx}", visible=False, **kwargs)
+                name=f"fig{self.f_num}_er{self.rend_idx}", visible=False, upper_head=None,
+                       lower_head=None, line_color="red", line_cap="round", ** kwargs)
+
+        if self.rend_idx < 1:
+            ebar.visible = True
 
         #link the visible properties of this error bars and its corresponding glyph
         self.fig.select_one(f"fig{self.f_num}_ren{self.rend_idx}").js_link("visible", ebar, "visible")
-        ebar.upper_head.line_color = "red"
-        ebar.lower_head.line_color = "red"
+     
         self.fig.add_layout(ebar)
 
     def write_out(self, filename="oer.html"):
