@@ -26,15 +26,15 @@ fig.select(name="selection string")
 """
 
 class BaseFigure:
-    height = 720
-    width = 1080
     f_num = -1
-    def __init__(self, x_scale, y_scale, add_grid, add_toolbar, add_xaxis,
+    def __init__(self, width, height, x_scale, y_scale, add_grid, add_toolbar, add_xaxis,
                 add_yaxis, plot_args, axis_args, tick_args):
 
         self.__update_fnum__()
         self.f_num = self.get_fnum()
       
+        self.width = width
+        self.height = height
         self.x_scale = x_scale
         self.y_scale = y_scale
         self.add_grid = add_grid
@@ -56,29 +56,28 @@ class BaseFigure:
 
 
     def create_figure(self):
-        customs = rdict(plot_width=BaseFigure.width, plot_height=self.height,
-                       frame_height=int(0.98 * self.height), frame_width=int(0.98*self.width),
-                       name=f"fig{self.f_num}_plot")
+        self.plot_args = rdict(self.plot_args)
 
-        customs.update(**self.plot_args)
-        customs.set_multiple_defaults(background="white", border_fill_alpha=0.1,
-                                      border_fill_color="white", min_border=3,
-                                      name="plot", outline_line_dash="solid",
-                                      outline_line_width=2, outline_line_color="#017afe",
-                                      outline_line_alpha=0.4, output_backend="canvas",
-                                      sizing_mode="stretch_width", title_location="above",
-                                      toolbar_location="above")
+        # Set these defaults only if they haven't been set by user explicitly
+        self.plot_args.set_multiple_defaults(
+            background="white", border_fill_alpha=0.1, border_fill_color="white",
+            min_border=3, outline_line_dash="solid",
+            outline_line_width=2, outline_line_color="#017afe", outline_line_alpha=0.4, 
+            output_backend="canvas", sizing_mode="stretch_width", title_location="above",
+            toolbar_location="above", plot_width=self.width,
+            plot_height=self.height, frame_height=int(0.93 * self.height),
+            frame_width=int(0.98*self.width), name=f"fig{self.f_num}_plot")
 
         fig = Plot()
 
         for axis, scale in [("x", self.x_scale), ("y", self.y_scale)]:
-            customs[f"{axis}_range"] = self.make_range(dim=axis)
-            customs[f"{axis}_scale"] = self.make_scale(dim=axis, scale=scale)
+            self.plot_args[f"{axis}_range"] = self.make_range(dim=axis)
+            self.plot_args[f"{axis}_scale"] = self.make_scale(dim=axis, scale=scale)
 
         if self.add_toolbar:
-            customs["toolbar"] = self.make_toolbar()
+            self.plot_args["toolbar"] = self.make_toolbar()
         
-        fig.update(**customs)
+        fig.update(**self.plot_args)
         
         if self.add_grid:
             for axis in ["x", "y"]:
@@ -153,11 +152,11 @@ class BaseFigure:
     
 
 class FigRag(BaseFigure):
-    def __init__(self, x_scale="linear",
+    def __init__(self, width=1080,  height=720, x_scale="linear",
                 y_scale="linear", add_grid=True, add_toolbar=False,
                 add_xaxis=True, add_yaxis=True, plot_args=None, axis_args=None,
                 tick_args=None):
-        super().__init__(x_scale, y_scale, add_grid, add_toolbar, add_xaxis, 
+        super().__init__( width, height, x_scale, y_scale, add_grid, add_toolbar, add_xaxis, 
                          add_yaxis, plot_args, axis_args, tick_args)
     
         # self.title = title
@@ -300,12 +299,13 @@ class FigRag(BaseFigure):
                         name=f"fig{self.f_num}_leg{idx}", **kwargs))
             legends.append(Legend(items=self.legend_items[idx*group_size: group_size*(idx+1)],
                                 name=f"fig{self.f_num}_leg{idx}", **kwargs))
-
-        
-    def link_figures(self, other_fig):
+       
+    def link_figures(self, *others):
         """
         Link to or more items of this class
+        others: tuple
         """
-        for idx, renderer in enumerate(self.fig.renders):
-            # Link their renderer's visible properties
-            renderer.js_link("visible", other_fig.renderers[idx], "visible")
+        for idx, renderer in enumerate(self.fig.renderers):
+            for other_fig in others:    
+                # Link their renderer's visible properties
+                renderer.js_link("visible", other_fig.fig.renderers[idx], "visible")
