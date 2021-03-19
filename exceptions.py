@@ -1,0 +1,2 @@
+class ExRag(Exceptions):
+    pass
