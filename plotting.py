@@ -158,12 +158,7 @@ class FigRag(BaseFigure):
                 tick_args=None):
         super().__init__( width, height, x_scale, y_scale, add_grid, add_toolbar, add_xaxis, 
                          add_yaxis, plot_args, axis_args, tick_args)
-    
-        # self.title = title
-        # self.errors = errors
-        # self.plot_args = self.plot_args or {}
-        # self.tick_args = self.tick_args or {}
-        # self.axis_args = self.axis_args or {}
+
         self.fig = super().create_figure()
         self.rend_idx = 0
         self.legend_items = []
@@ -218,10 +213,6 @@ class FigRag(BaseFigure):
     def add_glyphs(self, glyph, data, errors=None, legend=None, **kwargs):
         kwargs = rdict(kwargs)
         
-        # kwargs.set_multiple_defaults()
-        # add the corresponding glyphs and its data
-        #if necessary add its corresponding errors
-        # Add its corresponding legends if necessary
         data_src = self.create_data_source(data,
                         name=f"fig{self.f_num}_gl{self.rend_idx}_ds")
 
@@ -284,11 +275,9 @@ class FigRag(BaseFigure):
         """
         kwargs = rdict(kwargs)
         kwargs.set_multiple_defaults(click_policy="hide", glyph_height=20,
-             glyph_width=20, label_text_font_size="8pt",
-             label_text_font="monospace", location="top_left",
-             margin=1, orientation="horizontal",
-             level="annotation", spacing=1,
-             padding=2, visible=True)
+             glyph_width=20, label_text_font_size="8pt",label_text_font="monospace",
+             location="top_left", margin=1, orientation="horizontal", 
+             level="annotation", spacing=1, padding=2, visible=False)
 
         legends = []
         n_groups = math.ceil(len(self.legend_items) / group_size)
@@ -306,6 +295,9 @@ class FigRag(BaseFigure):
         others: tuple
         """
         for idx, renderer in enumerate(self.fig.renderers):
-            for other_fig in others:    
+            for other_fig in others:
                 # Link their renderer's visible properties
                 renderer.js_link("visible", other_fig.fig.renderers[idx], "visible")
+                other_fig.fig.renderers[idx].js_link("visible", renderer, "visible")
+
+
