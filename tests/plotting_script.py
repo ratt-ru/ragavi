@@ -4,8 +4,8 @@ from ipdb import set_trace
 from bokeh.models import Circle
 from bokeh.palettes import linear_palette, Magma256
 from bokeh.layouts import gridplot
-import plotting
 
+from holy_chaos.chaos import plotting
 print("Running ", end=" ")
 x = range(10)
 y = [_**2 for _ in x]
@@ -29,6 +29,7 @@ for idx, _ in enumerate(ys):
         new_figure.add_glyphs(Circle, {"x": x, "y": np.array(y)*i}, errors=errors, legend=f"Legend {i}",
                             size=12, fill_alpha=1, fill_color=colours[i], line_color=None)
 
+    set_trace()
     new_figure.add_legends(group_size=5, visible=True)
 
     figures.append(new_figure)

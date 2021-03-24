@@ -1,36 +1,47 @@
-import numpy as np
+import pytest
+from holy_chaos.chaos import plotting
 
-from ipdb import set_trace
-from bokeh.models import Circle
+def test_empty_figure():
+    pass
 
-import plotting
+def test_figure_number():
+    pass
+ 
+def test_ticker_maker():
+    # cheker whether it accepts other keywords arguments
+    # check whether we can change various arguments
+    # Check creation of names and scale selections
+    pass
 
-print("Running ", end=" ")
-x = range(10)
-y = [_**2 for _ in x]
-errors = np.random.random_sample(len(x))
+def test_scale_maker():
+    # cheks whether it accepts other keywords arguments
+    # check whether we can change various arguments
+    # Check creation of names and scale selections
+    pass
 
-print(".", end=" ")
+def test_axis_maker():
+    # cheks whether it accepts other keywords arguments
+    # check whether we can change various arguments
+    # Check creation of names and scale selections and dimension
+    pass
 
-for name, edx in [("x", x), ("y", y), ("errs", errors)]:
-    print(name)
-    print("="*20)
-    print(edx)
+def test_range_maker():
+    # cheks whether it accepts other keywords arguments
+    # check whether we can change various arguments
+    # Check creation of names and scale selections and dimension
+    # Ceck sleection of dataranges
+    pass
 
-print(".", end=" ")
+def test_toolbar_maker():
+    # cheks whether it accepts other keywords arguments
+    # check whether we can change various arguments
+    # Check creation of names na dtypes
+    pass
 
-new_figure = plotting.FigRag(plot_args=dict(plot_width=300, plot_height=300, add_toolbar=True))
 
-new_figure.update_xlabel("Single")
-new_figure.update_ylabel("Squared")
-new_figure.update_title("Squared vs Single Plot Test")
+def test_label_updater():
+    pass
 
-print(".", end=" ")
-for i in range(13):
-    new_figure.add_glyphs(Circle, {"x": x, "y": np.array(y)*i}, errors=errors, legend=f"Legend {i}")
-
-new_figure.add_legends(group_size=5)
-new_figure.write_out("test_plot.html")
-print(".", end="\n")
-
-print("Done")
+def test_title_updater():
+    # Check location, name and acceptance of keyword args
+    pass

@@ -17,7 +17,6 @@ from bokeh.io import save
 from overrides import rdict
 
 
-
 """
 REMEMBER
 ========
@@ -41,7 +40,6 @@ class BaseFigure:
         self.add_toolbar = add_toolbar
         self.add_xaxis = add_xaxis
         self.add_yaxis = add_yaxis
-
         # set to empty dict if not provided
         self.plot_args = plot_args or {}
         self.axis_args = axis_args or {}
@@ -50,10 +48,8 @@ class BaseFigure:
     def __update_fnum__(self):
         BaseFigure.f_num += 1
     
-
     def get_fnum(self):
         return BaseFigure.f_num
-
 
     def create_figure(self):
         self.plot_args = rdict(self.plot_args)
@@ -159,16 +155,18 @@ class FigRag(BaseFigure):
         super().__init__( width, height, x_scale, y_scale, add_grid, add_toolbar, add_xaxis, 
                          add_yaxis, plot_args, axis_args, tick_args)
 
-        self.fig = super().create_figure()
+        self._fig = super().create_figure()
         self.rend_idx = 0
         self.legend_items = []
     
     
     def update_xlabel(self, label):
-        self.fig.xaxis.axis_label = label
+        self._fig.xaxis.axis_label = label
+
 
     def update_ylabel(self, label):
-        self.fig.yaxis.axis_label = label
+        self._fig.yaxis.axis_label = label
+
 
     def update_title(self, title, location="above", **kwargs):
         
@@ -177,19 +175,20 @@ class FigRag(BaseFigure):
         kwargs.set_multiple_defaults(align="center", name=f"fig{self.f_num}_title", text=title,
                       text_font_size="24px", text_font="monospace", text_font_style="bold")
 
-        self.fig.add_layout(Title(**kwargs), location)
-
+        self._fig.add_layout(Title(**kwargs), location)
     
     def add_axis(self, label, dim, scale, location="right"):
-        if self.fig.extra_x_ranges is None:
-            self.fig.extra_x_ranges = {}
+        # TODO: fIX CHANGGE FROM EXTRA X_RANGE TO NON  SPECIFIC DIM TO MAKE IT MORE GENERAL
+        # CALL UPPON SUPER MAKE_RANGE METHOD TO ACHIVER
+        if self._fig.extra_x_ranges is None:
+            self._fig.extra_x_ranges = {}
 
+        self._fig.extra_x_ranges["fig{self.f_num}_extra_{dim}range"] = super().make_range
         new_axis = super().make_axis(dim, scale, name=f"fig{self.f_num}_extra_{dim}axis")
-        self.fig.add_layout(new_axis, location)
-
+        self._fig.add_layout(new_axis, location)
 
     def format_axes(self, **kwargs):
-        for axis in self.fig.axes:
+        for axis in self._fig.axes:
             axis.update(**kwargs)
 
     def create_data_source(self, data, **kwargs):
@@ -198,17 +197,14 @@ class FigRag(BaseFigure):
     def hide_glyphs(self, exclude=0):
         if exclude<0:
             #subtract exclude to get index of the desired last number in reverse
-            exclude = len(self.fig.renderers) + exclude
-        for idx, renderer in enumerate(self.fig.renderers):
+            exclude = len(self._fig.renderers) + exclude
+        for idx, renderer in enumerate(self._fig.renderers):
             if idx!=exclude:
                 renderer.visible = False
 
     def show_glyphs(self):
-        for renderer in self.fig.renderers:
+        for renderer in self._fig.renderers:
             renderer.visible = True
-
-    def get_figure(self):
-        return self.fig
 
     def add_glyphs(self, glyph, data, errors=None, legend=None, **kwargs):
         kwargs = rdict(kwargs)
@@ -217,7 +213,7 @@ class FigRag(BaseFigure):
                         name=f"fig{self.f_num}_gl{self.rend_idx}_ds")
 
 
-        rend = self.fig.add_glyph(data_src, glyph(name=f"fig{self.f_num}_gl{self.rend_idx}",
+        rend = self._fig.add_glyph(data_src, glyph(name=f"fig{self.f_num}_gl{self.rend_idx}",
                          **kwargs))
         rend.name = f"fig{self.f_num}_ren{self.rend_idx}"
         if self.rend_idx > 0:
@@ -257,14 +253,14 @@ class FigRag(BaseFigure):
             ebar.visible = True
 
         #link the visible properties of this error bars and its corresponding glyph
-        self.fig.select_one(f"fig{self.f_num}_ren{self.rend_idx}").js_link("visible", ebar, "visible")
+        self._fig.select_one(f"fig{self.f_num}_ren{self.rend_idx}").js_link("visible", ebar, "visible")
      
-        self.fig.add_layout(ebar)
+        self._fig.add_layout(ebar)
 
     def write_out(self, filename="oer.html"):
         if ".html" not in filename:
             filename += ".html"
-        save(self.fig, filename=filename, title=os.path.splitext(filename)[0])
+        save(self._fig, filename=filename, title=os.path.splitext(filename)[0])
 
     
     def add_legends(self, group_size=16, **kwargs):
@@ -283,7 +279,7 @@ class FigRag(BaseFigure):
         n_groups = math.ceil(len(self.legend_items) / group_size)
         for idx in range(n_groups):
             # push the legends into the stack
-            self.fig.above.insert(0,
+            self._fig.above.insert(0,
                 Legend(items=self.legend_items[idx*group_size: group_size*(idx+1)],
                         name=f"fig{self.f_num}_leg{idx}", **kwargs))
             legends.append(Legend(items=self.legend_items[idx*group_size: group_size*(idx+1)],
@@ -294,10 +290,12 @@ class FigRag(BaseFigure):
         Link to or more items of this class
         others: tuple
         """
-        for idx, renderer in enumerate(self.fig.renderers):
+        for idx, renderer in enumerate(self._fig.renderers):
             for other_fig in others:
                 # Link their renderer's visible properties
                 renderer.js_link("visible", other_fig.fig.renderers[idx], "visible")
                 other_fig.fig.renderers[idx].js_link("visible", renderer, "visible")
 
-
+    @property
+    def fig(self):
+        return self._fig
