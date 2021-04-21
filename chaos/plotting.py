@@ -1,9 +1,9 @@
 import os
 import math
 
-from ipdb import set_trace
-
-from bokeh.models import (BasicTicker, DatetimeAxis, DataRange1d, Grid, Legend,
+import numpy as np
+from bokeh.models import (BasicTicker, Circle, Line, Scatter,
+                          CDSView, BooleanFilter, DatetimeAxis, DataRange1d, Grid, Legend,
                           LinearAxis, LinearScale, LogAxis, LogScale,
                           Toolbar, Plot, Range1d,
                           Title, ColumnDataSource, Whisker, Scatter, Line, Circle)
@@ -15,6 +15,9 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool,
 from bokeh.io import save
 
 from overrides import rdict
+
+# for testing
+from ipdb import set_trace
 
 
 """
@@ -80,9 +83,9 @@ class BaseFigure:
                 fig.add_layout(self.make_grid(dim=axis))
         
         if self.add_yaxis:
-            fig.add_layout(self.make_axis(dim="y", scale=self.y_scale), "below")
+            fig.add_layout(self.make_axis(dim="y", scale=self.y_scale), "left")
         if self.add_xaxis:
-            fig.add_layout(self.make_axis(dim="x", scale=self.x_scale), "left")
+            fig.add_layout(self.make_axis(dim="x", scale=self.x_scale), "below")
 
         return fig
         
@@ -91,7 +94,8 @@ class BaseFigure:
         scales = {
             "linear": LinearScale,
             "log": LogScale,
-            "datetime": LinearScale
+            "datetime": LinearScale,
+            "time": LinearScale
         }
         return scales[scale](name=f"fig{self.f_num}_{dim}_scale")
 
@@ -105,7 +109,8 @@ class BaseFigure:
         axes = {
             "linear": LinearAxis,
             "log": LogAxis,
-            "datetime": DatetimeAxis
+            "datetime": DatetimeAxis,
+            "time": DatetimeAxis
         }
 
         if self.axis_args is None:
@@ -162,6 +167,7 @@ class FigRag(BaseFigure):
     
     def update_xlabel(self, label):
         self._fig.xaxis.axis_label = label
+        set_trace()
 
 
     def update_ylabel(self, label):
@@ -193,6 +199,9 @@ class FigRag(BaseFigure):
 
     def create_data_source(self, data, **kwargs):
         return ColumnDataSource(data=data, **kwargs)
+    
+    def create_view(self, cds, view_data, **kwargs):
+        return CDSView(filters=[BooleanFilter(view_data)], source=cds, **kwargs)
 
     def hide_glyphs(self, exclude=0):
         if exclude<0:
@@ -206,21 +215,34 @@ class FigRag(BaseFigure):
         for renderer in self._fig.renderers:
             renderer.visible = True
 
-    def add_glyphs(self, glyph, data, errors=None, legend=None, **kwargs):
+    def add_glyphs(self, glyph, data, legend=None, **kwargs):
         kwargs = rdict(kwargs)
-        
-        data_src = self.create_data_source(data,
+
+        #allow passing actual data objects or AxInfo objects
+        if type(data) != dict:
+            pdata = dict(x=data.xdata, y=data.ydata)
+        else:
+            pdata = data
+        data_src = self.create_data_source(pdata,
                         name=f"fig{self.f_num}_gl{self.rend_idx}_ds")
 
+        if data.flags is not None and ~np.all(data.flags):
+            markers = np.tile([glyph], data.flags.size)
+            markers[np.where(data.flags == False)] = "inverted_triangle"
+            data_src.add(markers, name="markers")
+            glyph = "markers"
+            data_view = self.create_view(data_src, data.flags, 
+                name=f"fig{self.f_num}_gl{self.rend_idx}_view")
 
-        rend = self._fig.add_glyph(data_src, glyph(name=f"fig{self.f_num}_gl{self.rend_idx}",
-                         **kwargs))
+        rend = self._fig.add_glyph(data_src, 
+            Scatter(marker=glyph, 
+                    name=f"fig{self.f_num}_gl{self.rend_idx}",
+                    size=10, **kwargs))
         rend.name = f"fig{self.f_num}_ren{self.rend_idx}"
-        if self.rend_idx > 0:
-            rend.visible = False
+        self.hide_glyphs()
 
-        if errors is not None:
-            self.add_errors(data_src, errors)
+        if data.errors is not None:
+            self.add_errors(data_src, data.errors)
 
         if legend is not None:
             self.legend_items.append((legend, [rend]))
@@ -248,12 +270,11 @@ class FigRag(BaseFigure):
         ebar = Whisker(source=data, base=base, lower="lower", upper="upper",
                 name=f"fig{self.f_num}_er{self.rend_idx}", visible=False, upper_head=None,
                        lower_head=None, line_color="red", line_cap="round", ** kwargs)
-
-        if self.rend_idx < 1:
-            ebar.visible = True
+        # if self.rend_idx < 1:
+        #     ebar.visible = True
 
         #link the visible properties of this error bars and its corresponding glyph
-        self._fig.select_one(f"fig{self.f_num}_ren{self.rend_idx}").js_link("visible", ebar, "visible")
+        # self._fig.select_one(f"fig{self.f_num}_ren{self.rend_idx}").js_link("visible", ebar, "visible")
      
         self._fig.add_layout(ebar)
 
