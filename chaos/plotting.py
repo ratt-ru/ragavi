@@ -14,7 +14,7 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool,
 
 from bokeh.io import save
 
-from overrides import rdict
+from overrides import set_multiple_defaults
 
 # for testing
 from ipdb import set_trace
@@ -55,17 +55,18 @@ class BaseFigure:
         return BaseFigure.f_num
 
     def create_figure(self):
-        self.plot_args = rdict(self.plot_args)
-
         # Set these defaults only if they haven't been set by user explicitly
-        self.plot_args.set_multiple_defaults(
-            background="white", border_fill_alpha=0.1, border_fill_color="white",
-            min_border=3, outline_line_dash="solid",
-            outline_line_width=2, outline_line_color="#017afe", outline_line_alpha=0.4, 
-            output_backend="canvas", sizing_mode="stretch_width", title_location="above",
-            toolbar_location="above", plot_width=self.width,
-            plot_height=self.height, frame_height=int(0.93 * self.height),
-            frame_width=int(0.98*self.width), name=f"fig{self.f_num}_plot")
+        self.plot_args = set_multiple_defaults(self.plot_args, dict(
+                background="white", border_fill_alpha=0.1, 
+                border_fill_color="white",
+                min_border=3, outline_line_dash="solid",
+                outline_line_width=2, outline_line_color="#017afe", outline_line_alpha=0.4, 
+                output_backend="canvas", sizing_mode="stretch_width", title_location="above",
+                toolbar_location="above", plot_width=self.width,
+                plot_height=self.height, frame_height=int(0.93 * self.height),
+                frame_width=int(0.98*self.width), name=f"fig{self.f_num}_plot"
+                )
+        )
 
         fig = Plot()
 
@@ -97,11 +98,11 @@ class BaseFigure:
             "datetime": LinearScale,
             "time": LinearScale
         }
-        return scales[scale](name=f"fig{self.f_num}_{dim}_scale")
+        return scales[scale](tags=[f"{dim}scale"])
 
 
     def make_ticker(self, dim):
-        return BasicTicker(name=f"fig{self.f_num}_{dim}_ticker", desired_num_ticks=5, 
+        return BasicTicker(tags=[f"{dim}ticker"], desired_num_ticks=5, 
         ** self.tick_args)
 
 
@@ -114,16 +115,17 @@ class BaseFigure:
         }
 
         if self.axis_args is None:
-            self.axis_args = rdict()
+            self.axis_args = dict()
         else:
-            self.axis_args = rdict(self.axis_args)
+            self.axis_args = dict(self.axis_args)
         
-        self.axis_args.set_multiple_defaults(minor_tick_line_alpha=0, axis_label_text_align="center",
-                                             axis_label_text_font="monospace",
-                                             axis_label_text_font_size="10px",
-                                             axis_label_text_font_style="normal",
-                                             major_label_orientation="horizontal",
-                                             name=f"fig{self.f_num}_{dim}_axis")
+        self.axis_args = set_multiple_defaults(self.axis_args, dict(
+            minor_tick_line_alpha=0, axis_label_text_align="center",
+            axis_label_text_font="monospace", 
+            axis_label_text_font_size="10px",
+            axis_label_text_font_style="normal",
+            major_label_orientation="horizontal"))
+        self.axis_args["tags"] = [f"{dim}axis"]
         return axes[scale]( ticker=self.make_ticker(dim=dim), **self.axis_args)
 
 
@@ -134,22 +136,22 @@ class BaseFigure:
 
     def make_range(self, dim, r_min=None, r_max=None, visible=True):
         if r_min is None and r_max is None:
-            return DataRange1d(name=f"fig{self.f_num}_{dim}_range", only_visible=visible)
+            return DataRange1d(tags=[f"{dim}range"], only_visible=visible)
         else:
-            return Range1d(name=f"fig{self.f_num}_{dim}_range", start=r_min, end=r_max)
+            return Range1d(tags=[f"{dim}range"], start=r_min, end=r_max)
 
 
     def make_toolbar(self):
         return Toolbar(name=f"fig{self.f_num}_toolbar",
                         tools=[
                             HoverTool(tooltips=[("x", "$x"), ("y", "$y")],
-                                      name=f"fig{self.f_num}_htool", point_policy="snap_to_data"),
+                                      name=f"fig{self.f_num}_htool", 
+                                      point_policy="snap_to_data"),
                             BoxSelectTool(), BoxZoomTool(),
                             # EditTool(), # BoxEditTool(), # RangeTool(),
                             LassoSelectTool(), PanTool(), ResetTool(),
                             SaveTool(), UndoTool(), WheelZoomTool()
-                            ]
-                    )
+                    ])
     
 
 class FigRag(BaseFigure):
@@ -162,12 +164,11 @@ class FigRag(BaseFigure):
 
         self._fig = super().create_figure()
         self.rend_idx = 0
-        self.legend_items = []
+        self.legend_items = {}
     
     
     def update_xlabel(self, label):
         self._fig.xaxis.axis_label = label
-        set_trace()
 
 
     def update_ylabel(self, label):
@@ -176,21 +177,50 @@ class FigRag(BaseFigure):
 
     def update_title(self, title, location="above", **kwargs):
         
-        kwargs = rdict(kwargs)
-
-        kwargs.set_multiple_defaults(align="center", name=f"fig{self.f_num}_title", text=title,
-                      text_font_size="24px", text_font="monospace", text_font_style="bold")
+        kwargs = set_multiple_defaults(kwargs, dict(
+            align="center", text=title,
+            text_font_size="24px", text_font="monospace",
+            text_font_style="bold"))
+        kwargs["tags"] = ["title"]
 
         self._fig.add_layout(Title(**kwargs), location)
     
-    def add_axis(self, label, dim, scale, location="right"):
-        # TODO: fIX CHANGGE FROM EXTRA X_RANGE TO NON  SPECIFIC DIM TO MAKE IT MORE GENERAL
-        # CALL UPPON SUPER MAKE_RANGE METHOD TO ACHIVER
-        if self._fig.extra_x_ranges is None:
-            self._fig.extra_x_ranges = {}
+    def add_axis(self, lo, hi, dim, scale, location="right"):
+        """
+        Add an extra x or y axis to the plot
+        
+        Parameters
+        ----------
+        lo: :obj:`float`
+            Minimum value for this axis' range
+        hi: :obj:`float`
+            Maximum vlaue for this axis' range
+        dim: :obj:`str`
+            Dimension on which to add axis
+        scale: :obj:`str`
+            Scale of the new axis
+        location: :obj:`str`
+            Where to place the axis
+        
+        Returns
+        -------
+        Nothing
+        """
+        extra_ranges = getattr(self._fig, f"extra_{dim}_ranges")
+        if extra_ranges is None:
+            extra_ranges = {}
+        
+        #use nx to number the next range. Starts from 0
+        nx = len(extra_ranges)
 
-        self._fig.extra_x_ranges["fig{self.f_num}_extra_{dim}range"] = super().make_range
-        new_axis = super().make_axis(dim, scale, name=f"fig{self.f_num}_extra_{dim}axis")
+        extra_ranges.update(f"extra_{dim}range{nx}",
+            super().make_range(dim, r_min=lo, r_max=hi, visible=True))
+        
+        getattr(self._fig, f"extra_{dim}_ranges").update(extra_ranges)
+
+        new_axis = super().make_axis(dim, scale, tags=f"extra_{dim}axis")
+        
+        #update the extra ranges on the figure
         self._fig.add_layout(new_axis, location)
 
     def format_axes(self, **kwargs):
@@ -203,49 +233,72 @@ class FigRag(BaseFigure):
     def create_view(self, cds, view_data, **kwargs):
         return CDSView(filters=[BooleanFilter(view_data)], source=cds, **kwargs)
 
-    def hide_glyphs(self, exclude=0):
-        if exclude<0:
-            #subtract exclude to get index of the desired last number in reverse
-            exclude = len(self._fig.renderers) + exclude
-        for idx, renderer in enumerate(self._fig.renderers):
-            if idx!=exclude:
-                renderer.visible = False
+    def hide_glyphs(self, selection=None):
+        """
+        Make some glyphs invisible
+        Parameters
+        ----------
+        selection: :obj:`str`
+            comma separated strings of tags to hide
+        """
+        if selection is not None:
+            selection = selection.replace(" ", "").split(",")
+            for sel in selection:
+                for rend in self._fig.select(tags=sel):
+                    rend.visible = False
+        else:
+            for rend in self._fig.renderers:
+                rend.visible = False
 
-    def show_glyphs(self):
-        for renderer in self._fig.renderers:
-            renderer.visible = True
+
+    def show_glyphs(self, selection=None):
+        if selection is not None:
+            selection = selection.replace(" ", "").split(",")
+            # hide all glyphs to begin with
+            self.hide_glyphs()
+            for sel in selection:
+                for rend in self._fig.select(tags=sel):
+                    rend.visible = True
+        else:
+            for rend in self._fig.renderers:
+                rend.visible = True
 
     def add_glyphs(self, glyph, data, legend=None, **kwargs):
-        kwargs = rdict(kwargs)
-
         #allow passing actual data objects or AxInfo objects
         if type(data) != dict:
             pdata = dict(x=data.xdata, y=data.ydata)
         else:
             pdata = data
+
         data_src = self.create_data_source(pdata,
                         name=f"fig{self.f_num}_gl{self.rend_idx}_ds")
 
+        
         if data.flags is not None and ~np.all(data.flags):
             markers = np.tile([glyph], data.flags.size)
             markers[np.where(data.flags == False)] = "inverted_triangle"
             data_src.add(markers, name="markers")
+            
+            data_src.add(np.logical_or(data.flags, True), name="noflags")
+            data_src.add(data.flags, name="flags")
+            
             glyph = "markers"
             data_view = self.create_view(data_src, data.flags, 
                 name=f"fig{self.f_num}_gl{self.rend_idx}_view")
-
+            
+        tags = kwargs.pop("tags") or []
         rend = self._fig.add_glyph(data_src, 
             Scatter(marker=glyph, 
-                    name=f"fig{self.f_num}_gl{self.rend_idx}",
-                    size=10, **kwargs))
+                    tags=["glyph"], size=10, **kwargs))
         rend.name = f"fig{self.f_num}_ren{self.rend_idx}"
-        self.hide_glyphs()
+        rend.tags = tags
 
         if data.errors is not None:
             self.add_errors(data_src, data.errors)
 
         if legend is not None:
-            self.legend_items.append((legend, [rend]))
+            rend.tags.append(legend)
+            self.legend_items[legend] = self._fig.select(tags=[legend])
 
         self.rend_idx += 1
 
@@ -268,8 +321,9 @@ class FigRag(BaseFigure):
         data.add(data.data[dim] - errors, name="lower")
 
         ebar = Whisker(source=data, base=base, lower="lower", upper="upper",
-                name=f"fig{self.f_num}_er{self.rend_idx}", visible=False, upper_head=None,
-                       lower_head=None, line_color="red", line_cap="round", ** kwargs)
+                visible=False, 
+                upper_head=None, lower_head=None, line_color="red",
+                line_cap="round", tags=["ebar"], **kwargs)
         # if self.rend_idx < 1:
         #     ebar.visible = True
 
@@ -290,21 +344,25 @@ class FigRag(BaseFigure):
         create legend objects and,
         attach them to figure
         """
-        kwargs = rdict(kwargs)
-        kwargs.set_multiple_defaults(click_policy="hide", glyph_height=20,
-             glyph_width=20, label_text_font_size="8pt",label_text_font="monospace",
-             location="top_left", margin=1, orientation="horizontal", 
-             level="annotation", spacing=1, padding=2, visible=False)
+        kwargs = set_multiple_defaults(kwargs, dict(
+            click_policy="hide", glyph_height=20,
+            glyph_width=20, label_text_font_size="8pt",
+            label_text_font="monospace",
+            location="top_left", margin=1, orientation="horizontal", 
+            level="annotation", spacing=1, padding=2, visible=False))
 
-        legends = []
+        self.legend_items = list(self.legend_items.items())
+
         n_groups = math.ceil(len(self.legend_items) / group_size)
         for idx in range(n_groups):
+            items = self.legend_items[idx*group_size: group_size*(idx+1)]
+            for leg, rend_list in items:
+                for rend in rend_list:
+                    # add batch tag to the renderers
+                    rend.tags.append(f"b{idx}")
             # push the legends into the stack
             self._fig.above.insert(0,
-                Legend(items=self.legend_items[idx*group_size: group_size*(idx+1)],
-                        name=f"fig{self.f_num}_leg{idx}", **kwargs))
-            legends.append(Legend(items=self.legend_items[idx*group_size: group_size*(idx+1)],
-                                name=f"fig{self.f_num}_leg{idx}", **kwargs))
+                Legend(items=items, tags=["legend"], **kwargs))
        
     def link_figures(self, *others):
         """
