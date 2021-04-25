@@ -6,6 +6,8 @@ from casacore.tables import table
 from dataclasses import dataclass, field
 from typing import Any
 
+from holy_chaos.chaos.exceptions import TableNotFound
+
 #for testing purposes
 from ipdb import set_trace
 import daskms as xm
@@ -20,6 +22,11 @@ class MsData:
     """
     def __init__(self, ms_name):
         self.ms_name = ms_name
+        self.active_channels = None
+        self.active_fields = []
+        self.active_corrs = None
+        self.active_spws = []
+        self.taql_selector = None
         self._colnames = None
         self._start_time = None
         self._end_time = None
@@ -40,6 +47,7 @@ class MsData:
         self._corr_map = None
         self._scans = None
 
+        self.initialise_data()
         """
         TODO: Add in
             - x-data column name
@@ -89,13 +97,26 @@ class MsData:
         except RuntimeError:
             pass
     
+    # def _process_frequency_table(self):
+    #     """Uses daskms to get frequency data as xarray"""
+    #     try:
+    #         with table(self._ms.getkeyword("SPECTRAL_WINDOW"), ack=False) as sub:
+    #             self._freqs = sub.getcol("CHAN_FREQ")
+    #             self._spws = sub.rownumbers()
+    #             self._num_spws = len(self._spws)
+    #             self._num_chans = sub.getcell("NUM_CHAN", 0)
+    #     except RuntimeError:
+    #         pass
+
     def _process_frequency_table(self):
+        """Uses daskms to get frequency data as xarray"""
         try:
-            with table(self._ms.getkeyword("SPECTRAL_WINDOW"), ack=False) as sub:
-                self._freqs = sub.getcol("CHAN_FREQ")
-                self._spws = sub.rownumbers()
-                self._num_spws = len(self._spws)
-                self._num_chans = sub.getcell("NUM_CHAN", 0)
+            sub = xm.xds_from_table(
+                self.ms_name + "::SPECTRAL_WINDOW", columns="CHAN_FREQ")[0]
+            self._freqs = sub.CHAN_FREQ
+            self._spws = self._freqs.row
+            self._num_spws = self._freqs.row.size
+            self._num_chans = self._freqs.chan.size
         except RuntimeError:
             pass
 
@@ -116,7 +137,8 @@ class MsData:
                 self._corr_types = self._corr_types[0]
             self._corr_map = {name: ids for ids, name in enumerate(self._corr_types)}
         except RuntimeError:
-            pass
+            # raise TableNotFound(f"No Polarization table for {self.ms_name}")
+            self._num_corrs = self._ms.getcell("FLAG",0).shape[-1]
 
     def _get_scan_table(self):
         self._scans = np.unique(self._ms.getcol("SCAN_NUMBER"))
@@ -254,6 +276,9 @@ class Genargs:
 
 @dataclass
 class Axargs:
+    """ Dataclass containing axis arguments. ie. x and y axis, respective
+    column names, and data corresponding to those columns
+    """
     xaxis: str
     yaxis: str
     data_column: str
@@ -272,8 +297,11 @@ class Axargs:
         self.data_column = self.get_colname(self.data_column, self.data_column)
         self.xdata_col = self.get_colname(self.xaxis, self.data_column)
         self.ydata_col = self.get_colname(self.yaxis, self.data_column)
-        self.ydata = self.ms_obj[self.ydata_col]
-        if self.xaxis in ["channel", "frequency"]:
+
+        if self.ydata is None:
+            self.ydata = self.ms_obj[self.ydata_col]
+            
+        if len(re.findall(f"{self.xaxis}\w*", "channel frequency")) > 0:
             self.xdata = self.msdata.active_channels
         else:
             self.xdata = self.ms_obj[self.xdata_col]
