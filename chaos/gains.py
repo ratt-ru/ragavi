@@ -1,19 +1,22 @@
 import re
 import matplotlib.colors as mpc
 import matplotlib.pyplot as plt
-import bokeh.palettes as bp
+import numpy as np
 
-from holy_chaos.chaos.exceptions import *
+import bokeh.palettes as bp
+import daskms as xm
+from itertools import cycle, zip_longest, repeat
+from dask import compute
+
+from bokeh.layouts import grid, gridplot, column, row
+from bokeh.io import save, output_file
+
+from holy_chaos.chaos.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
 from holy_chaos.chaos.ragdata import dataclass, field, MsData, Axargs, Genargs, Selargs, Plotargs
 from holy_chaos.chaos.arguments import gains_argparser
 from holy_chaos.chaos.plotting import FigRag, Circle, Scatter
 from holy_chaos.chaos.processing import Chooser, Processor
-from itertools import cycle, zip_longest, repeat
-
-from dask import compute
-
-import daskms as xm
-import numpy as np
+from holy_chaos.chaos.widgets import f_marks, make_widgets
 
 from ipdb import set_trace
 
@@ -27,6 +30,7 @@ def get_table(msdata, sargs, group_data):
                                           baselines=sargs.baselines, fields=sargs.fields,
                                           spws=sargs.ddids,
                                           taql=sargs.taql, time=f"{sargs.t0}, {sargs.t1}")
+    msdata.taql_selector = super_taql
 
     print(f"Selection string: {super_taql}")
     mss = xm.xds_from_table(
@@ -99,7 +103,7 @@ if __name__ == "__main__":
              "-a", "", "m000,m10,m063", "7",
              "-c", "", "1", "0,1",
              "--ddid", "0",
-             "-f", "0", "DEEP2", "J342-342,X034-123",
+             "-f", "", "DEEP2", "J342-342,X034-123",
              "--t0", "0", "1000", "2000",
              "--t1", "10000", "7000", "7500",
              "-y", "a,p,r", "r,i", "i,a",
@@ -131,42 +135,83 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
     gen_args = Genargs(msname=msname, version="testwhatever")
     sel_args = Selargs(antennas=antennas, corrs=corrs, baselines=baselines,
                         channels=channels, ddids=ddids, fields=fields, taql=taql, t0=t0, t1=t1)
-    #set user input arguments
+    
+    #initialise data ssoc with ms
     msdata = MsData(msname)
-    msdata.initialise_data()
-    msdata.active_channels = msdata.freqs[:][Chooser.get_knife(
-        sel_args.channels)]
 
     cmap = get_colours(msdata.num_ants, cmap)
     pl_args = Pargs(cmap=cmap)
 
+    
+
+    subs = get_table(msdata, sel_args, group_data=["SPECTRAL_WINDOW_ID", 
+                                                    "FIELD_ID", "ANTENNA1"])
+    if len(subs) > 0:
+        msdata.active_corrs = subs[0].corr.values
+    else:
+        raise EmptyTable("Table came up empty. Please your check selection.")
+    
+    all_figs = []
+    
     for yaxis in yaxes.split(","):
+        print(f"Axis: {yaxis}")
+
         figrag = FigRag(add_toolbar=True, 
             x_scale=xaxis if xaxis == "time" else "linear" )
-        #iterating over submss
-        subs = get_table(msdata, sel_args, group_data=[
-                         "SPECTRAL_WINDOW_ID", "FIELD_ID", "ANTENNA1"])
-        for a_num, sub in enumerate(subs):
-            ax_info = Axargs(xaxis=xaxis, yaxis=yaxis, data_column="CPARAM", ms_obj=sub, msdata=msdata)
+
+        for sub in subs:
+            print(f"Antenna {sub.ANTENNA1}")
+            msdata.active_channels = msdata.freqs.sel(
+                chan=Chooser.get_knife(sel_args.channels),
+                row=sub.SPECTRAL_WINDOW_ID)
             
-            ax_info.ydata = Processor(ax_info.ydata).calculate(ax_info.yaxis).data
-            #get x-axis data
-            ax_info.xdata = Processor(ax_info.xdata).calculate(ax_info.xaxis).data
-            set_trace()
-            ax_info.flags = ~sub.FLAG.data
-            ax_info.errors = sub.PARAMERR.data
-            ax_info = iron_data(ax_info)
-            #pass inverted flags here so that they are given to the view as is
-            #the view only shows the data that is tre in hte boolean mask while hidding the rest
-            figrag.add_glyphs("circle", data=ax_info,
-                legend=msdata.reverse_ant_map[sub.ANTENNA1], 
-                    fill_color=cmap[a_num], line_color=cmap[a_num])
-        
+            if sub.FIELD_ID not in msdata.active_fields:
+                msdata.active_fields.append(sub.FIELD_ID)
+            if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
+                msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
+
+            ax_info = Axargs(xaxis=xaxis, yaxis=yaxis, data_column="CPARAM",
+                                                   ms_obj=sub, msdata=msdata)
+            
+            ax_info.xdata = Processor(
+                ax_info.xdata).calculate(ax_info.xaxis).data
+
+            for corr in msdata.active_corrs:
+                # setting ydata here for reinit. Otherwise, autoset in axargs
+                ax_info.ydata = Processor(sub[ax_info.ydata_col]).calculate(
+                    ax_info.yaxis).sel(corr=corr).data
+            
+                ax_info.flags = ~sub.FLAG.sel(corr=corr).data
+                ax_info.errors = sub.PARAMERR.sel(corr=corr).data
+                ax_info = iron_data(ax_info)
+                #pass inverted flags for the view as is
+                #the view only shows true mask data
+                figrag.add_glyphs("circle", data=ax_info,
+                    legend=msdata.reverse_ant_map[sub.ANTENNA1], 
+                    fill_color=cmap[sub.ANTENNA1],
+                    line_color=cmap[sub.ANTENNA1],
+                    tags=[f"a{sub.ANTENNA1}",
+                          f"s{sub.SPECTRAL_WINDOW_ID}",
+                          f"c{corr}", f"f{sub.FIELD_ID}"])
+
         figrag.update_xlabel(ax_info.xaxis.capitalize())
         figrag.update_ylabel(ax_info.yaxis.capitalize())
         figrag.update_title(
             f"{ax_info.yaxis.capitalize()} vs {ax_info.xaxis.capitalize()}")
         figrag.add_legends(group_size=8, visible=True)
+        figrag.show_glyphs(selection="b0")
         
-        figrag.write_out()
-        set_trace()
+        all_figs.append(figrag.fig)
+        widgets = make_widgets(msdata, all_figs[0], group_size=8)
+        output_file(filename = "oster.html")
+    save(column(row(widgets), *all_figs),filename="oster.html", title="oster")
+
+
+        # figrag.write_out()
+        # set_trace()
+    # add the widgets at this point. Only need the first figure
+    set_trace()
+    make_widgets(msdata, all_figs[0], group_size=8)
+
+
+
