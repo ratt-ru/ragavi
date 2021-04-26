@@ -13,6 +13,9 @@ f_marks = {0: "circle", 1: "diamond", 2: "square", 3: "triangle", 5: "hex"}
 def activate_batch_if_no_other_sel(sel1, sel2):
     """Activate if only batch selection is active"""
     return """
+        errors.forEach(error => error.visible = false);
+        terr.active = [];
+
         if (bsel.active.length > 0
             && %s.active.length == 0
             && %s.active.length == 0
@@ -26,6 +29,7 @@ def activate_batch_if_no_other_sel(sel1, sel2):
             }
         }
     """%(sel1, sel2)
+
 
 def redux_fn():
     return """
@@ -50,6 +54,7 @@ def redux_fn():
 
     """
 
+
 def ant_selector_callback():
     """JS callback for the selection and de-selection of antennas
 
@@ -70,6 +75,9 @@ def ant_selector_callback():
             ncorrs: Number of avaiblable corrs,
             nspws: Number of spectral windows,
         */
+        errors.forEach(error => error.visible = false);
+        terr.active = [];
+    
         if (cb_obj.active.includes(0)){
             ax.renderers.forEach(rend => rend.visible = true);
         
@@ -95,6 +103,9 @@ def ant_selector_callback():
 def batch_selector_callback():
     """JS callback for batch selection Checkboxes"""
     code = """
+        errors.forEach(error => error.visible = false);
+        terr.active = [];
+
         var final_array = ax.renderers;
 
         if (ssel.active.length > 0) {
@@ -193,14 +204,14 @@ def spw_selector_callback():
         if (bsel.active.length > 0){
             final_array = reduceArray(final_array, bsel, nbatches, "b");
         }
-        if (ssel.active.length > 0) {
-            final_array = reduceArray(final_array, ssel, nspws, "s");
+        if (fsel.active.length > 0) {
+            final_array = reduceArray(final_array, fsel, nspws, "s");
         }
         if (csel.active.length > 0) {
             final_array = reduceArray(final_array, csel, nfields, "c");
         }
 
-        for (let s=0; s<nspws; sp++){
+        for (let s=0; s<nspws; s++){
             if (cb_obj.active.includes(s)) {
                 final_array.filter(({ tags }) => {
                     return tags.includes(`s${s}`);
@@ -249,32 +260,28 @@ def flag_callback():
 
 
 def toggle_error_callback():
-    """JS callback for Error toggle Toggle button
-
-    Returns
-    -------
-    code : :obj:`str`
-    """
+    """Toggle errors only for visible renderers"""
     code = """
-            let n_glyphs = ax.length;
-             //if toggle button active
-            if (cb_obj.active.includes(0))
-                {
-                    for(let i=0; i<n_glyphs; i++){
-                        //only switch on if corresponding plot is on
-                        if(ax[i].visible && ax_err[i] != null){
-                            ax_err[i].visible = true;
-                        }
+        let rendNumbers = [];
+        let renderers = ax.renderers.filter(({visible}) => visible==true);
 
-                    }
-                }
+        //collect unique renderer number from its name into items array
+        // Only visible renderers are considered names: "fig0_ren_0"
+        renderers.forEach(rend => rendNumbers.push(rend.name.split("_")[2]))
+        
+        for (const num of rendNumbers){
+            //get ebar with that number and make it visible.
+            if (cb_obj.active.includes(0)){
+                errors.filter(
+                    ({tags}) => tags.includes(num)).forEach(
+                        error=> error.visible=true);
+            }
             else{
-                    for(let i=0; i<n_glyphs; i++){
-                        if (ax_err[i] != null){
-                            ax_err[i].visible = false;
-                            }
-                    }
-                }
+                errors.filter(
+                    ({tags}) => tags.includes(num)).forEach(
+                        error=> error.visible=false);
+            }
+        }
             """
     return code
 
@@ -287,56 +294,32 @@ def legend_toggle_callback():
     code : :obj:`str`
     """
     code = """
-                //Show only the legend for the first item
-                let n;
-                if (cb_obj.active.includes(0)){
-                    for (n=0; n<n_legs; n++){
-                        legs[n].visible = true;
-                        }
-                }
-
-                else{
-                    for (n=0; n<n_legs; n++){
-                        legs[n].visible = false;
-                        }
-                }
-
-           """
+        if (cb_obj.active.includes(0)){
+            legends.forEach( legend => legend.visible = true);
+        }
+        else{
+            legends.forEach( legend => legend.visible = false);
+        }
+        """
     return code
 
 
 # Plot layout callbacks
 
 def size_slider_callback():
-    """JS callback to select size of glyphs
-
-    Returns
-    -------
-    code : :obj:`str`
-    """
+    """JS callback to select size of glyphs"""
 
     code = """
-            let n_rs = ax.length;
-            for (let i=0; i<n_rs; i++){
-                ax[i].size = cb_obj.value;
-            }
+            glyphs.forEach( glyph => glyph.size = cb_obj.value);
            """
     return code
 
 
 def alpha_slider_callback():
-    """JS callback to alter alpha of glyphs
-
-    Returns
-    -------
-    code : :obj:`str`
-    """
+    """JS callback to alter alpha of glyphs"""
 
     code = """
-            let n_rs = ax.length;
-            for (let i=0; i<n_rs; i++){
-                ax[i].fill_alpha = cb_obj.value;
-            }
+            glyphs.forEach( glyph => glyph.fill_alpha = cb_obj.value)
            """
     return code
 
@@ -349,24 +332,15 @@ def axis_fs_callback():
     code : :obj:`str`
     """
     code = """
-            let n_axes = ax.length;
-            for (let i=0; i<n_axes; i++){
-                ax[i].axis_label_text_font_size = `${cb_obj.value}pt`;
-            }
-
+            axes.forEach(axis => axis.axis_label_text_font_size = `${cb_obj.value}pt`);
            """
     return code
 
 
 def title_fs_callback():
-    """JS callback for title font size slider
-
-    Returns
-    -------
-    code : :obj:`str`
-    """
+    """JS callback for title font size slider"""
     code = """
-            ax.text_font_size = `${cb_obj.value}pt`;
+            title.text_font_size = `${cb_obj.value}pt`;
            """
     return code
 
@@ -511,17 +485,19 @@ def make_widgets(msdata, fig, group_size=8):
                                    height=30)
  
     spw_selector = CheckboxGroup(labels=spw_labels, active=[], width=150)
-    # ex_ax = fig.select(type=LinearAxis, layout="above")
-    # ex_ax = sorted({_.id: _ for _ in ex_ax}.items())
-    # ex_ax = [_[1] for _ in ex_ax]
-    ex_ax = None
 
+    # configuring toggle button for showing all the errors
+    toggle_error = CheckboxGroup(labels=["Show error bars"], active=[],
+                                 width=150, height=30)
+    toggle_error.js_on_change("active", CustomJS(
+        args=dict(ax=fig, errors=fig.select(tags=["ebar"])),
+        code=toggle_error_callback()))
     
     ant_selector.js_on_change("active", CustomJS(
         args=dict(ax=fig, bsel=batch_selector, fsel=field_selector,
                   csel=corr_selector, ssel=spw_selector, nbatches=nbatch,
                   nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
-                  nspws=msdata.num_spws),
+                  nspws=msdata.num_spws, errors=fig.select(tags=["ebar"])),
         code=ant_selector_callback())
         )
     batch_selector.js_on_change("active", CustomJS(
@@ -529,14 +505,16 @@ def make_widgets(msdata, fig, group_size=8):
                   nants=msdata.num_ants, nbatches=nbatch,
                   nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
                   nspws=msdata.num_spws, fsel=field_selector,
-                  csel=corr_selector, antsel=ant_selector, ssel=spw_selector),
+                  csel=corr_selector, antsel=ant_selector, ssel=spw_selector,
+                  errors=fig.select(tags=["ebar"]), terr=toggle_error),
         code=batch_selector_callback()))
     corr_selector.js_on_change("active", CustomJS(
         args=dict(bsel=batch_selector, bsize=group_size,
                   fsel=field_selector, nants=msdata.num_ants,
                   ncorrs=msdata.num_corrs, nfields=msdata.num_fields,
-                  nbatches=nbatch, nspws=msdata.num_spws,
-                  ax=fig, ssel=spw_selector),
+                  nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
+                  ssel=spw_selector, errors=fig.select(tags=["ebar"]),
+                  terr=toggle_error),
         code=corr_selector_callback()
         ))
 
@@ -544,19 +522,19 @@ def make_widgets(msdata, fig, group_size=8):
         args=dict(bsize=group_size, bsel=batch_selector, csel=corr_selector,
                   nants=msdata.num_ants, nfields=msdata.num_fields,
                   ncorrs=msdata.num_corrs, nbatches=nbatch,
-                  nspws=msdata.num_spws, ax=fig,
-                  ssel=spw_selector),
-        code=redux_fn()+field_selector_callback()))
+                  nspws=msdata.num_spws, ax=fig, ssel=spw_selector,
+                  errors=fig.select(tags=["ebar"]), terr=toggle_error),
+        code=field_selector_callback()))
 
-    # spw_selector.js_on_change("active", CustomJS(
-    #     args=dict(bsel=batch_selector, bsize=group_size, csel=corr_selector,
-    #               fsel=field_selector, nants=msdata.num_ants,
-    #               ncorrs=msdata.num_corrs, nfields=msdata.num_fields,
-    #               nbatches=nbatch, nspws=msdata.num_spws,
-    #               ax=fig, spw_ids=msdata.spws.values,
-    #               ex_ax=ex_ax
-    #               ),
-    #     code=redux_fn()+spw_selector_callback()))
+    ex_ax = fig.select(tags="extra_yaxis")
+    ex_ax = sorted({_.id: _ for _ in ex_ax}.items())
+    ex_ax = [_[1] for _ in ex_ax]
+    spw_selector.js_on_change("active", CustomJS(
+        args=dict(bsel=batch_selector, csel=corr_selector, fsel=field_selector, 
+                  ncorrs=msdata.num_corrs, nfields=msdata.num_fields, nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
+                  spw_ids=msdata.spws.values, ex_ax=ex_ax,
+                  errors=fig.select(tags=["ebar"]), terr=toggle_error),
+        code=spw_selector_callback()))
 
 
 
@@ -565,31 +543,23 @@ def make_widgets(msdata, fig, group_size=8):
     legend_toggle = CheckboxGroup(labels=["Show legends"], active=[], width=150,
                                 height=30)
     legend_toggle.js_on_change("active", CustomJS(
-        args=dict(legs=fig.select(tags=["legend"]), n_legs=nbatch),
+        args=dict(legends=fig.select(tags=["legend"])),
         code=legend_toggle_callback()))
 
 
-    save_selected = Button(label="Download data selection",
-                            button_type="success", margin=(7, 5, 3, 5),
-                            sizing_mode="fixed", width=150, height=30)
+    # save_selected = Button(label="Download data selection",
+    #                         button_type="success", margin=(7, 5, 3, 5),
+    #                         sizing_mode="fixed", width=150, height=30)
     # save_selected.js_on_click(CustomJS(args=dict(
     #     uf_src=all_ufsources,
     #     f_src=all_fsources),
     #     code=save_selected_callback()))
     
 
-    # configuring toggle button for showing all the errors
-    toggle_error = CheckboxGroup(labels=["Show error bars"], active=[], width=150,
-                                height=30)
-    toggle_error.js_on_change("active", CustomJS(
-        args=dict(ax=fig,
-                  ax_err=fig.select(tags=["ebars"])),
-        code=toggle_error_callback()))
-
 
     toggle_flagged = CheckboxGroup(labels=["Show flagged data"], active=[],
                                 width=150, height=30)
-    # toggle_flag.js_on_change("active", CustomJS(
+    # toggle_flagged.js_on_change("active", CustomJS(
     #     args=dict(f_sources=all_fsources,
     #               uf_sources=all_ufsources,
     #               n_ax=len(all_figures)),
@@ -600,38 +570,37 @@ def make_widgets(msdata, fig, group_size=8):
     size_slider = Slider(end=15, start=0.4, step=0.1,
                         value=4, title="Glyph size", margin=(3, 5, 7, 5),
                         bar_color="#6F95C3", width=150, height=30)
-    size_slider.js_on_change("value",
-                             CustomJS(args=dict(slide=size_slider,
-                                                ax=fig),
-                                      code=size_slider_callback()))
+    size_slider.js_on_change("value",CustomJS(
+        args=dict(slide=size_slider,
+                  glyphs=fig.select(tags="glyph")),
+        code=size_slider_callback()))
 
 
     # Alpha slider for the glyphs
     alpha_slider = Slider(end=1, start=0.1, step=0.1, value=1,
                             margin=(3, 5, 7, 5), title="Glyph alpha",
                             bar_color="#6F95C3", width=150, height=30)
-    alpha_slider.js_on_change("value",
-                              CustomJS(args=dict(
-                                  ax=fig),
-                                  code=alpha_slider_callback()))
+    alpha_slider.js_on_change("value",CustomJS(
+        args=dict(glyphs=fig.select(tags="glyph")),
+        code=alpha_slider_callback()))
 
 
     axis_fontslider = Slider(end=20, start=3, step=0.5, value=10,
                             margin=(7, 5, 3, 5), title="Axis label size",
                             bar_color="#6F95C3", width=150, height=30)
-    axis_fontslider.js_on_change("value",
-                                 CustomJS(args=dict(
-                                     ax=fig.axis),
-                                     code=axis_fs_callback()))
+    axis_fontslider.js_on_change("value", CustomJS(
+        args=dict(axes=fig.axis), code=axis_fs_callback()))
 
 
     title_fontslider = Slider(end=35, start=10, step=1, value=15,
                                 margin=(3, 5, 7, 5), title="Title size",
                                 bar_color="#6F95C3", width=150, height=30)
-    title_fontslider.js_on_change(
-        "value",
-        CustomJS(args=dict(ax=fig.select(tags=["title"])[0]),
-                 code=title_fs_callback()))
+    title_fontslider.js_on_change("value", CustomJS(
+        args=dict(title=fig.select(tags="title")),
+        code=title_fs_callback()))
 
-    return [ant_selector, batch_selector, corr_selector, field_selector]
+    return [ant_selector, batch_selector, corr_selector, field_selector,
+            toggle_error, legend_toggle,
+            spw_selector, size_slider, alpha_slider, axis_fontslider,
+            title_fontslider]
 # tname_div = make_table_name(tab)
