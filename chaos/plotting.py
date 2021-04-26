@@ -288,9 +288,8 @@ class FigRag(BaseFigure):
             
         tags = kwargs.pop("tags") or []
         rend = self._fig.add_glyph(data_src, 
-            Scatter(marker=glyph, 
-                    tags=["glyph"], size=10, **kwargs))
-        rend.name = f"fig{self.f_num}_ren{self.rend_idx}"
+            Scatter(marker=glyph, tags=["glyph"], size=10, **kwargs))
+        rend.name = f"fig{self.f_num}_ren_{self.rend_idx}"
         rend.tags = tags
 
         if data.errors is not None:
@@ -321,11 +320,10 @@ class FigRag(BaseFigure):
         data.add(data.data[dim] - errors, name="lower")
 
         ebar = Whisker(source=data, base=base, lower="lower", upper="upper",
-                visible=False, 
-                upper_head=None, lower_head=None, line_color="red",
-                line_cap="round", tags=["ebar"], **kwargs)
-        # if self.rend_idx < 1:
-        #     ebar.visible = True
+                visible=False, upper_head=None, lower_head=None,
+                       line_color="red", line_cap="round",
+                       tags=["ebar", f"{self.rend_idx}"], **kwargs)
+        
 
         #link the visible properties of this error bars and its corresponding glyph
         # self._fig.select_one(f"fig{self.f_num}_ren{self.rend_idx}").js_link("visible", ebar, "visible")
