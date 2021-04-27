@@ -1,3 +1,4 @@
+import re
 import numpy as np
 import xarray as xr
 import dask.array as da
@@ -42,8 +43,10 @@ class Processor:
             return Processor.uv_wavelength(self.data, freqs)
         elif "dist" in axis.lower():
             return Processor.uv_distance(self.data)
+        elif len(re.findall(f"{axis}\w*", "channel frequency")) > 0:
+            return self.data.chan
         else:
-            return "Nothing to see here"
+            return self.data
 
     @staticmethod
     def uv_distance(uvw):
@@ -89,9 +92,38 @@ class Chooser:
         return selection
 
     @staticmethod
-    def form_taql_string(msdata, antennas=None, baselines=None, fields=None, spws=None,
-                         scans=None, taql=None, time=None, uv_range=None):
+    def form_taql_string(msdata, antennas=None, baselines=None, fields=None,
+                        spws=None, scans=None, taql=None, time=None,
+                        uv_range=None):
         """
+        Create TAQL used for preprocessing data selection in the MS
+
+        Parameters
+        ----------
+        msdata: :obj:`MsData`
+        antennas: :obj:`str`
+            Comma seprated string containing antennas to be selection
+        baselines: :obj:`str`
+            Comma seprated string containing baselines to be selected.
+            The baseline is of the form 'm000-m001'
+        fields: :obj:`str`
+            Comma seprated string containing fields to be selected
+        spws: :obj:`str`
+            Comma seprated string containing spws to be selected
+        scans: :obj:`str`
+            Comma seprated string containing scans to be selected
+        taql: :obj:`str`
+            TAQL string to be included in the main selected
+        time: :obj:`tuple`
+            Tuple containing time to start and time to end time
+        uv_range: :obj:`str`
+            Comma seprated string containing antenas to be selection
+        
+        Returns
+        -------
+        super_taql: :obj:`str`
+            String containing a complete TAQL selection string
+
         Can be searched by name and id:
         ALL WILL BE A comma separated string
          - antennas
@@ -100,6 +132,7 @@ class Chooser:
          - fields
 
          time will be in seconds and a string: start, end
+
         """
         super_taql = []
 
@@ -142,11 +175,16 @@ class Chooser:
             super_taql.append(spws)
         if taql:
             super_taql.append(taql)
+      
         if time:
-            time = [float(_) for _ in time.replace(" ", "").split(",")]
-            if len(time) < 2:
-                time.append(None)
-            time = f"TIME IN [{msdata.start_time + time[0]} =:= {msdata.start_time + time[-1] or msdata.end_time}]"
+            #default for t0 and t1 is None, given as a tuple
+            time = [float(_) if _ is not None else 0 for _ in time]
+            time[0] = msdata.start_time + time[0]
+            if time[1] > 0:
+                time[1] = msdata.start_time + time[1]
+            else:
+                time[1] = msdata.end_time
+            time = f"TIME IN [{time[0]} =:= {time[1]}]"
             super_taql.append(time)
         if uv_range:
             # TODO sELECT an spws here in the CHANG FREQ
