@@ -2,6 +2,7 @@ import re
 import numpy as np
 import dask.array as da
 
+from difflib import get_close_matches
 from casacore.tables import table
 from dataclasses import dataclass, field
 from typing import Any
@@ -73,6 +74,9 @@ class MsData:
         try:
             with table(self._ms.getkeyword("OBSERVATION"), ack=False) as sub:
                 self._start_time, self._end_time = sub.getcell("TIME_RANGE",0)
+                if self._start_time == self._end_time:
+                    self._start_time = self._ms.getcell("TIME", 0)
+                    self._end_time = self._ms.getcell("TIME", self._ms.nrows()-1)
                 self._telescope = sub.getcell("TELESCOPE_NAME", 0)
         except RuntimeError:
             pass
@@ -340,26 +344,25 @@ class Axargs:
                         "frequency")})
         return axes
 
-    def get_colname(self, axis, data_column):
-        cols = ["ANTENNA1", "ANTENNA2", "ARRAY_ID", "CPARAM", "CORRECTED_DATA",
-                "DATA", "DATA_DESC_ID", "EXPOSURE", "FEED1", "FEED2", "FIELD_ID",
-                "FLAG_ROW", "FLAG", "FLAG_CATEGORY", "INTERVAL", "MODEL_DATA",
-                "OBSERVATION_ID", "CPARAM", "PROCESSOR_ID", "SCAN_NUMBER", "SIGMA",
-                "SIGMA_SPECTRUM", "SPECTRAL_WINDOW_ID", "STATE_ID", "TIME",
-                "TIME_CENTROID", "UVW", "WEIGHT", "WEIGHT_SPECTRUM"]
-        
+    def get_colname(self, axis, data_column):        
         col_maps = self.colname_map(data_column)
 
-        if axis.upper() in cols:
+        if axis.upper() in self.msdata.colnames:
             colname = axis.upper()
-        elif re.search(r"\w*{}\w*".format(axis), ", ".join(cols), re.IGNORECASE) and len(axis)>1:
+        elif re.search(r"\w*{}\w*".format(axis), 
+                       ", ".join(self.msdata.colnames),
+                       re.IGNORECASE) and len(axis) > 1:
             colname = re.search(r"\w*{}\w*".format(axis),
                                 ", ".join(cols), re.IGNORECASE).group()
         elif axis in col_maps:
             colname = col_maps[axis]
+        elif len(get_close_matches(axis.upper(), self.msdata.colnames,
+                               n=1)) > 0:
+            colname = get_close_matches(axis.upper(), self.msdata.colnames,
+                                        n=1)[0]
+            # print(f"'{axis}' column not found, using closest '{colname}'")
         else:
-            colname = None
-            print(f"{axis} column not found")
+            print(f"column: {axis} not found")
         return colname
 
 
