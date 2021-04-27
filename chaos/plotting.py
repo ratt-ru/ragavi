@@ -11,6 +11,7 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool,
                                 HoverTool, LassoSelectTool, PanTool,
                                 ResetTool, SaveTool, UndoTool,
                                 WheelZoomTool)
+from bokeh.models.renderers import GlyphRenderer
 
 from bokeh.io import save
 
@@ -157,10 +158,11 @@ class BaseFigure:
 class FigRag(BaseFigure):
     def __init__(self, width=1080,  height=720, x_scale="linear",
                 y_scale="linear", add_grid=True, add_toolbar=False,
-                add_xaxis=True, add_yaxis=True, plot_args=None, axis_args=None,
-                tick_args=None):
-        super().__init__( width, height, x_scale, y_scale, add_grid, add_toolbar, add_xaxis, 
-                         add_yaxis, plot_args, axis_args, tick_args)
+                add_xaxis=True, add_yaxis=True, plot_args=None,
+                axis_args=None, tick_args=None):
+        super().__init__( width, height, x_scale, y_scale, add_grid,
+                         add_toolbar, add_xaxis, add_yaxis, plot_args,
+                         axis_args, tick_args)
 
         self._fig = super().create_figure()
         self.rend_idx = 0
@@ -168,24 +170,23 @@ class FigRag(BaseFigure):
     
     
     def update_xlabel(self, label):
-        self._fig.xaxis.axis_label = label
+        self._fig.xaxis.axis_label = label.capitalize()
 
 
     def update_ylabel(self, label):
-        self._fig.yaxis.axis_label = label
+        self._fig.yaxis.axis_label = label.capitalize()
 
 
     def update_title(self, title, location="above", **kwargs):
-        
         kwargs = set_multiple_defaults(kwargs, dict(
-            align="center", text=title,
+            align="center", text=title.title(),
             text_font_size="24px", text_font="monospace",
             text_font_style="bold"))
         kwargs["tags"] = ["title"]
 
         self._fig.add_layout(Title(**kwargs), location)
     
-    def add_axis(self, lo, hi, dim, scale, location="right"):
+    def add_axis(self, lo, hi, dim, scale, label, location="right"):
         """
         Add an extra x or y axis to the plot
         
@@ -199,6 +200,8 @@ class FigRag(BaseFigure):
             Dimension on which to add axis
         scale: :obj:`str`
             Scale of the new axis
+        label: :obj:`str`
+            Title for the new axis
         location: :obj:`str`
             Where to place the axis
         
@@ -213,12 +216,15 @@ class FigRag(BaseFigure):
         #use nx to number the next range. Starts from 0
         nx = len(extra_ranges)
 
-        extra_ranges.update(f"extra_{dim}range{nx}",
-            super().make_range(dim, r_min=lo, r_max=hi, visible=True))
+        extra_ranges.update({f"extra_{dim}range{nx}":
+            self.make_range(dim, r_min=lo, r_max=hi, visible=True)})
         
         getattr(self._fig, f"extra_{dim}_ranges").update(extra_ranges)
 
-        new_axis = super().make_axis(dim, scale, tags=f"extra_{dim}axis")
+        new_axis = self.make_axis(dim, scale)
+        new_axis.update(**{f"{dim}_range_name": f"extra_{dim}range{nx}", 
+                        "axis_label": label, "tags": [f"extra_{dim}axis"]})
+        new_axis.ticker.desired_num_ticks = 10
         
         #update the extra ranges on the figure
         self._fig.add_layout(new_axis, location)
@@ -244,7 +250,7 @@ class FigRag(BaseFigure):
         if selection is not None:
             selection = selection.replace(" ", "").split(",")
             for sel in selection:
-                for rend in self._fig.select(tags=sel):
+                for rend in self._fig.select(tags=sel, type=GlyphRenderer):
                     rend.visible = False
         else:
             for rend in self._fig.renderers:
@@ -257,7 +263,7 @@ class FigRag(BaseFigure):
             # hide all glyphs to begin with
             self.hide_glyphs()
             for sel in selection:
-                for rend in self._fig.select(tags=sel):
+                for rend in self._fig.select(tags=sel, type=GlyphRenderer):
                     rend.visible = True
         else:
             for rend in self._fig.renderers:
@@ -271,33 +277,32 @@ class FigRag(BaseFigure):
             pdata = data
 
         data_src = self.create_data_source(pdata,
-                        name=f"fig{self.f_num}_gl{self.rend_idx}_ds")
-
-        
-        if data.flags is not None and ~np.all(data.flags):
-            markers = np.tile([glyph], data.flags.size)
+                        name=f"fig{self.f_num}_gl{self.rend_idx}_ds",
+                                           tags=[self.rend_idx])
+        if data.flags is not None:
+            markers = np.full_like(data.flags, glyph, dtype="U17")
             markers[np.where(data.flags == False)] = "inverted_triangle"
             data_src.add(markers, name="markers")
-            
             data_src.add(np.logical_or(data.flags, True), name="noflags")
             data_src.add(data.flags, name="flags")
-            
             glyph = "markers"
-            data_view = self.create_view(data_src, data.flags, 
+            data_view = self.create_view(data_src, data.flags,
+                tags=[self.rend_idx],
                 name=f"fig{self.f_num}_gl{self.rend_idx}_view")
             
         tags = kwargs.pop("tags") or []
-        rend = self._fig.add_glyph(data_src, 
-            Scatter(marker=glyph, tags=["glyph"], size=10, **kwargs))
-        rend.name = f"fig{self.f_num}_ren_{self.rend_idx}"
-        rend.tags = tags
+        rend = self._fig.add_glyph(data_src, Scatter(x="x", y="y",
+            marker=glyph, tags=["glyph"], size=10, **kwargs))
+        rend.update(name=f"fig{self.f_num}_ren_{self.rend_idx}", tags=tags,
+            view=data_view
+            )
 
         if data.errors is not None:
             self.add_errors(data_src, data.errors)
 
         if legend is not None:
             rend.tags.append(legend)
-            self.legend_items[legend] = self._fig.select(tags=[legend])
+            self.legend_items[legend] = self._fig.select(tags=[legend], type=GlyphRenderer)
 
         self.rend_idx += 1
 
@@ -321,13 +326,8 @@ class FigRag(BaseFigure):
 
         ebar = Whisker(source=data, base=base, lower="lower", upper="upper",
                 visible=False, upper_head=None, lower_head=None,
-                       line_color="red", line_cap="round",
-                       tags=["ebar", f"{self.rend_idx}"], **kwargs)
-        
-
-        #link the visible properties of this error bars and its corresponding glyph
-        # self._fig.select_one(f"fig{self.f_num}_ren{self.rend_idx}").js_link("visible", ebar, "visible")
-     
+                line_color="red",line_cap="round",
+                tags=["ebar", f"{self.rend_idx}"], **kwargs)
         self._fig.add_layout(ebar)
 
     def write_out(self, filename="oer.html"):
@@ -350,6 +350,7 @@ class FigRag(BaseFigure):
             level="annotation", spacing=1, padding=2, visible=False))
 
         self.legend_items = list(self.legend_items.items())
+        legends = []
 
         n_groups = math.ceil(len(self.legend_items) / group_size)
         for idx in range(n_groups):
@@ -359,8 +360,10 @@ class FigRag(BaseFigure):
                     # add batch tag to the renderers
                     rend.tags.append(f"b{idx}")
             # push the legends into the stack
-            self._fig.above.insert(0,
-                Legend(items=items, tags=["legend"], **kwargs))
+            legends.append(Legend(items=items, tags=["legend"], **kwargs))
+        legends.reverse()
+        for item in legends:
+            self._fig.add_layout(item, "above")
        
     def link_figures(self, *others):
         """
