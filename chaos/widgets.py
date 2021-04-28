@@ -1,9 +1,14 @@
+import numpy as np
+
 from ipdb import set_trace
-from itertools import zip_longest
+from itertools import zip_longest, product
+
+from holy_chaos.chaos.processing import Processor
 
 from bokeh.models import (Button, CheckboxGroup, CustomJS, PreText, Slider,
-                          Scatter, Title, Whisker)
+                          Scatter, Title, Whisker, ColumnDataSource, CDSView)
 from bokeh.models.widgets import DataTable, TableColumn, Div
+from bokeh.layouts import column
 
 f_codes = {0: u"\u2B24", 1: u"\u25C6", 2: u"\u25FC", 3: u"\u25B2", 4: u"\u25BC",
            5: u"\u2B22"}
@@ -229,7 +234,7 @@ def spw_selector_callback():
 
 # Show additional data callbacks
 
-def flag_callback():
+def toggle_flagged_callback():
     """JS callback for the flagging button
 
     Returns
@@ -238,23 +243,19 @@ def flag_callback():
     """
 
     code = """
-        //f_sources: Flagged data source
-        //n_ax: number of figures available
-        //uf_sources: unflagged data source
-  
-        for (let n=1; n<=n_ax; n++){
-            for (let i=0; i<uf_sources.length; i++){
+            var src, view;
+            for(let i in sources){
+                src = sources.filter(({tags}) => tags.includes(Number(i)))[0];
+                view = views.filter(({tags}) => tags.includes(Number(i)))[0];
                 if (cb_obj.active.includes(0)){
-                    uf_sources[i].data[`y${n}`] = f_sources[i].data[`iy${n}`];
-                    uf_sources[i].change.emit();
+                    view.filters[0].booleans = src.data.noflags;
+                    src.change.emit()
                 }
                 else{
-                    uf_sources[i].data[`y${n}`] = f_sources[i].data[`y${n}`];
-                    uf_sources[i].change.emit();
+                    view.filters[0].booleans = src.data.flags;
+                    src.change.emit()
                 }
             }
-        }
-
            """
     return code
 
@@ -340,8 +341,8 @@ def axis_fs_callback():
 def title_fs_callback():
     """JS callback for title font size slider"""
     code = """
-            title.text_font_size = `${cb_obj.value}pt`;
-           """
+        titles.forEach(title => title.text_font_size = `${cb_obj.value}pt`);
+        """
     return code
 
 
@@ -387,37 +388,6 @@ def save_selected_callback():
     return code
 
 
-# def gen_checkbox_labels(batch_size, num_leg_objs, antnames):
-#     """
-#     Auto-generating Check box labels
-
-#     Parameters
-#     ----------
-#     batch_size : :obj:`int`
-#         Number of items in a single batch
-#     num_leg_objs : :obj:`int`
-#         Number of legend objects / Number of batches
-#     Returns
-#     ------
-#     labels : :obj:`list`
-#         Batch labels for the batch selection check box group
-#     """
-#     nants = len(antnames)
-
-#     labels = []
-#     s = 0
-#     e = batch_size - 1
-#     for i in range(num_leg_objs):
-#         if e < nants:
-#             labels.append(f"{antnames[s]} - {antnames[e]}"
-#         else:
-#             labels.append(f"{antnames[s]} - {antnames[nants - 1]}"
-#         # after each append, move start number to current+batchsize
-#         s += batch_size
-#         e += batch_size
-
-#     return labels
-
 
 def gen_checkbox_labels(ant_names, group_size=8):
     """
@@ -445,6 +415,46 @@ def get_widgets():
             legend_toggle, save_selected, toggle_error, toggle_flagged,
             size_slider, alpha_slider, axis_fontslider, title_fontslider]
     # return [ant_selector, batch_selector]
+
+
+
+def make_stats_table(msdata, data_column, yaxes, subs):
+    """
+    Get the list of subs from theg get_table function in main
+    """
+    columns = ["spw", "field", "corr"] + yaxes.split(",")
+    stats = {col: [] for col in columns}
+
+    for sub in subs:
+        for yaxis, corr in product(yaxes, msdata.active_corrs):
+            pro = Processor(sub[data_column]).calculate(yaxis).sel(corr=corr)
+            flags = sub.FLAG.sel(corr=corr)
+            stats["spw"].append(sub.SPECTRAL_WINDOW_ID)
+            stats["field"].append(sub.FIELD_ID)
+            stats["corr"].append(corr)
+            stats[yaxis].append(
+                f"{np.nanmedian(pro.where(flags == False).values):.4}")
+            
+            # print(f"y-axis: {yaxis}, field: {f_names[field]}"+
+            #       f"corr: {str(corr)} median: {str(med_y)}")
+
+    stats = ColumnDataSource(data=stats)
+    
+    columns = [TableColumn(field=col, title=col.title()) for col in columns]
+
+    return column([Div(text="Median Statistics"),
+        DataTable(source=stats, columns=columns, fit_columns=True, height=150,
+                  max_height=180, max_width=600, sizing_mode="stretch_width")],
+        sizing_mode="stretch_both")
+
+
+
+def make_table_name(tab_name):
+    """Create div for stats data table"""
+    div = PreText(text=f"ragavi: v{__version__} | Table: {msdata.msname}",
+                  margin=(1, 1, 1, 1))
+    return div
+
 
 def make_widgets(msdata, fig, group_size=8):
     """
@@ -490,14 +500,14 @@ def make_widgets(msdata, fig, group_size=8):
     toggle_error = CheckboxGroup(labels=["Show error bars"], active=[],
                                  width=150, height=30)
     toggle_error.js_on_change("active", CustomJS(
-        args=dict(ax=fig, errors=fig.select(tags=["ebar"])),
+        args=dict(ax=fig, errors=fig.select(tags=["ebar"], type=Whisker)),
         code=toggle_error_callback()))
     
     ant_selector.js_on_change("active", CustomJS(
         args=dict(ax=fig, bsel=batch_selector, fsel=field_selector,
                   csel=corr_selector, ssel=spw_selector, nbatches=nbatch,
                   nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
-                  nspws=msdata.num_spws, errors=fig.select(tags=["ebar"])),
+                  nspws=msdata.num_spws, errors=fig.select(tags=["ebar"], type=Whisker)),
         code=ant_selector_callback())
         )
     batch_selector.js_on_change("active", CustomJS(
@@ -506,14 +516,14 @@ def make_widgets(msdata, fig, group_size=8):
                   nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
                   nspws=msdata.num_spws, fsel=field_selector,
                   csel=corr_selector, antsel=ant_selector, ssel=spw_selector,
-                  errors=fig.select(tags=["ebar"]), terr=toggle_error),
+                  errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
         code=batch_selector_callback()))
     corr_selector.js_on_change("active", CustomJS(
         args=dict(bsel=batch_selector, bsize=group_size,
                   fsel=field_selector, nants=msdata.num_ants,
                   ncorrs=msdata.num_corrs, nfields=msdata.num_fields,
                   nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
-                  ssel=spw_selector, errors=fig.select(tags=["ebar"]),
+                  ssel=spw_selector, errors=fig.select(tags=["ebar"], type=Whisker),
                   terr=toggle_error),
         code=corr_selector_callback()
         ))
@@ -523,7 +533,7 @@ def make_widgets(msdata, fig, group_size=8):
                   nants=msdata.num_ants, nfields=msdata.num_fields,
                   ncorrs=msdata.num_corrs, nbatches=nbatch,
                   nspws=msdata.num_spws, ax=fig, ssel=spw_selector,
-                  errors=fig.select(tags=["ebar"]), terr=toggle_error),
+                  errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
         code=field_selector_callback()))
 
     ex_ax = fig.select(tags="extra_yaxis")
@@ -533,14 +543,14 @@ def make_widgets(msdata, fig, group_size=8):
         args=dict(bsel=batch_selector, csel=corr_selector, fsel=field_selector, 
                   ncorrs=msdata.num_corrs, nfields=msdata.num_fields, nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
                   spw_ids=msdata.spws.values, ex_ax=ex_ax,
-                  errors=fig.select(tags=["ebar"]), terr=toggle_error),
+                  errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
         code=spw_selector_callback()))
 
 
 
     # Additions group
     # Checkbox to hide and show legends
-    legend_toggle = CheckboxGroup(labels=["Show legends"], active=[], width=150,
+    legend_toggle = CheckboxGroup(labels=["Show legends"], active=[0], width=150,
                                 height=30)
     legend_toggle.js_on_change("active", CustomJS(
         args=dict(legends=fig.select(tags=["legend"])),
@@ -559,16 +569,15 @@ def make_widgets(msdata, fig, group_size=8):
 
     toggle_flagged = CheckboxGroup(labels=["Show flagged data"], active=[],
                                 width=150, height=30)
-    # toggle_flagged.js_on_change("active", CustomJS(
-    #     args=dict(f_sources=all_fsources,
-    #               uf_sources=all_ufsources,
-    #               n_ax=len(all_figures)),
-    #     code=flag_callback()))
+    toggle_flagged.js_on_change("active", CustomJS(
+        args=dict(sources=fig.select(type=ColumnDataSource),
+                  views=fig.select(type=CDSView)),
+        code=toggle_flagged_callback()))
 
 
     # margin = [top, right, bottom, left]
     size_slider = Slider(end=15, start=0.4, step=0.1,
-                        value=4, title="Glyph size", margin=(3, 5, 7, 5),
+                        value=10, title="Glyph size", margin=(3, 5, 7, 5),
                         bar_color="#6F95C3", width=150, height=30)
     size_slider.js_on_change("value",CustomJS(
         args=dict(slide=size_slider,
@@ -592,15 +601,16 @@ def make_widgets(msdata, fig, group_size=8):
         args=dict(axes=fig.axis), code=axis_fs_callback()))
 
 
-    title_fontslider = Slider(end=35, start=10, step=1, value=15,
+    title_fontslider = Slider(end=25, start=10, step=1, value=15,
                                 margin=(3, 5, 7, 5), title="Title size",
                                 bar_color="#6F95C3", width=150, height=30)
     title_fontslider.js_on_change("value", CustomJS(
-        args=dict(title=fig.select(tags="title")),
+        args=dict(titles=fig.select(tags="title")),
         code=title_fs_callback()))
 
     return [ant_selector, batch_selector, corr_selector, field_selector,
-            toggle_error, legend_toggle,
+            toggle_error, legend_toggle, toggle_flagged,
             spw_selector, size_slider, alpha_slider, axis_fontslider,
             title_fontslider]
-# tname_div = make_table_name(tab)
+
+

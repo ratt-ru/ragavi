@@ -21,13 +21,6 @@ from overrides import set_multiple_defaults
 from ipdb import set_trace
 
 
-"""
-REMEMBER
-========
-fig.select_one("selection string, e.g items name")
-fig.select(name="selection string")
-"""
-
 class BaseFigure:
     f_num = -1
     def __init__(self, width, height, x_scale, y_scale, add_grid, add_toolbar, add_xaxis,
