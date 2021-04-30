@@ -8,11 +8,11 @@ from holy_chaos.chaos.processing import Processor
 from bokeh.models import (Button, CheckboxGroup, CustomJS, PreText, Slider,
                           Scatter, Title, Whisker, ColumnDataSource, CDSView)
 from bokeh.models.widgets import DataTable, TableColumn, Div
-from bokeh.layouts import column
+from bokeh.layouts import column, grid
 
-f_codes = {0: "O", 1: u"\u2003\u20DF", 2: u"\u2003\u20E3", 3: u"\u2206",
+F_CODES = {0: "O", 1: u"\u2003\u20DF", 2: u"\u2003\u20E3", 3: u"\u2206",
                       4: u"\u2B21", 5: u"\u2207"}
-f_marks = {0: "circle", 1: "diamond", 2: "square", 3: "triangle", 5: "hex"}
+F_MARKS = {0: "circle", 1: "diamond", 2: "square", 3: "triangle", 5: "hex"}
 
 def activate_batch_if_no_other_sel(sel1, sel2):
     """Activate if only batch selection is active"""
@@ -433,9 +433,9 @@ def make_stats_table(msdata, data_column, yaxes, subs):
 
 
 
-def make_table_name(tab_name):
+def make_table_name(version, tname):
     """Create div for stats data table"""
-    div = PreText(text=f"ragavi: v{__version__} | Table: {msdata.msname}",
+    div = PreText(text=f"ragavi: v{version} | Table: {tname}",
                   margin=(1, 1, 1, 1))
     return div
 
@@ -462,7 +462,7 @@ def make_widgets(msdata, fig, group_size=8):
     #number of batches avail. Depends on the group_size
     nbatch = len(batch_labels)
     corr_labels = [f"Corr {corr}" for corr in msdata.active_corrs]
-    field_labels = [f"{msdata.reverse_field_map[f]} {f_codes[fi]}" for fi, f in enumerate(msdata.active_fields)]
+    field_labels = [f"{msdata.reverse_field_map[f]} {F_CODES[fi]}" for fi, f in enumerate(msdata.active_fields)]
     spw_labels = [f"Spw {spw}" for spw in msdata.active_spws]
 
     # Selection group
@@ -559,7 +559,7 @@ def make_widgets(msdata, fig, group_size=8):
 
     # margin = [top, right, bottom, left]
     size_slider = Slider(end=15, start=0.4, step=0.1,
-                        value=10, title="Glyph size", margin=(3, 5, 7, 5),
+                        value=4, title="Glyph size", margin=(3, 5, 7, 5),
                         bar_color="#6F95C3", width=150, height=30)
     size_slider.js_on_change("value",CustomJS(
         args=dict(slide=size_slider,
@@ -590,9 +590,13 @@ def make_widgets(msdata, fig, group_size=8):
         args=dict(titles=fig.select(tags="title")),
         code=title_fs_callback()))
 
-    return [ant_selector, batch_selector, corr_selector, field_selector,
-            toggle_error, legend_toggle, toggle_flagged,
-            spw_selector, size_slider, alpha_slider, axis_fontslider,
-            title_fontslider, save_selected]
+    return [
+        grid(children =  [
+            [ant_selector, toggle_error, size_slider, title_fontslider], 
+            [legend_toggle, toggle_flagged, alpha_slider, axis_fontslider],
+            [Div(text="Select antenna group"), Div(text="Fields"),
+                Div(text="Select spw"), Div(text="Select correlation")],
+            [batch_selector, field_selector, spw_selector, corr_selector]]),
+        save_selected]
 
 
