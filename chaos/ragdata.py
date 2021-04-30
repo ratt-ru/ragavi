@@ -153,7 +153,7 @@ class MsData:
 
         ant2 = self._ms.getcol("ANTENNA1")
         ant1 = self._ms.getcol("ANTENNA2")
-        #TODO: find an algorithm to caluclate the unique baselines
+        #TODO: find an algorithm to calculate the unique baselines
 
     @property
     def start_time(self):
@@ -265,8 +265,6 @@ class MsData:
     @property
     def colnames(self):
         return self._colnames
-
-
 
 
 @dataclass

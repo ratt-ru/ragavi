@@ -10,15 +10,24 @@ class Processor:
         self.data = data
 
     def amplitude(self):
-        return da.absolute(self.data)
+        if isinstance(self.data, np.ndarray):
+            return np.abs(self.data)
+        else:
+            return da.absolute(self.data)
 
     def phase(self, unwrap=True):
-        #unwrap radians before converting to degrees
-        self.data.data = self.data.data.map_blocks(da.angle)
-        if unwrap:
-            self.data.data = self.data.data.map_blocks(np.unwrap)
-        self.data.data = self.data.data.map_blocks(da.rad2deg)
-        return self.data
+        if isinstance(self.data, np.ndarray):
+            self.data = np.angle(self.data)
+            if unwrap:
+                self.data = np.unwrap(self.data)
+            return np.rad2deg(self.data)
+        else:
+            #unwrap radians before converting to degrees
+            self.data.data = self.data.data.map_blocks(da.angle)
+            if unwrap:
+                self.data.data = self.data.data.map_blocks(np.unwrap)
+            self.data.data = self.data.data.map_blocks(da.rad2deg)
+            return self.data
 
     def real(self):
         return self.data.real
@@ -50,12 +59,20 @@ class Processor:
 
     @staticmethod
     def uv_distance(uvw):
-        return da.sqrt(da.square(uvw.isel({'uvw': 0})) +
+        if isinstance(uvw, np.ndarray):
+            return np.sqrt(np.square(uvw[:,:,0]).sum(axis=1))
+        else:
+            return da.sqrt(da.square(uvw.isel({'uvw': 0})) +
                        da.square(uvw.isel({'uvw': 1})))
 
     @staticmethod
     def uv_wavelength(uvw, freqs):
-        return Processor.uv_distance(uvw).expand_dims({"chan": 1}, axis=1) / (3e8/freqs)
+        if isinstance(uvw, np.ndarray):
+            return Processor.uv_distance(uvw)[:, np.newaxis] / (3e8/freqs)
+            
+        else:
+            return Processor.uv_distance(uvw).expand_dims(
+                                {"chan": 1}, axis=1) / (3e8/freqs)
 
     @staticmethod
     def unix_timestamp(in_time):
