@@ -139,7 +139,8 @@ class BaseFigure:
         return Toolbar(name=f"fig{self.f_num}_toolbar",
                         tools=[
                             HoverTool(tooltips=[("x", "$x"), ("y", "$y")],
-                                      name=f"fig{self.f_num}_htool", 
+                                      name=f"fig{self.f_num}_htool",
+                                      tags=["hover"],
                                       point_policy="snap_to_data"),
                             BoxSelectTool(), BoxZoomTool(),
                             # EditTool(), # BoxEditTool(), # RangeTool(),
@@ -268,7 +269,7 @@ class FigRag(BaseFigure):
             pdata = dict(x=data.xdata, y=data.ydata)
         else:
             pdata = data
-
+            data = pdata.pop("data")
         data_src = self.create_data_source(pdata,
                         name=f"fig{self.f_num}_gl{self.rend_idx}_ds",
                                            tags=[self.rend_idx])
@@ -318,9 +319,11 @@ class FigRag(BaseFigure):
         data.add(data.data[dim] - errors, name="lower")
 
         ebar = Whisker(source=data, base=base, lower="lower", upper="upper",
-                visible=False, upper_head=None, lower_head=None,
+                visible=False,# upper_head=None, lower_head=None,
                 line_color="red",line_cap="round",
                 tags=["ebar", f"{self.rend_idx}"], **kwargs)
+        ebar.upper_head.line_color = "red"
+        ebar.lower_head.line_color = "red"
         self._fig.add_layout(ebar)
 
     def write_out(self, filename="oer.html"):
