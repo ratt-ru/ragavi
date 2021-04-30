@@ -15,6 +15,8 @@ from bokeh.models.renderers import GlyphRenderer
 
 from bokeh.io import save
 
+import matplotlib.pyplot as plt
+
 from overrides import set_multiple_defaults
 
 # for testing
@@ -22,9 +24,41 @@ from ipdb import set_trace
 
 
 class BaseFigure:
+    """
+    A base for ragavi plots with some default specs
+
+    Parameters
+    ----------
+    width: :obj:`float`
+        Plot width
+    height: :obj:`float`
+        Plot height
+    x_scale: :obj:`str`
+        Scale for the x axis. Can be linear, datetime or log
+    y_scale: :obj:`str`
+        Scale for y axis. Same as x-axis
+    add_grid: :obj:`bool`
+        Whether or not to add an x and y grid to the plot
+    add_toolbar: :obj:`bool`
+        Whether or not to add a toolbar
+    add_xaxis: :obj:`bool`
+        Whether or not to an x-axis, including tick marks.
+        Useful for disabling when the plots are  in a grid
+        and no x-axis is required for each plot
+    add_yaxis: :obj:`bool`
+        Whether or not to add a y-axis. Reasons same as x-axis
+    plot_args: :obj:`dict`
+        A dictionary containing specs to pass to the bokeh plot.
+        These are passed as they are and are not validated.
+    axis_args: :obj:`dict`
+        Dictionary containing specs to pass to the axes. Added as they are.
+    tick_args: :obj:`dict`
+        Dictionary containing specs for ticks
+    """
     f_num = -1
-    def __init__(self, width, height, x_scale, y_scale, add_grid, add_toolbar, add_xaxis,
-                add_yaxis, plot_args, axis_args, tick_args):
+    def __init__(self, width, height, x_scale, y_scale, add_grid,
+                add_toolbar, add_xaxis, add_yaxis, plot_args, axis_args,
+                tick_args):
 
         self.__update_fnum__()
         self.f_num = self.get_fnum()
@@ -49,6 +83,7 @@ class BaseFigure:
         return BaseFigure.f_num
 
     def create_figure(self):
+        """Initalise a bokeh figure from scratch i.e."""
         # Set these defaults only if they haven't been set by user explicitly
         self.plot_args = set_multiple_defaults(self.plot_args, dict(
                 background="white", border_fill_alpha=0.1, 
@@ -86,6 +121,20 @@ class BaseFigure:
         
 
     def make_scale(self, dim, scale):
+        """
+        Create a scale for the plot
+        Parameters
+        ----------
+        dim: :obj:`str`
+            Dimension for which the scale wil be. Can be x or y
+        scale: obj:`str`
+            Type of scale to make. Can be linear,
+            log or datetime
+        
+        Returns
+        -------
+        A bokeh scale object
+        """
         scales = {
             "linear": LinearScale,
             "log": LogScale,
@@ -96,11 +145,37 @@ class BaseFigure:
 
 
     def make_ticker(self, dim):
+        """
+        Create a ticker that can be attached to an axis
+        
+        Parameters
+        ----------
+        dim: :obj:`str`
+            Dimension on which the ticker is to be added. Can be x or y
+        
+        Returns
+        -------
+            Bokeh Ticker object
+        """
         return BasicTicker(tags=[f"{dim}ticker"], desired_num_ticks=5, 
         ** self.tick_args)
 
 
     def make_axis(self, dim, scale):
+        """
+        Create a axis for the plot
+        Parameters
+        ----------
+        dim: :obj:`str`
+            Dimension which the axis is for. Can be x or y
+        scale: obj:`str`
+            Type of scale to make. Can be linear,
+            log or datetime
+        
+        Returns
+        -------
+        A bokeh axis object with its attached ticker
+        """
         axes = {
             "linear": LinearAxis,
             "log": LogAxis,
@@ -124,11 +199,33 @@ class BaseFigure:
 
 
     def make_grid(self, dim):
+        """Create a grid object for a dimension"""
         dims = {"x": 0, "y": 1}
         return Grid(dimension=dims[dim], ticker=self.make_ticker(dim))
 
 
     def make_range(self, dim, r_min=None, r_max=None, visible=True):
+        """
+        Create an axis' range
+        
+        Parameters
+        ----------
+        dim: :obj:`str`
+            Dimension for which the range is attached
+        r_min: :obj:`float`
+            Minimum range value
+        r_max: :obj:`float`
+            Maximum range value
+        visible: :obj`bool`
+            Select whether the range will will be adjusted depending on the
+            glyphs made visible on the plot, or all the available glyphs. This
+            property is only available if r_min or r_max have not been
+            specified. 
+        
+        Returns
+        -------
+        Bokeh range object
+        """
         if r_min is None and r_max is None:
             return DataRange1d(tags=[f"{dim}range"], only_visible=visible)
         else:
@@ -136,6 +233,7 @@ class BaseFigure:
 
 
     def make_toolbar(self):
+        """ Add tools to the toolbar """
         return Toolbar(name=f"fig{self.f_num}_toolbar",
                         tools=[
                             HoverTool(tooltips=[("x", "$x"), ("y", "$y")],
@@ -235,7 +333,7 @@ class FigRag(BaseFigure):
 
     def hide_glyphs(self, selection=None):
         """
-        Make some glyphs invisible
+        Make some/all glyphs invisible
         Parameters
         ----------
         selection: :obj:`str`
@@ -252,6 +350,7 @@ class FigRag(BaseFigure):
 
 
     def show_glyphs(self, selection=None):
+        """Make some/all glyphs visible"""
         if selection is not None:
             selection = selection.replace(" ", "").split(",")
             # hide all glyphs to begin with
@@ -264,6 +363,34 @@ class FigRag(BaseFigure):
                 rend.visible = True
 
     def add_glyphs(self, glyph, data, legend=None, **kwargs):
+        """
+        Add glyphs to an already existing bokeh figure to create
+        a renderer
+        
+        Parameters
+        ----------
+        glyph: :obj:`str`
+            Glyph type. Could be circle, hex, diamond etc.
+            see https://docs.bokeh.org/en/latest/docs/\
+                reference/models/glyphs/scatter.html
+            for a complete list
+        data: :obj:`dict` or :obj:`AxArgs`
+            A dictionary or ragavi axis args object containing data for
+            the specified glyph. Note that there must be a key 'data' in
+            this dictionary that contains an AxArgs object, or any object
+            for which the following attributes can be obtained:
+                flags: To capture the data's flags
+                errors: To capture the data's error 
+        legend: :obj:`str`
+            Label to be associated with the glyph to be made
+        **kwargs
+            Other key word arguments that will be passed directly
+            to the Glyph object.
+        
+        Returns
+        -------
+        Nothing
+        """
         #allow passing actual data objects or AxInfo objects
         if type(data) != dict:
             pdata = dict(x=data.xdata, y=data.ydata)
@@ -286,22 +413,26 @@ class FigRag(BaseFigure):
             
         tags = kwargs.pop("tags") or []
         rend = self._fig.add_glyph(data_src, Scatter(x="x", y="y",
-            marker=glyph, tags=["glyph"], size=10, **kwargs))
+            marker=glyph, tags=["glyph"], size=4, **kwargs))
         rend.update(name=f"fig{self.f_num}_ren_{self.rend_idx}", tags=tags,
-            view=data_view
-            )
+            view=data_view)
 
         if data.errors is not None:
             self.add_errors(data_src, data.errors)
 
         if legend is not None:
             rend.tags.append(legend)
-            self.legend_items[legend] = self._fig.select(tags=[legend], type=GlyphRenderer)
+            self.legend_items[legend] = self._fig.select(tags=[legend],
+                                                        type=GlyphRenderer)
 
         self.rend_idx += 1
 
     def add_errors(self, data, errors, base="x", dim="y", **kwargs):
         """
+        Add Error a bars
+
+        Parameters
+        ----------
         data: :obj:`dict` or :obj:`ColumnDataSource`
             All data in a dictionary format or a column data format
         errors: :obj:`np.array` or :obj:`da.array`
@@ -310,6 +441,10 @@ class FigRag(BaseFigure):
             The name of the data column for the x-axis
         dim: :obj:`str`
             Name of the axis on which to add the errors
+
+        Returns
+        -------
+        Nothing
         """
 
         if  type(data) != ColumnDataSource:
@@ -334,9 +469,17 @@ class FigRag(BaseFigure):
     
     def add_legends(self, group_size=16, **kwargs):
         """
-        Group legend items into 16 each,
-        create legend objects and,
-        attach them to figure
+        Group legend items into group_size each, create legend objects and
+        attach them to figure. This function also adds a batch number to
+        the renderer indicating its group id. It is specified as b#.
+
+        Parameters
+        ----------
+        group_size: :obj:`int`
+            Number of antennas that each legend group will have
+        kwargs:
+            A bunch of key word arguments that will be passed directly
+            to the Legend object
         """
         kwargs = set_multiple_defaults(kwargs, dict(
             click_policy="hide", glyph_height=20,
@@ -375,3 +518,56 @@ class FigRag(BaseFigure):
     @property
     def fig(self):
         return self._fig
+
+    def write_out_static(self, mdata, filename="oster.png", group_size=16,
+                        dpi=None):
+        """
+        Save plots in png,ps, pdf and svg format
+        """
+        print("Setting up static image")
+
+        name, ext = os.path.splitext(filename)
+        ext = ext.lower() if ext else ".png"
+
+        if dpi is None and ext==".png":
+            dpi = 300
+        else:
+            dpi = 72
+
+        # set up renderer sorting function
+        skey = lambda x: int(x.id)
+
+        plt.close("all")
+        fig, ax = plt.subplots(nrows=1, ncols=len(mdata.active_fields),
+                              sharex="row", squeeze=True,
+                              gridspec_kw=dict(wspace=0.2, hspace=0.3),
+                              figsize=(20, 8), dpi=dpi)
+
+        set_trace()
+        for idx, fid in enumerate(mdata.active_fields):
+            rends = sorted(self._fig.select(tags=f"f{fid}"), key=skey)
+            for rend in rends:
+                src = rend.data_source.data
+                msize = 5 / (src["x"].size / 2000)
+                msize = 4 if msize > 4 else msize
+                mscale = 10 // msize
+
+                ax[idx].plot(src["x"], src["y"], "o", color=rend.glyph.fill_color,
+                        label=src["ant"][0], markersize=msize)
+        
+            ax[idx].set_xlabel(self._fig.xaxis.axis_label)
+            ax[idx].set_ylabel(self._fig.yaxis.axis_label)
+            ax[idx].set_title(mdata.reverse_field_map[fid] + " "
+                              + self._fig.select_one({"tags": "title"}).text)
+
+        ax_handles, labels = ax[0].get_legend_handles_labels()
+        
+        labels = np.unique(labels).tolist()
+        ax[0].legend(ax_handles, labels, loc=(0, 1.2), ncol=group_size,
+                  markerscale=mscale, fontsize=9, labelspacing=0.3,
+                  title="Antenna", columnspacing=1.0)
+
+        fig.suptitle(f"Table: {mdata.ms_name}", ha="center")
+        fig.savefig(filename, bbox_inches='tight')
+        
+        print(f"Image at: {filename}")

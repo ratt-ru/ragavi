@@ -24,6 +24,7 @@ class MsData:
     def __init__(self, ms_name):
         self.ms_name = ms_name
         self.active_channels = None
+        self.active_antennas = []
         self.active_fields = []
         self.active_corrs = None
         self.active_spws = []
