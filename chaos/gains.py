@@ -5,7 +5,7 @@ import numpy as np
 
 import bokeh.palettes as bp
 import daskms as xm
-from itertools import cycle, zip_longest, repeat
+from itertools import zip_longest, product
 from dask import compute
 
 from bokeh.layouts import grid, gridplot, column, row
@@ -74,9 +74,27 @@ def iron_data(ax_info):
             ax_info.ydata.size//ax_info.xdata.size)
     return ax_info
 
-def hovertool_data():
+def add_hover_data(fig, sub, msdata, data):
     """spw, field, scan, corr, antenna"""
-    pass
+    ax_info = data["data"]
+    ant = msdata.reverse_ant_map[sub.ANTENNA1]
+    field = msdata.reverse_field_map[sub.FIELD_ID]
+    figrag.fig.select_one({"tags": "hover"}).tooltips = [
+        (f"({ax_info.xaxis:.4}, {ax_info.yaxis:.4})", f"(@x, @y)"),
+        ("spw", "@spw"), ("field", "@field"), ("scan", "@scan"),
+        ("ant", "@ant"), ("corr", "@corr"), ("% flagged", "@pcf")
+    ]
+    data.update({
+        "spw": np.full(ax_info.xdata.shape, sub.SPECTRAL_WINDOW_ID, dtype="int8"),
+        "field": np.full(ax_info.xdata.shape, field),
+        "scan": np.tile(sub.SCAN_NUMBER.values,
+                        ax_info.xdata.size//sub.row.size),
+        "ant": np.full(ax_info.xdata.shape, ant, ),
+        "corr": np.full(ax_info.xdata.shape, corr, dtype="int8"),
+        "pcf": np.full(ax_info.xdata.shape,
+                        (sub.FLAG.sum()/sub.FLAG.size).values * 100)
+    })
+    return data
 
 def get_colours(n, cmap="coolwarm"):
     """
@@ -126,16 +144,16 @@ def get_colours(n, cmap="coolwarm"):
 
 
 if __name__ == "__main__":
-    gargs = ["-t", "/home/lexya/Documents/test_gaintables/1491291289.B0", "b.ms", "c.ms",
+    gargs = ["-t", "/home/lexya/Documents/test_gaintables/1491291289.G0", "b.ms", "c.ms",
              "--cmap", "coolwarm", 
-             "-a", "m000", "m000,m10,m063", "7",
+             "-a", "0,1,2,3,4,10", "m000,m10,m063", "7",
             #  "-c", "", "1", "0,1",
             #  "--ddid", "0",
             #  "-f", "", "DEEP2", "J342-342,X034-123",
             #  "--t0", "0", "1000", "2000",
             #  "--t1", "10000", "7000", "7500",
              "-y", "a", "r,i", "i,a",
-             "-x", "channel", "time", "chan"]
+             "-x", "time", "time", "chan"]
 
     ps = gains_argparser().parse_args(gargs)
 
@@ -182,12 +200,12 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
     all_figs = []
         
     for yaxis in yaxes.split(","):
-        print(f"Axis: {yaxis}")
+        print(f"Axis: {yaxis}, ")
 
         figrag = FigRag(add_toolbar=True, 
             x_scale=xaxis if xaxis == "time" else "linear" )
 
-        for sub in subs:
+        for sub, corr in product(subs, msdata.active_corrs):
             # print(f"Antenna {sub.ANTENNA1}")
             msdata.active_channels = msdata.freqs.sel(
                 chan=sel_args.channels,
@@ -199,27 +217,32 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
                 msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
 
             ax_info = Axargs(xaxis=xaxis, yaxis=yaxis, data_column="CPARAM",
-                                                   ms_obj=sub, msdata=msdata)
+                                                    ms_obj=sub, msdata=msdata)
             ax_info.xdata = Processor(ax_info.xdata).calculate(
                 ax_info.xaxis).data
 
-            for corr in msdata.active_corrs:
-                # setting ydata here for reinit. Otherwise, autoset in axargs
-                ax_info.ydata = Processor(sub[ax_info.ydata_col]).calculate(
-                    ax_info.yaxis).sel(corr=corr).data
             
-                ax_info.flags = ~sub.FLAG.sel(corr=corr).data
-                ax_info.errors = sub.PARAMERR.sel(corr=corr).data
-                ax_info = iron_data(ax_info)
-                #pass inverted flags for the view as is
-                #the view only shows true mask data
-                figrag.add_glyphs("circle", data=ax_info,
-                    legend=msdata.reverse_ant_map[sub.ANTENNA1], 
-                    fill_color=cmap[sub.ANTENNA1],
-                    line_color=cmap[sub.ANTENNA1],
-                    tags=[f"a{sub.ANTENNA1}",
-                          f"s{sub.SPECTRAL_WINDOW_ID}",
-                          f"c{corr}", f"f{sub.FIELD_ID}"])
+            # setting ydata here for reinit. Otherwise, autoset in axargs
+            ax_info.ydata = Processor(sub[ax_info.ydata_col]).calculate(
+                ax_info.yaxis).sel(corr=corr).data
+        
+            ax_info.flags = ~sub.FLAG.sel(corr=corr).data
+            ax_info.errors = sub.PARAMERR.sel(corr=corr).data
+            ax_info = iron_data(ax_info)
+            #pass inverted flags for the view as is
+            #the view only shows true mask data
+            data = {
+                "x":ax_info.xdata,
+                "y": ax_info.ydata,
+                "data": ax_info
+            }
+            data = add_hover_data(figrag.fig, sub, msdata, data)
+            figrag.add_glyphs("circle", data=data,
+                legend=msdata.reverse_ant_map[sub.ANTENNA1],
+                fill_color=cmap[sub.ANTENNA1],
+                line_color=cmap[sub.ANTENNA1],
+                tags=[f"a{sub.ANTENNA1}", f"s{sub.SPECTRAL_WINDOW_ID}",
+                        f"c{corr}", f"f{sub.FIELD_ID}"])
 
         figrag.update_xlabel(ax_info.xaxis)
         figrag.update_ylabel(ax_info.yaxis)
