@@ -10,9 +10,8 @@ from bokeh.models import (Button, CheckboxGroup, CustomJS, PreText, Slider,
 from bokeh.models.widgets import DataTable, TableColumn, Div
 from bokeh.layouts import column
 
-f_codes = {0: u"\u2B24", 1: u"\u25C6", 2: u"\u25FC", 3: u"\u25B2", 4: u"\u25BC",
-           5: u"\u2B22"}
-
+f_codes = {0: "O", 1: u"\u2003\u20DF", 2: u"\u2003\u20E3", 3: u"\u2206",
+                      4: u"\u2B21", 5: u"\u2207"}
 f_marks = {0: "circle", 1: "diamond", 2: "square", 3: "triangle", 5: "hex"}
 
 def activate_batch_if_no_other_sel(sel1, sel2):
@@ -120,7 +119,7 @@ def batch_selector_callback():
             final_array = reduceArray(final_array, fsel, nfields, "f");
         }
         if (csel.active.length > 0){
-            final_array = reduceArray(final_array, csel, nbatches, "c");
+            final_array = reduceArray(final_array, csel, ncorrs, "c");
         }
 
         for (let b = 0; b < nbatches; b++) {
@@ -182,7 +181,7 @@ def field_selector_callback():
             final_array = reduceArray(final_array, ssel, nspws, "s");
         }
         if (csel.active.length > 0) {
-            final_array = reduceArray(final_array, csel, nfields, "c");
+            final_array = reduceArray(final_array, csel, ncorrs, "c");
         }
 
         for (let f=0; f<nfields; f++) {
@@ -210,10 +209,10 @@ def spw_selector_callback():
             final_array = reduceArray(final_array, bsel, nbatches, "b");
         }
         if (fsel.active.length > 0) {
-            final_array = reduceArray(final_array, fsel, nspws, "s");
+            final_array = reduceArray(final_array, fsel, nfields, "s");
         }
         if (csel.active.length > 0) {
-            final_array = reduceArray(final_array, csel, nfields, "c");
+            final_array = reduceArray(final_array, csel, ncorrs, "c");
         }
 
         for (let s=0; s<nspws; s++){
@@ -350,27 +349,20 @@ def title_fs_callback():
 
 def save_selected_callback():
     code = """
-        /*uf_src: Unflagged data source
-          f_src:  Flagged data source scanid antname
-        */
-        let out = `x, y1, y2, ant, corr, field, scan, spw\n`;
+        var out = `x, y, ant, corr, field, scan, spw\n`;
 
-        //for all the data sources available
-        for (let i=0; i<uf_src.length; i++){
-            let sel_idx = uf_src[i].selected.indices;
-            let data = uf_src[i].data;
-
-            for (let j=0; j<sel_idx.length; j++){
-                out +=  `${data['x'][sel_idx[j]]}, ` +
-                        `${data['y1'][sel_idx[j]]}, ` +
-                        `${data['y2'][sel_idx[j]]}, ` +
-                        `${data['antname'][sel_idx[j]]}, ` +
-                        `${data['corr'][sel_idx[j]]}, ` +
-                        `${data['field'][sel_idx[j]]}, ` +
-                        `${data['scanid'][sel_idx[j]]}, ` +
-                        `${data['spw'][sel_idx[j]]}\n`;
+        for (let src of sources){
+            let sel_idx = src.selected.indices;
+            let data = src.data;
+            for (let idx of sel_idx){
+                out += `${data['x'][idx]}, ` +
+                        `${data['y'][idx]}, ` +
+                        `${data['ant'][idx]}, ` +
+                        `${data['corr'][idx]}, ` +
+                        `${data['field'][idx]}, ` +
+                        `${data['scan'][idx]}, ` +
+                        `${data['spw'][idx]}\n`;
             }
-
         }
         let answer = confirm("Download selected data?");
         if (answer){
@@ -408,14 +400,6 @@ def gen_checkbox_labels(ant_names, group_size=8):
     last = ant_names[-1]
 
     return [f"{l} - {r}" for l, r in zip_longest(lhs, rhs, fillvalue=last)]
-
-def get_widgets():
-    """Return all the widgets created in this script"""
-    return [ant_selector, batch_selector, corr_selectoror, spw_selectoror,
-            legend_toggle, save_selected, toggle_error, toggle_flagged,
-            size_slider, alpha_slider, axis_fontslider, title_fontslider]
-    # return [ant_selector, batch_selector]
-
 
 
 def make_stats_table(msdata, data_column, yaxes, subs):
@@ -506,12 +490,12 @@ def make_widgets(msdata, fig, group_size=8):
     ant_selector.js_on_change("active", CustomJS(
         args=dict(ax=fig, bsel=batch_selector, fsel=field_selector,
                   csel=corr_selector, ssel=spw_selector, nbatches=nbatch,
-                  nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
+                  nfields=msdata.num_fields, ncorrs=msdata.num_corrs, terr=toggle_error,
                   nspws=msdata.num_spws, errors=fig.select(tags=["ebar"], type=Whisker)),
         code=ant_selector_callback())
         )
     batch_selector.js_on_change("active", CustomJS(
-        args=dict(ax=fig, bsize=group_size,
+        args=dict(ax=fig, 
                   nants=msdata.num_ants, nbatches=nbatch,
                   nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
                   nspws=msdata.num_spws, fsel=field_selector,
@@ -519,7 +503,7 @@ def make_widgets(msdata, fig, group_size=8):
                   errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
         code=batch_selector_callback()))
     corr_selector.js_on_change("active", CustomJS(
-        args=dict(bsel=batch_selector, bsize=group_size,
+        args=dict(bsel=batch_selector, 
                   fsel=field_selector, nants=msdata.num_ants,
                   ncorrs=msdata.num_corrs, nfields=msdata.num_fields,
                   nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
@@ -529,7 +513,7 @@ def make_widgets(msdata, fig, group_size=8):
         ))
 
     field_selector.js_on_change("active", CustomJS(
-        args=dict(bsize=group_size, bsel=batch_selector, csel=corr_selector,
+        args=dict( bsel=batch_selector, csel=corr_selector,
                   nants=msdata.num_ants, nfields=msdata.num_fields,
                   ncorrs=msdata.num_corrs, nbatches=nbatch,
                   nspws=msdata.num_spws, ax=fig, ssel=spw_selector,
@@ -557,15 +541,13 @@ def make_widgets(msdata, fig, group_size=8):
         code=legend_toggle_callback()))
 
 
-    # save_selected = Button(label="Download data selection",
-    #                         button_type="success", margin=(7, 5, 3, 5),
-    #                         sizing_mode="fixed", width=150, height=30)
-    # save_selected.js_on_click(CustomJS(args=dict(
-    #     uf_src=all_ufsources,
-    #     f_src=all_fsources),
-    #     code=save_selected_callback()))
-    
-
+    save_selected = Button(label="Download data selection",
+                            button_type="success", margin=(7, 5, 3, 5),
+                            sizing_mode="fixed", width=150, height=30)
+    save_selected.js_on_click(CustomJS(args=dict(
+        sources=fig.select(type=ColumnDataSource)),
+        code=save_selected_callback()))
+        
 
     toggle_flagged = CheckboxGroup(labels=["Show flagged data"], active=[],
                                 width=150, height=30)
@@ -611,6 +593,6 @@ def make_widgets(msdata, fig, group_size=8):
     return [ant_selector, batch_selector, corr_selector, field_selector,
             toggle_error, legend_toggle, toggle_flagged,
             spw_selector, size_slider, alpha_slider, axis_fontslider,
-            title_fontslider]
+            title_fontslider, save_selected]
 
 
