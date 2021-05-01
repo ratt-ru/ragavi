@@ -5,10 +5,10 @@ import numpy as np
 
 import bokeh.palettes as bp
 import daskms as xm
-from itertools import zip_longest, product
+from itertools import zip_longest, product, cycle
 from dask import compute
 
-from bokeh.layouts import grid, gridplot, column, row
+from bokeh.layouts import grid, gridplot, column, row, layout
 from bokeh.io import save, output_file
 
 from holy_chaos.chaos.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
@@ -16,7 +16,7 @@ from holy_chaos.chaos.ragdata import dataclass, field, MsData, Axargs, Genargs, 
 from holy_chaos.chaos.arguments import gains_argparser
 from holy_chaos.chaos.plotting import FigRag, Circle, Scatter
 from holy_chaos.chaos.processing import Chooser, Processor
-from holy_chaos.chaos.widgets import f_marks, make_widgets, make_stats_table
+from holy_chaos.chaos.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
 from ipdb import set_trace
 
@@ -44,6 +44,12 @@ def get_table(msdata, sargs, group_data):
                                  })
 
     for i, sub in enumerate(mss):
+        if sub.FIELD_ID not in msdata.active_fields:
+            msdata.active_fields.append(sub.FIELD_ID)
+        if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
+            msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
+        if sub.ANTENNA1 not in msdata.active_antennas:
+            msdata.active_antennas.append(sub.ANTENNA1)
         mss[i] = sub.sel(corr=sargs.corrs)
     return mss
 
@@ -75,12 +81,38 @@ def iron_data(ax_info):
     return ax_info
 
 def add_hover_data(fig, sub, msdata, data):
-    """spw, field, scan, corr, antenna"""
+    """
+    Add spw, field, scan, corr, antenna into main CDS for the hover tooltips
+
+    Parameters
+    ----------
+    fig : :obj:`Plot`
+        The figure itself
+    sub: :obj:`xr.Dataset`
+        Dataset contining data for  sub ms
+    msdata: :obj:`MsData`
+        Class containing data for all things MS
+    data: :obj:`dict`
+        Dictionary containing data for the plots, onto which htool 
+        data will be added
+    
+    Returns
+    -------
+    Updated data dictionary (with htool data)
+    """
     ax_info = data["data"]
     ant = msdata.reverse_ant_map[sub.ANTENNA1]
     field = msdata.reverse_field_map[sub.FIELD_ID]
+
+    #format unix time in tooltip
+    if ax_info.xaxis == "time":
+        tip0 = (f"({ax_info.xaxis:.4}, {ax_info.yaxis:.4})",
+                "(@x{%F %T}, @y)")
+    else:
+        tip0 = (f"({ax_info.xaxis:.4}, {ax_info.yaxis:.4})", f"(@x, @y)")
+
     figrag.fig.select_one({"tags": "hover"}).tooltips = [
-        (f"({ax_info.xaxis:.4}, {ax_info.yaxis:.4})", f"(@x, @y)"),
+        tip0,
         ("spw", "@spw"), ("field", "@field"), ("scan", "@scan"),
         ("ant", "@ant"), ("corr", "@corr"), ("% flagged", "@pcf")
     ]
@@ -185,13 +217,13 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
     #initialise data ssoc with ms
     msdata = MsData(msname)
 
-    cmap = get_colours(msdata.num_ants, cmap)
-    pl_args = Pargs(cmap=cmap)
-
-    
-
     subs = get_table(msdata, sel_args, group_data=["SPECTRAL_WINDOW_ID", 
                                                     "FIELD_ID", "ANTENNA1"])
+
+    cmap = cycle(get_colours(len(msdata.active_antennas), cmap))
+    
+    pl_args = Pargs(cmap=cmap)
+    
     if len(subs) > 0:
         msdata.active_corrs = subs[0].corr.values
     else:
@@ -202,19 +234,16 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
     for yaxis in yaxes.split(","):
         print(f"Axis: {yaxis}, ")
 
-        figrag = FigRag(add_toolbar=True, 
-            x_scale=xaxis if xaxis == "time" else "linear" )
+        figrag = FigRag(add_toolbar=True, width=900, height=710,
+            x_scale=xaxis if xaxis == "time" else "linear",
+            plot_args={"frame_height": None, "frame_width": None})
 
         for sub, corr in product(subs, msdata.active_corrs):
             # print(f"Antenna {sub.ANTENNA1}")
+            colour = next(cmap)
             msdata.active_channels = msdata.freqs.sel(
                 chan=sel_args.channels,
                 row=sub.SPECTRAL_WINDOW_ID)
-            
-            if sub.FIELD_ID not in msdata.active_fields:
-                msdata.active_fields.append(sub.FIELD_ID)
-            if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
-                msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
 
             ax_info = Axargs(xaxis=xaxis, yaxis=yaxis, data_column="CPARAM",
                                                     ms_obj=sub, msdata=msdata)
@@ -236,11 +265,12 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
                 "y": ax_info.ydata,
                 "data": ax_info
             }
+
             data = add_hover_data(figrag.fig, sub, msdata, data)
-            figrag.add_glyphs("circle", data=data,
+            figrag.add_glyphs(F_MARKS[sub.FIELD_ID], data=data,
                 legend=msdata.reverse_ant_map[sub.ANTENNA1],
-                fill_color=cmap[sub.ANTENNA1],
-                line_color=cmap[sub.ANTENNA1],
+                fill_color=colour,
+                line_color=colour,
                 tags=[f"a{sub.ANTENNA1}", f"s{sub.SPECTRAL_WINDOW_ID}",
                         f"c{corr}", f"f{sub.FIELD_ID}"])
 
@@ -253,14 +283,26 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
         figrag.add_legends(group_size=8, visible=True)
         figrag.update_title(f"{ax_info.yaxis} vs {ax_info.xaxis}")
         figrag.show_glyphs(selection="b0")
+        figrag.write_out_static(msdata, "pst.png")
         
         all_figs.append(figrag.fig)
         widgets = make_widgets(msdata, all_figs[0], group_size=8)
-        stats = make_stats_table(msdata, ax_info.data_column, yaxes,
-                get_table(msdata, sel_args, group_data=["SPECTRAL_WINDOW_ID",
+        stats = make_stats_table(msdata,
+                ax_info.data_column, yaxes,
+                get_table(msdata, sel_args,group_data=["SPECTRAL_WINDOW_ID",
                                                         "FIELD_ID"]))
+
+        # Set up my layouts
+        all_widgets = grid(widgets + [None, stats],
+                           sizing_mode="stretch_width", nrows=1)
+        plots = gridplot([all_figs], toolbar_location="right",
+                         sizing_mode="stretch_width")
+        final_layout = layout([
+            [make_table_name(gen_args.version, msdata.ms_name)],
+            [all_widgets], [plots]], sizing_mode="stretch_width")
+
         output_file(filename = "ghost.html")
-    save(column(row(widgets), stats, *all_figs),filename="ghost.html", title="oster")
+    save(final_layout,filename="ghost.html", title="oster")
 
 
         # figrag.write_out()
