@@ -491,8 +491,9 @@ class FigRag(BaseFigure):
         self.legend_items = list(self.legend_items.items())
         legends = []
 
-        n_groups = math.ceil(len(self.legend_items) / group_size)
-        for idx in range(n_groups):
+        # add n_groups to class this is the number of batches avail
+        self.n_groups = math.ceil(len(self.legend_items) / group_size)
+        for idx in range(self.n_groups):
             items = self.legend_items[idx*group_size: group_size*(idx+1)]
             for leg, rend_list in items:
                 for rend in rend_list:
@@ -519,8 +520,7 @@ class FigRag(BaseFigure):
     def fig(self):
         return self._fig
 
-    def write_out_static(self, mdata, filename="oster.png", group_size=16,
-                        dpi=None):
+    def write_out_static(self, mdata, filename="oster.png", dpi=None, group_size=16):
         """
         Save plots in png,ps, pdf and svg format
         """
@@ -543,7 +543,6 @@ class FigRag(BaseFigure):
                               gridspec_kw=dict(wspace=0.2, hspace=0.3),
                               figsize=(20, 8), dpi=dpi)
 
-        set_trace()
         for idx, fid in enumerate(mdata.active_fields):
             rends = sorted(self._fig.select(tags=f"f{fid}"), key=skey)
             for rend in rends:
@@ -552,8 +551,10 @@ class FigRag(BaseFigure):
                 msize = 4 if msize > 4 else msize
                 mscale = 10 // msize
 
-                ax[idx].plot(src["x"], src["y"], "o", color=rend.glyph.fill_color,
-                        label=src["ant"][0], markersize=msize)
+                ax[idx].plot(src["x"],
+                        np.ma.masked_array(data=src["y"], mask=~src["flags"]),
+                        "o", color=rend.glyph.fill_color, label=src["ant"][0],
+                        markersize=msize)
         
             ax[idx].set_xlabel(self._fig.xaxis.axis_label)
             ax[idx].set_ylabel(self._fig.yaxis.axis_label)
@@ -569,5 +570,88 @@ class FigRag(BaseFigure):
 
         fig.suptitle(f"Table: {mdata.ms_name}", ha="center")
         fig.savefig(filename, bbox_inches='tight')
+        
+        print(f"Image at: {filename}")
+
+    def potato(self, mdata, filename="oster.png", dpi=None, group_size=None):
+        """
+        Save plots in png,ps, pdf and svg format split out per field,
+        and antenna batch. Remember flags were inverted to make cds views!!!
+        """
+        print("Setting up static image")
+
+        name, ext = os.path.splitext(filename)
+        ext = ext.lower() if ext else ".png"
+
+        if dpi is None and ext==".png":
+            dpi = 300
+        else:
+            dpi = 72
+        # set up renderer sorting function
+        skey = lambda x: int(x.id)
+        
+        if group_size is None:
+            group_size = len(mdata.active_antennas)
+
+        ncols = int(np.sqrt(group_size))
+        ncols = 5 if ncols > 5 else ncols
+        nrows = int(np.ceil(group_size/ncols))
+        if nrows > ncols:
+            ncols, nrows = nrows, ncols
+        
+        for idx, fid in enumerate(mdata.active_fields):
+            for bid in range(self.n_groups):
+                # each group has 16 antennas
+                plt.close("all")
+                fig, ax = plt.subplots(
+                    nrows=nrows, ncols=ncols, sharex=True, sharey=True,
+                    squeeze=False, gridspec_kw=dict(wspace=0, hspace=0.4),
+                    figsize=(20, 8), dpi=dpi)
+                row = -1
+                for aidx, aid in enumerate(mdata.active_antennas):
+                  
+                    frends = [rend for rend in self._fig.renderers
+                        if {f"b{bid}",f"a{aid}",f"f{fid}"}.issubset(
+                            set(rend.tags))]
+                    
+                    if len(frends) ==0:
+                        continue
+
+                    frends = sorted(frends, key=skey)
+                    col = aidx % ncols
+                    
+                    if col == 0:
+                        row += 1
+                    
+                    for ridx, rend in enumerate(frends):
+                        src = rend.data_source.data
+                        msize = 5 / (src["x"].size / 2000)
+                        msize = 4 if msize > 4 else msize
+                        mscale = 10 // msize
+
+                        ax[row, col].plot(src["x"],
+                            np.ma.masked_array(data=src["y"],mask=~src["flags"]),
+                            "o", color=rend.glyph.fill_color,
+                            label= f"corr {src['corr'][0]}",
+                            markersize=msize)
+                        ax_handles, labels = ax[row, col].get_legend_handles_labels()
+                        labels = np.unique(labels).tolist()
+                        ax[row, col].legend(ax_handles, labels, loc=(0, 1.02),
+                            ncol=4, markerscale=mscale, fontsize=9,
+                            labelspacing=0.3, title=f"{src['ant'][0]}",
+                            columnspacing=1.0)
+                        ax[row,col].tick_params("x", labelrotation=30)
+                        for label in ax[row, col].get_xticklabels():
+                            label.set_ha("right")
+                
+                fig.suptitle(f"Table: {mdata.ms_name} "
+                              + mdata.reverse_field_map[fid], ha="center")
+                fig.text(0.5, 0.04, self._fig.xaxis.axis_label, ha='center',
+                        va='center')
+                fig.text(0.1, 0.5, self._fig.yaxis.axis_label, ha='center',
+                        va='center', rotation='vertical')
+                fig.savefig(f"{name}"
+                    + f"_{mdata.reverse_field_map[fid]}"
+                    + f"_grp{bid}{ext}", bbox_inches='tight')
         
         print(f"Image at: {filename}")

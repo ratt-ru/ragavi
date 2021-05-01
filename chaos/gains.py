@@ -20,6 +20,8 @@ from holy_chaos.chaos.widgets import F_MARKS, make_widgets, make_stats_table, ma
 
 from ipdb import set_trace
 
+_GROUP_SIZE_ = 8
+
 class Pargs(Plotargs):
     image_name: str = None
 
@@ -44,12 +46,6 @@ def get_table(msdata, sargs, group_data):
                                  })
 
     for i, sub in enumerate(mss):
-        if sub.FIELD_ID not in msdata.active_fields:
-            msdata.active_fields.append(sub.FIELD_ID)
-        if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
-            msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
-        if sub.ANTENNA1 not in msdata.active_antennas:
-            msdata.active_antennas.append(sub.ANTENNA1)
         mss[i] = sub.sel(corr=sargs.corrs)
     return mss
 
@@ -178,7 +174,7 @@ def get_colours(n, cmap="coolwarm"):
 if __name__ == "__main__":
     gargs = ["-t", "/home/lexya/Documents/test_gaintables/1491291289.G0", "b.ms", "c.ms",
              "--cmap", "coolwarm", 
-             "-a", "0,1,2,3,4,10", "m000,m10,m063", "7",
+             "-a", "", "m000,m10,m063", "7",
             #  "-c", "", "1", "0,1",
             #  "--ddid", "0",
             #  "-f", "", "DEEP2", "J342-342,X034-123",
@@ -219,6 +215,13 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
 
     subs = get_table(msdata, sel_args, group_data=["SPECTRAL_WINDOW_ID", 
                                                     "FIELD_ID", "ANTENNA1"])
+    for sub in subs:
+        if sub.FIELD_ID not in msdata.active_fields:
+            msdata.active_fields.append(sub.FIELD_ID)
+        if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
+            msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
+        if sub.ANTENNA1 not in msdata.active_antennas:
+            msdata.active_antennas.append(sub.ANTENNA1)
 
     cmap = cycle(get_colours(len(msdata.active_antennas), cmap))
     
@@ -280,13 +283,14 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
         if "chan" in ax_info.xaxis:
             add_extra_xaxis(msdata, figrag, sel_args)
         
-        figrag.add_legends(group_size=8, visible=True)
+        figrag.add_legends(group_size=_GROUP_SIZE_, visible=True)
         figrag.update_title(f"{ax_info.yaxis} vs {ax_info.xaxis}")
         figrag.show_glyphs(selection="b0")
-        figrag.write_out_static(msdata, "pst.png")
+        # figrag.write_out_static(msdata, "pst.png", group_size=_GROUP_SIZE_)
+        figrag.potato(msdata, "pst.png", group_size=_GROUP_SIZE_)
         
         all_figs.append(figrag.fig)
-        widgets = make_widgets(msdata, all_figs[0], group_size=8)
+        widgets = make_widgets(msdata, all_figs[0], group_size=_GROUP_SIZE_)
         stats = make_stats_table(msdata,
                 ax_info.data_column, yaxes,
                 get_table(msdata, sel_args,group_data=["SPECTRAL_WINDOW_ID",
