@@ -11,12 +11,15 @@ from dask import compute
 from bokeh.layouts import grid, gridplot, column, row, layout
 from bokeh.io import save, output_file
 
-from holy_chaos.chaos.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
-from holy_chaos.chaos.ragdata import dataclass, field, MsData, Axargs, Genargs, Selargs, Plotargs
+from holy_chaos.chaos.exceptions import (InvalidCmap, InvalidColumnName,
+    EmptyTable)
+from holy_chaos.chaos.ragdata import (dataclass, field, MsData, Axargs,
+    Genargs, Selargs, Plotargs)
 from holy_chaos.chaos.arguments import gains_argparser
 from holy_chaos.chaos.plotting import FigRag, Circle, Scatter
 from holy_chaos.chaos.processing import Chooser, Processor
-from holy_chaos.chaos.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
+from holy_chaos.chaos.widgets import (F_MARKS, make_widgets, make_stats_table,
+    make_table_name)
 
 from ipdb import set_trace
 
@@ -28,11 +31,10 @@ class Pargs(Plotargs):
 
 def get_table(msdata, sargs, group_data):
     # perform  TAQL selections and chan and corr selection
-    super_taql = Chooser.form_taql_string(msdata, antennas=sargs.antennas,
-                                          baselines=sargs.baselines,
-                                          fields=sargs.fields,
-                                          spws=sargs.ddids, taql=sargs.taql,
-                                          time=(sargs.t0, sargs.t1))
+    super_taql = Chooser.form_taql_string(
+        msdata, antennas=sargs.antennas, baselines=sargs.baselines,
+        fields=sargs.fields, spws=sargs.ddids, taql=sargs.taql,
+        time=(sargs.t0, sargs.t1))
     msdata.taql_selector = super_taql
 
     print(f"Selection string: {super_taql}")
@@ -172,16 +174,17 @@ def get_colours(n, cmap="coolwarm"):
 
 
 if __name__ == "__main__":
-    gargs = ["-t", "/home/lexya/Documents/test_gaintables/1491291289.G0", "b.ms", "c.ms",
+    gargs = ["-t", "/home/lexya/Documents/test_gaintables/VLBA_0402_3C84.B0", "b.ms", "c.ms",
              "--cmap", "coolwarm", 
              "-a", "", "m000,m10,m063", "7",
+            #  "-b", "m000-m002",
             #  "-c", "", "1", "0,1",
             #  "--ddid", "0",
             #  "-f", "", "DEEP2", "J342-342,X034-123",
             #  "--t0", "0", "1000", "2000",
             #  "--t1", "10000", "7000", "7500",
              "-y", "a", "r,i", "i,a",
-             "-x", "time", "time", "chan"]
+             "-x", "chan", "time", "chan"]
 
     ps = gains_argparser().parse_args(gargs)
 
@@ -199,6 +202,7 @@ else:
     # put all of them in different files
 
 ps.cmaps = ps.cmaps * len(ps.msnames) if len(ps.cmaps)==1 else ps.cmaps
+
 
 for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, cmap,
     yaxes, xaxis)in zip_longest(ps.msnames, ps.antennas, ps.baselines, ps.channels, ps.corrs, ps.ddids,
@@ -223,7 +227,7 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
         if sub.ANTENNA1 not in msdata.active_antennas:
             msdata.active_antennas.append(sub.ANTENNA1)
 
-    cmap = cycle(get_colours(len(msdata.active_antennas), cmap))
+    cmap = get_colours(len(msdata.active_antennas), cmap)
     
     pl_args = Pargs(cmap=cmap)
     
@@ -243,7 +247,7 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
 
         for sub, corr in product(subs, msdata.active_corrs):
             # print(f"Antenna {sub.ANTENNA1}")
-            colour = next(cmap)
+            colour = cmap[msdata.active_antennas.index(sub.ANTENNA1)]
             msdata.active_channels = msdata.freqs.sel(
                 chan=sel_args.channels,
                 row=sub.SPECTRAL_WINDOW_ID)
@@ -286,7 +290,7 @@ for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, 
         figrag.add_legends(group_size=_GROUP_SIZE_, visible=True)
         figrag.update_title(f"{ax_info.yaxis} vs {ax_info.xaxis}")
         figrag.show_glyphs(selection="b0")
-        # figrag.write_out_static(msdata, "pst.png", group_size=_GROUP_SIZE_)
+        figrag.write_out_static(msdata, "pst.png", group_size=_GROUP_SIZE_)
         figrag.potato(msdata, "pst.png", group_size=_GROUP_SIZE_)
         
         all_figs.append(figrag.fig)
