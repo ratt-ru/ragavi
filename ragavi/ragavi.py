@@ -94,18 +94,19 @@ class DataCoreProcessor:
 
     def set_xaxis(self):
         gains = {
-            "B": "channel",
-            "D": "time",
-            "Xf": "channel",
-            "Df": "channel",
-            "G": "time",
-            "F": "time",
-            "K": "time",
-            "Kcross": "time",
+            "b": "channel",
+            "d": "channel",
+            "xf": "channel",
+            "df": "channel",
+            "dflls": "channel",
+            "g": "time",
+            "f": "time",
+            "k": "time",
+            "kcross": "time",
         }
         # kx should take precedence over the other
         # default axis will be time
-        xaxis = self.kx or gains.get(self.gtype, "time")
+        xaxis = self.kx or gains.get(self.gtype.lower(), "time")
         return xaxis
 
     def process_data(self, ydata, yaxis=None):
