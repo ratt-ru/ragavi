@@ -1,8 +1,8 @@
-import re
+import os
 import numpy as np
 
 import daskms as xm
-from itertools import zip_longest, product, cycle
+from itertools import zip_longest, product
 from dask import compute
 
 from bokeh.layouts import grid, gridplot, column, row, layout
@@ -215,6 +215,7 @@ def main(parser, gargs):
                 ax_info.flags = ~sub.FLAG.sel(corr=corr).data
                 ax_info.errors = sub.PARAMERR.sel(corr=corr).data
                 ax_info = iron_data(ax_info)
+
                 #pass inverted flags for the view as is
                 #the view only shows true mask data
                 data = {
@@ -244,24 +245,27 @@ def main(parser, gargs):
             figrag.write_out_static(msdata, image_name, group_size=_GROUP_SIZE_)
             figrag.potato(msdata, image_name, group_size=_GROUP_SIZE_)
             
-            all_figs.append(figrag.fig)
+            all_figs.append(figrag)
         
-        widgets = make_widgets(msdata, all_figs[0], group_size=_GROUP_SIZE_)
-        stats = make_stats_table(msdata,ax_info.data_column, yaxes,
-                get_table(msdata, sel_args,group_data=["SPECTRAL_WINDOW_ID",
-                                                        "FIELD_ID"]))
-        # Set up my layouts
-        all_widgets = grid(widgets + [None, stats],
-                            sizing_mode="stretch_width", nrows=1)
-        plots = gridplot([all_figs], toolbar_location="right",
-                            sizing_mode="stretch_width")
-        final_layout = layout([
-            [make_table_name(gen_args.version, msdata.ms_name)],
-            [all_widgets], [plots]], sizing_mode="stretch_width")
-
         if html_name:
+            all_figs[0].link_figures(*all_figs[1:])
+            all_figs = [fig.fig for fig in all_figs]
+            widgets = make_widgets(msdata, all_figs[0], group_size=_GROUP_SIZE_)
+            stats = make_stats_table(msdata,ax_info.data_column, yaxes,
+                    get_table(msdata, sel_args,group_data=["SPECTRAL_WINDOW_ID",
+                                                            "FIELD_ID"]))
+            # Set up my layouts
+            all_widgets = grid(widgets + [None, stats],
+                                sizing_mode="stretch_width", nrows=1)
+            plots = gridplot([all_figs], toolbar_location="right",
+                                sizing_mode="stretch_width")
+            final_layout = layout([
+                [make_table_name(gen_args.version, msdata.ms_name)],
+                [all_widgets], [plots]], sizing_mode="stretch_width")
+        
             output_file(filename=html_name)
-            save(final_layout, filename=html_name, title="Test")
+            save(final_layout, filename=html_name,
+                title=os.path.splitext(os.path.basename(html_name))[0])
         print("Plotting Done")
     return 0
 
@@ -271,7 +275,7 @@ def main(parser, gargs):
 # - logfile
 if __name__ == "__main__":
     main(gains_argparser, [
-         "-t", "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.B0",
-         "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.F0",
-         "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.K0",
-         "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.G0"])
+         "-t", 
+        #  "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.B0",
+         "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.G0"
+        ])

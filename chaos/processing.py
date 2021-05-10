@@ -17,19 +17,20 @@ class Processor:
         else:
             return da.absolute(self.data)
 
-    def phase(self, unwrap=True):
+    def phase(self, unwrap=False):
         if isinstance(self.data, np.ndarray):
-            self.data = np.angle(self.data)
+            data = np.angle(self.data)
             if unwrap:
-                self.data = np.unwrap(self.data)
-            return np.rad2deg(self.data)
+                data = np.unwrap(data)
+            return np.rad2deg(data)
         else:
             #unwrap radians before converting to degrees
-            self.data.data = self.data.data.map_blocks(da.angle)
+            data = self.data.copy(deep=True)
+            data.data = data.data.map_blocks(da.angle)
             if unwrap:
-                self.data.data = self.data.data.map_blocks(np.unwrap)
-            self.data.data = self.data.data.map_blocks(da.rad2deg)
-            return self.data
+                data.data = data.data.map_blocks(np.unwrap)
+            data.data = data.data.map_blocks(da.rad2deg)
+            return data
 
     def real(self):
         return self.data.real

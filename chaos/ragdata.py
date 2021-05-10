@@ -71,7 +71,7 @@ class MsData:
             self._get_scan_table()
             self._colnames = self._ms.colnames()
             if "VisCal" in self._ms.keywordnames():
-                self._table_type = self._ms.getkeyword("VisCal")
+                self._table_type = self._ms.getkeyword("VisCal").split()[0]
             self._ms.close()
     
     def _process_observation_table(self):
