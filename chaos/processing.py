@@ -3,6 +3,8 @@ import numpy as np
 import xarray as xr
 import dask.array as da
 
+from warnings import warn
+
 from ipdb import set_trace
 
 class Processor:
@@ -111,7 +113,7 @@ class Chooser:
     @staticmethod
     def form_taql_string(msdata, antennas=None, baselines=None, fields=None,
                         spws=None, scans=None, taql=None, time=None,
-                        uv_range=None):
+                        uv_range=None, return_ids=False):
         """
         Create TAQL used for preprocessing data selection in the MS
 
@@ -135,6 +137,8 @@ class Chooser:
             Tuple containing time to start and time to end time
         uv_range: :obj:`str`
             Comma seprated string containing antenas to be selection
+        return_ids: :ob:`bool`
+            Return number ids for antennas, baselines, fields
         
         Returns
         -------
@@ -152,12 +156,14 @@ class Chooser:
 
         """
         super_taql = []
+        super_dict = {}
 
         if antennas and baselines is None:
             antennas = antennas.replace(" ", "").split(",")
             for i, selection in enumerate(antennas):
                 antennas[i] = Chooser.nametoid(selection, msdata.ant_map)
-
+            
+            super_dict["antennas"] = [int(_) for _ in antennas]
             antennas = f"ANTENNA1 IN [{','.join(set([_ for _ in antennas if _]))}]"
             super_taql.append(antennas)
 
@@ -167,10 +173,13 @@ class Chooser:
             for bl in baselines:
                 bl = bl.split("-")
                 if not all([Chooser.nametoid(_, msdata.ant_map) for _ in bl]):
+                    warn(f"Baseline: {bl} is not available")
                     continue
                 for i, selection in enumerate(bl, 1):
                     ants[f"ANTENNA{i}"].append(
                         Chooser.nametoid(selection, msdata.ant_map))
+            
+            super_dict["baselines"] = ants
             baselines = " && ".join(
                 [f"{key}==[{','.join(value)}]" for key, value in ants.items()])
             super_taql.append(f"any({baselines})")
@@ -179,20 +188,23 @@ class Chooser:
             fields = fields.replace(" ", "").split(",")
             for i, selection in enumerate(fields):
                 fields[i] = Chooser.nametoid(selection, msdata.field_map)
+            
+            super_dict["fields"] = [int(_) for _ in fields]
             fields = f"FIELD_ID IN [{','.join(set([_ for _ in fields if _]))}]"
             super_taql.append(fields)
         if scans:
             scans = scans.replace(" ", "")
+            super_dict["scans"] = [int(_) for _ in scans.split(",")]
             scans = f"SCAN_NUMBER IN [{scans}]"
             super_taql.append(scans)
         if spws:
             spws = spws.replace(" ", "")
+            super_dict["spws"] = [int(_) for _ in spws.split(",")]
             spws = "DATA_DESC_ID" if "DATA_DESC_ID" in msdata.colnames \
                         else "SPECTRAL_WINDOW_ID" + f" IN [{spws}]"
             super_taql.append(spws)
         if taql:
             super_taql.append(taql)
-      
         if time:
             #default for t0 and t1 is None, given as a tuple
             time = [float(_) if _ is not None else 0 for _ in time]
@@ -207,13 +219,14 @@ class Chooser:
             # TODO sELECT an spws here in the CHANG FREQ
             uv_range, unit = uv_range.replace(" ", "").split("_")
             if unit == "lambda":
-                uv_range = f"""any(sqrt(sumsqr(UVW[:2])) / c() *  
-                                [select CHAN_FREQ[0] from ::SPECTRAL_WINDOW][DATA_DESC_ID,] < {uv_range}) 
-                            """
+                uv_range = f"any(sqrt(sumsqr(UVW[:2])) / c() *  " \
+                    + f"[select CHAN_FREQ[0] from ::SPECTRAL_WINDOW]" \
+                    + f"[DATA_DESC_ID,] < {uv_range}) "
             else:
                 uv_range = f"any(sqrt(sumsqr(UVW[:2])) < {uv_range})"
             super_taql.append(uv_range)
-
+        if return_ids:
+            " && ".join(super_taql), super_dict
         return " && ".join(super_taql)
 
     @staticmethod

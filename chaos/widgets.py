@@ -405,23 +405,38 @@ def gen_checkbox_labels(ant_names, group_size=8):
 def make_stats_table(msdata, data_column, yaxes, subs):
     """
     Get the list of subs from theg get_table function in main
+    Parameters
+    ----------
+    msdata: :obj:`MsData`
+        Object containing MS's data
+    data_column: :obj:`str`
+        Name of the data column used
+    yaxes: obj:`list`
+        list containing y axes
+    subs: :obj:`str`
+        List of sub MSs
+    Returns
+    -------
+    Bokeh column layout containing the data table
     """
-    columns = ["spw", "field", "corr"] + yaxes.split(",")
+    columns = ["spw", "field", "corr"] + yaxes
     stats = {col: [] for col in columns}
-
     for sub in subs:
         for yaxis, corr in product(yaxes, msdata.active_corrs):
             pro = Processor(sub[data_column]).calculate(yaxis).sel(corr=corr)
             flags = sub.FLAG.sel(corr=corr)
             stats["spw"].append(sub.SPECTRAL_WINDOW_ID)
-            stats["field"].append(sub.FIELD_ID)
+            stats["field"].append(msdata.reverse_field_map[sub.FIELD_ID])
             stats["corr"].append(corr)
             stats[yaxis].append(
                 f"{np.nanmedian(pro.where(flags == False).values):.4}")
             
-            # print(f"y-axis: {yaxis}, field: {f_names[field]}"+
-            #       f"corr: {str(corr)} median: {str(med_y)}")
+            # print(f"y-axis: {yaxis}, field: {sub.FIELD_ID}" +
+            #       f"corr: {str(corr)} median: 0")
 
+    cut = len(stats[columns[3]])
+    stats["spw"], stats["field"], stats["corr"] = (stats["spw"][:cut],
+        stats["field"][:cut], stats["corr"][:cut])
     stats = ColumnDataSource(data=stats)
     
     columns = [TableColumn(field=col, title=col.title()) for col in columns]
