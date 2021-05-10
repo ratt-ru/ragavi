@@ -5,3 +5,6 @@
 *chaosEnv
 
 *.html
+
+#ignore gain tables
+tests/gain_tables

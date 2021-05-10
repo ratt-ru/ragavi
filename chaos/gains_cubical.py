@@ -27,6 +27,7 @@ class TableData:
         self.corr1s = corr1s
         self.corr2s = corr2s
         self.active_corrs = []
+        self.active_spws = [0]
 
     @property
     def num_corr1s(self):
@@ -113,7 +114,8 @@ for yaxis in yaxes.split(","):
         figrag.add_glyphs("circle", data=data, legend=ant,
                           fill_color=cmap[tdata.ants.index(ant)],
                           line_color=cmap[tdata.ants.index(ant)],
-                          tags=[f"a{tdata.ants.index(ant)}", f"c{corr1}{corr2}"])
+                          tags=[f"a{tdata.ants.index(ant)}",
+                                f"c{corr1}{corr2}"], "s0")
 
     figrag.update_xlabel(ax_info.xaxis)
     figrag.update_ylabel(ax_info.yaxis)
