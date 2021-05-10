@@ -591,11 +591,9 @@ class FigRag(BaseFigure):
         Save plots in png,ps, pdf and svg format split out per field,
         and antenna batch. Remember flags were inverted to make cds views!!!
         """
-        print("Setting up static image")
-
         if filename is None:
             return 
-
+        print("Setting up static image")
         name, ext = os.path.splitext(filename)
         ext = ext.lower() if ext else ".png"
 

@@ -100,6 +100,7 @@ def add_hover_data(fig, sub, msdata, data):
     if ax_info.xaxis == "time":
         tip0 = (f"({ax_info.xaxis:.4}, {ax_info.yaxis:.4})",
                 "(@x{%F %T}, @y)")
+        fig.select_one({"tags": "hover"}).formatters = {"@x": "datetime"}
     else:
         tip0 = (f"({ax_info.xaxis:.4}, {ax_info.yaxis:.4})", f"(@x, @y)")
 
@@ -168,7 +169,8 @@ def main(parser, gargs):
             yaxes = [_ for _ in "apri"]
         elif set(yaxes).issubset(set("apri")):
             yaxes = [_ for _ in yaxes]
-    
+        yaxes = [Axargs.translate_y(_) for _ in yaxes]
+
         if msdata.table_type.lower().startswith("k"):
             yaxes = ["delay"]
         
@@ -255,8 +257,8 @@ def main(parser, gargs):
                     get_table(msdata, sel_args,group_data=["SPECTRAL_WINDOW_ID",
                                                             "FIELD_ID"]))
             # Set up my layouts
-            all_widgets = grid(widgets + [None, stats],
-                                sizing_mode="stretch_width", nrows=1)
+            all_widgets = grid([widgets[0], column(widgets[1:]+[stats])],
+                                sizing_mode="fixed", nrows=1)
             plots = gridplot([all_figs], toolbar_location="right",
                                 sizing_mode="stretch_width")
             final_layout = layout([

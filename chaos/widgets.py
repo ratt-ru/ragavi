@@ -429,14 +429,14 @@ def make_stats_table(msdata, data_column, yaxes, subs):
             stats["field"].append(msdata.reverse_field_map[sub.FIELD_ID])
             stats["corr"].append(corr)
             stats[yaxis].append(
-                f"{np.nanmedian(pro.where(flags == False).values):.4}")
+                f"{np.nanmedian(pro.where(flags == False).values):.6}")
             
             # print(f"y-axis: {yaxis}, field: {sub.FIELD_ID}" +
             #       f"corr: {str(corr)} median: 0")
 
-    cut = len(stats[columns[3]])
-    stats["spw"], stats["field"], stats["corr"] = (stats["spw"][:cut],
-        stats["field"][:cut], stats["corr"][:cut])
+    cut = len(stats["field"]) // len(stats[yaxes[0]])
+    stats["spw"], stats["field"], stats["corr"] = (stats["spw"][::cut],
+        stats["field"][::cut], stats["corr"][:len(stats[yaxes[0]])])
     stats = ColumnDataSource(data=stats)
     
     columns = [TableColumn(field=col, title=col.title()) for col in columns]

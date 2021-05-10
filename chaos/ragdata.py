@@ -299,7 +299,7 @@ class Axargs:
 
     def __post_init__(self):
         #Get the proper name for the data column first before getting other names
-        self.yaxis = self.translate_y(self.yaxis)
+        self.yaxis = Axargs.translate_y(self.yaxis)
         self.data_column = self.get_colname(self.data_column, self.data_column)
         self.xdata_col = self.get_colname(self.xaxis, self.data_column)
         self.ydata_col = self.get_colname(self.yaxis, self.data_column)
@@ -312,7 +312,7 @@ class Axargs:
         else:
             self.xdata = self.ms_obj[self.xdata_col]
         
-    def translate_y(self, ax):
+    def translate_y(ax):
         axes = {}
         axes["a"] = axes["amp"] = "amplitude"
         axes["i"] = axes["imag"] = "imaginary"
