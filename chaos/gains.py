@@ -1,9 +1,6 @@
 import re
-import matplotlib.colors as mpc
-import matplotlib.pyplot as plt
 import numpy as np
 
-import bokeh.palettes as bp
 import daskms as xm
 from itertools import zip_longest, product, cycle
 from dask import compute
@@ -21,13 +18,11 @@ from holy_chaos.chaos.processing import Chooser, Processor
 from holy_chaos.chaos.widgets import (F_MARKS, make_widgets, make_stats_table,
     make_table_name)
 
+from holy_chaos.chaos.utils import get_colours
+
 from ipdb import set_trace
 
-_GROUP_SIZE_ = 8
-
-class Pargs(Plotargs):
-    image_name: str = None
-
+_GROUP_SIZE_ = 16
 
 def get_table(msdata, sargs, group_data):
     # perform  TAQL selections and chan and corr selection
@@ -62,7 +57,6 @@ def add_extra_xaxis(msdata, figrag, sargs):
         figrag.add_axis(chans[0], chans[-1], "x",
                         "linear", "Frequency GHz", "above")
     
-
 def iron_data(ax_info):
     """Flatten these data to 1D"""
     def flat(att, obj): 
@@ -109,7 +103,7 @@ def add_hover_data(fig, sub, msdata, data):
     else:
         tip0 = (f"({ax_info.xaxis:.4}, {ax_info.yaxis:.4})", f"(@x, @y)")
 
-    figrag.fig.select_one({"tags": "hover"}).tooltips = [
+    fig.select_one({"tags": "hover"}).tooltips = [
         tip0,
         ("spw", "@spw"), ("field", "@field"), ("scan", "@scan"),
         ("ant", "@ant"), ("corr", "@corr"), ("% flagged", "@pcf")
@@ -120,201 +114,164 @@ def add_hover_data(fig, sub, msdata, data):
         "scan": np.tile(sub.SCAN_NUMBER.values,
                         ax_info.xdata.size//sub.row.size),
         "ant": np.full(ax_info.xdata.shape, ant, ),
-        "corr": np.full(ax_info.xdata.shape, corr, dtype="int8"),
+        "corr": np.full(ax_info.xdata.shape, data["corr"], dtype="int8"),
         "pcf": np.full(ax_info.xdata.shape,
                         (sub.FLAG.sum()/sub.FLAG.size).values * 100)
     })
     return data
 
-def get_colours(n, cmap="coolwarm"):
-    """
-    cmap: colormap to select
-    n: Number colours to return
-    """
-    #check if the colormap is in mpl
-    if cmap in plt.colormaps():
-        cmap = plt.get_cmap(cmap)
-        norm = mpc.Normalize(vmin=0, vmax=n)
-        return [mpc.to_hex(cmap(norm(a))) for a in range(n)]
+def calculate_points(subms, nsubs):
+    return subms.FLAG.size * nsubs
 
-    elif re.search(f"{cmap}\w*", ",".join(plt.colormaps()), re.IGNORECASE):
-        cmap = re.search(f"{cmap}\w*", ",".join(plt.colormaps()),
-            re.IGNORECASE).group()
-        cmap = plt.get_cmap(cmap)
-        norm = mpc.Normalize(vmin=0, vmax=n)
-        return [mpc.to_hex(cmap(norm(a))) for a in range(n)]
+def set_xaxis(gain):
+    gains = {k: "channel"  for k in "b xf df".split()}
+    gains.update({k: "time" for k in "d g f k kcross".split()})
+    return gains.get(gain.lower(), "time")
     
-    #check if the colormap is in bokeh
-    elif re.search(f"{cmap}\w*", ",".join(bp.all_palettes.keys()), re.IGNORECASE):
-        cmaps = re.findall(f"{cmap}\w*", ",".join(bp.all_palettes.keys()), 
-            re.IGNORECASE)
-        for cm in cmaps:
-            if max(bp.all_palettes[cm].keys()) > n:
-                cmap = bp.all_palettes[cmap][max(bp.all_palettes[cmap].keys())]
-                break
-        cmap = bp.linear_palette(cmap, n)
-        return cmap
-    else:
-        raise InvalidCmap(f"cmap {cmap} not found.")
+def main(parser, gargs):
+    ps = parser().parse_args(gargs)
 
+    for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1,
+        taql, cmap, yaxes, xaxis, html_name, image_name) in zip_longest(ps.msnames,
+        ps.antennas, ps.baselines, ps.channels, ps.corrs, ps.ddids, ps.fields, ps.t0s,
+        ps.t1s, ps.taqls, ps.cmaps, ps.yaxes, ps.xaxes, ps.html_names, ps.image_names):
+        
+        #we're grouping the arguments into 4
+        gen_args = Genargs(msname=msname, version="testwhatever")
+        sel_args = Selargs(antennas=antennas, corrs=Chooser.get_knife(corrs),
+                        baselines=baselines, channels=Chooser.get_knife(channels),
+                        ddids=ddids, fields=fields, taql=taql, t0=t0, t1=t1)
+        
+        #initialise data ssoc with ms
+        msdata = MsData(msname)
+        print(f"MS: {msname}")
 
-#"/home/lexya/Documents/test_gaintables/1491291289.B0"
-#"/home/lexya/Documents/test_gaintables/1491291289.F0"
-#"/home/lexya/Documents/test_gaintables/1491291289.K0"
-#"/home/lexya/Documents/test_gaintables/1491291289.G0"
-#"/home/lexya/Documents/test_gaintables/3c391_ctm_mosaic_10s_spw0.B0"
-#"/home/lexya/Documents/test_gaintables/4k_pcal3_1-1576599977_fullpol_1318to1418MHZ-single-3pcal_1.Df"
-#"/home/lexya/Documents/test_gaintables/4k_pcal3_1-1576599977_fullpol_1318to1418MHZ-single-3pcal_1.Kcrs"
-#"/home/lexya/Documents/test_gaintables/4k_pcal3_1-1576599977_fullpol_1318to1418MHZ-single-3pcal_1.Xf"
-#"/home/lexya/Documents/test_gaintables/4k_pcal3_1-1576599977_fullpol_1318to1418MHZ-single-3pcal_1.Xref"
-#"/home/lexya/Documents/test_gaintables/J0538_floi-beck-1pcal.Xfparang"
-#"/home/lexya/Documents/test_gaintables/short-gps1-1gc1_primary_cal.G0"
-#"/home/lexya/Documents/test_gaintables/VLBA_0402_3C84.B0"
-#"/home/lexya/Documents/test_gaintables/workflow2-1576687564_sdp_l0-1gc1_primary.B0"
+        subs = get_table(msdata, sel_args, group_data=["SPECTRAL_WINDOW_ID", 
+                                                        "FIELD_ID", "ANTENNA1"])
+        if len(subs) > 0:
+            msdata.active_corrs = subs[0].corr.values
+        else:
+            raise EmptyTable(
+                "Table came up empty. Please your check selection.")
+    
+        for sub in subs:
+            if sub.FIELD_ID not in msdata.active_fields:
+                msdata.active_fields.append(sub.FIELD_ID)
+            if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
+                msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
+            if sub.ANTENNA1 not in msdata.active_antennas:
+                msdata.active_antennas.append(sub.ANTENNA1)
+        
+        if yaxes is None:
+            yaxes = ["a", "p"]
+        elif yaxes == "all":
+            yaxes = [_ for _ in "apri"]
+        elif set(yaxes).issubset(set("apri")):
+            yaxes = [_ for _ in yaxes]
+    
+        if msdata.table_type.lower().startswith("k"):
+            yaxes = ["delay"]
+        
+        if xaxis is None:
+            xaxis = set_xaxis(msdata.table_type)
 
+        if html_name is None and image_name is None:
+            html_name = msdata.ms_name + f"_{''.join(yaxes)}" +".html"
+        
+        if cmap is None:
+            cmap, = ps.cmaps
+        cmap = get_colours(len(msdata.active_antennas), cmap)
+        points = calculate_points(subs[0], len(subs))
 
-if __name__ == "__main__":
-    gargs = ["-t", "/home/lexya/Documents/test_gaintables/VLBA_0402_3C84.B0", "b.ms", "c.ms",
-             "--cmap", "coolwarm", 
-             "-a", "", "m000,m10,m063", "7",
-            #  "-b", "m000-m002",
-            #  "-c", "", "1", "0,1",
-            #  "--ddid", "0",
-            #  "-f", "", "DEEP2", "J342-342,X034-123",
-            #  "--t0", "0", "1000", "2000",
-            #  "--t1", "10000", "7000", "7500",
-             "-y", "a", "r,i", "i,a",
-             "-x", "chan", "time", "chan"]
+        if points > 30000 and image_name is None:
+            image_name = msdata.ms_name + ".png"
+        
+        all_figs = []
+            
+        for yaxis in yaxes:
+            print(f"Axis: {yaxis}")
 
-    ps = gains_argparser().parse_args(gargs)
+            figrag = FigRag(add_toolbar=True, width=900, height=710,
+                x_scale=xaxis if xaxis == "time" else "linear",
+                plot_args={"frame_height": None, "frame_width": None})
+
+            for sub, corr in product(subs, msdata.active_corrs):
+                # print(f"Antenna {sub.ANTENNA1}")
+                colour = cmap[msdata.active_antennas.index(sub.ANTENNA1)]
+                msdata.active_channels = msdata.freqs.sel(
+                    chan=sel_args.channels,
+                    row=sub.SPECTRAL_WINDOW_ID)
+
+                ax_info = Axargs(xaxis=xaxis, yaxis=yaxis, data_column="CPARAM",
+                    ms_obj=sub, msdata=msdata)
+                ax_info.xdata = Processor(ax_info.xdata).calculate(
+                    ax_info.xaxis).data
+
+                
+                # setting ydata here for reinit. Otherwise, autoset in axargs
+                ax_info.ydata = Processor(sub[ax_info.ydata_col]).calculate(
+                    ax_info.yaxis).sel(corr=corr).data
+            
+                ax_info.flags = ~sub.FLAG.sel(corr=corr).data
+                ax_info.errors = sub.PARAMERR.sel(corr=corr).data
+                ax_info = iron_data(ax_info)
+                #pass inverted flags for the view as is
+                #the view only shows true mask data
+                data = {
+                    "x":ax_info.xdata,
+                    "y": ax_info.ydata,
+                    "data": ax_info,
+                    "corr": corr
+                }
+                data = add_hover_data(figrag.fig, sub, msdata, data)
+                figrag.add_glyphs(F_MARKS[sub.FIELD_ID], data=data,
+                    legend=msdata.reverse_ant_map[sub.ANTENNA1],
+                    fill_color=colour,
+                    line_color=colour,
+                    tags=[f"a{sub.ANTENNA1}", f"s{sub.SPECTRAL_WINDOW_ID}",
+                            f"c{corr}", f"f{sub.FIELD_ID}"])
+
+            figrag.update_xlabel(ax_info.xaxis)
+            figrag.update_ylabel(ax_info.yaxis)
+            
+            if "chan" in ax_info.xaxis:
+                add_extra_xaxis(msdata, figrag, sel_args)
+            
+            figrag.add_legends(group_size=_GROUP_SIZE_, visible=True)
+            figrag.update_title(f"{ax_info.yaxis} vs {ax_info.xaxis}")
+            figrag.show_glyphs(selection="b0")
+
+            figrag.write_out_static(msdata, image_name, group_size=_GROUP_SIZE_)
+            figrag.potato(msdata, image_name, group_size=_GROUP_SIZE_)
+            
+            all_figs.append(figrag.fig)
+        
+        widgets = make_widgets(msdata, all_figs[0], group_size=_GROUP_SIZE_)
+        stats = make_stats_table(msdata,ax_info.data_column, yaxes,
+                get_table(msdata, sel_args,group_data=["SPECTRAL_WINDOW_ID",
+                                                        "FIELD_ID"]))
+        # Set up my layouts
+        all_widgets = grid(widgets + [None, stats],
+                            sizing_mode="stretch_width", nrows=1)
+        plots = gridplot([all_figs], toolbar_location="right",
+                            sizing_mode="stretch_width")
+        final_layout = layout([
+            [make_table_name(gen_args.version, msdata.ms_name)],
+            [all_widgets], [plots]], sizing_mode="stretch_width")
+
+        if html_name:
+            output_file(filename=html_name)
+            save(final_layout, filename=html_name, title="Test")
+        print("Plotting Done")
+    return 0
 
 
 #overall arg:
 # - debug
 # - logfile
-
-# DO THE SAME THING FOR PS.IMAGE_NAMES
-if len(ps.html_names) == 1:
-    #put the plots in a single file:
-    pass
-else:
-    pass
-    # put all of them in different files
-
-ps.cmaps = ps.cmaps * len(ps.msnames) if len(ps.cmaps)==1 else ps.cmaps
-
-
-for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1, taql, cmap,
-    yaxes, xaxis)in zip_longest(ps.msnames, ps.antennas, ps.baselines, ps.channels, ps.corrs, ps.ddids,
-    ps.fields, ps.t0s, ps.t1s, ps.taqls, ps.cmaps, ps.yaxes, ps.xaxes):
-
-    #we're grouping the arguments into 4
-    gen_args = Genargs(msname=msname, version="testwhatever")
-    sel_args = Selargs(antennas=antennas, corrs=Chooser.get_knife(corrs),
-                       baselines=baselines, channels=Chooser.get_knife(channels),
-                       ddids=ddids, fields=fields, taql=taql, t0=t0, t1=t1)
-    
-    #initialise data ssoc with ms
-    msdata = MsData(msname)
-
-    subs = get_table(msdata, sel_args, group_data=["SPECTRAL_WINDOW_ID", 
-                                                    "FIELD_ID", "ANTENNA1"])
-    for sub in subs:
-        if sub.FIELD_ID not in msdata.active_fields:
-            msdata.active_fields.append(sub.FIELD_ID)
-        if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
-            msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
-        if sub.ANTENNA1 not in msdata.active_antennas:
-            msdata.active_antennas.append(sub.ANTENNA1)
-
-    cmap = get_colours(len(msdata.active_antennas), cmap)
-    
-    pl_args = Pargs(cmap=cmap)
-    
-    if len(subs) > 0:
-        msdata.active_corrs = subs[0].corr.values
-    else:
-        raise EmptyTable("Table came up empty. Please your check selection.")
-    
-    all_figs = []
-        
-    for yaxis in yaxes.split(","):
-        print(f"Axis: {yaxis}, ")
-
-        figrag = FigRag(add_toolbar=True, width=900, height=710,
-            x_scale=xaxis if xaxis == "time" else "linear",
-            plot_args={"frame_height": None, "frame_width": None})
-
-        for sub, corr in product(subs, msdata.active_corrs):
-            # print(f"Antenna {sub.ANTENNA1}")
-            colour = cmap[msdata.active_antennas.index(sub.ANTENNA1)]
-            msdata.active_channels = msdata.freqs.sel(
-                chan=sel_args.channels,
-                row=sub.SPECTRAL_WINDOW_ID)
-
-            ax_info = Axargs(xaxis=xaxis, yaxis=yaxis, data_column="CPARAM",
-                                                    ms_obj=sub, msdata=msdata)
-            ax_info.xdata = Processor(ax_info.xdata).calculate(
-                ax_info.xaxis).data
-
-            
-            # setting ydata here for reinit. Otherwise, autoset in axargs
-            ax_info.ydata = Processor(sub[ax_info.ydata_col]).calculate(
-                ax_info.yaxis).sel(corr=corr).data
-        
-            ax_info.flags = ~sub.FLAG.sel(corr=corr).data
-            ax_info.errors = sub.PARAMERR.sel(corr=corr).data
-            ax_info = iron_data(ax_info)
-            #pass inverted flags for the view as is
-            #the view only shows true mask data
-            data = {
-                "x":ax_info.xdata,
-                "y": ax_info.ydata,
-                "data": ax_info
-            }
-
-            data = add_hover_data(figrag.fig, sub, msdata, data)
-            figrag.add_glyphs(F_MARKS[sub.FIELD_ID], data=data,
-                legend=msdata.reverse_ant_map[sub.ANTENNA1],
-                fill_color=colour,
-                line_color=colour,
-                tags=[f"a{sub.ANTENNA1}", f"s{sub.SPECTRAL_WINDOW_ID}",
-                        f"c{corr}", f"f{sub.FIELD_ID}"])
-
-        figrag.update_xlabel(ax_info.xaxis)
-        figrag.update_ylabel(ax_info.yaxis)
-        
-        if "chan" in ax_info.xaxis:
-            add_extra_xaxis(msdata, figrag, sel_args)
-        
-        figrag.add_legends(group_size=_GROUP_SIZE_, visible=True)
-        figrag.update_title(f"{ax_info.yaxis} vs {ax_info.xaxis}")
-        figrag.show_glyphs(selection="b0")
-        figrag.write_out_static(msdata, "pst.png", group_size=_GROUP_SIZE_)
-        figrag.potato(msdata, "pst.png", group_size=_GROUP_SIZE_)
-        
-        all_figs.append(figrag.fig)
-        widgets = make_widgets(msdata, all_figs[0], group_size=_GROUP_SIZE_)
-        stats = make_stats_table(msdata,
-                ax_info.data_column, yaxes,
-                get_table(msdata, sel_args,group_data=["SPECTRAL_WINDOW_ID",
-                                                        "FIELD_ID"]))
-
-        # Set up my layouts
-        all_widgets = grid(widgets + [None, stats],
-                           sizing_mode="stretch_width", nrows=1)
-        plots = gridplot([all_figs], toolbar_location="right",
-                         sizing_mode="stretch_width")
-        final_layout = layout([
-            [make_table_name(gen_args.version, msdata.ms_name)],
-            [all_widgets], [plots]], sizing_mode="stretch_width")
-
-        output_file(filename = "ghost.html")
-    save(final_layout,filename="ghost.html", title="oster")
-
-
-        # figrag.write_out()
-    # add the widgets at this point. Only need the first figure
-    set_trace()
-    print("Ends")
-
+if __name__ == "__main__":
+    main(gains_argparser, [
+         "-t", "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.B0",
+         "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.F0",
+         "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.K0",
+         "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/1491291289.G0"])
