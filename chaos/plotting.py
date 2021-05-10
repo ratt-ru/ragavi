@@ -13,11 +13,11 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool,
                                 WheelZoomTool)
 from bokeh.models.renderers import GlyphRenderer
 
-from bokeh.io import save
+from bokeh.io import save, output_file
 
 import matplotlib.pyplot as plt
 
-from overrides import set_multiple_defaults
+from holy_chaos.chaos.overrides import set_multiple_defaults
 
 # for testing
 from ipdb import set_trace
@@ -461,10 +461,14 @@ class FigRag(BaseFigure):
         ebar.lower_head.line_color = "red"
         self._fig.add_layout(ebar)
 
-    def write_out(self, filename="oer.html"):
+    def write_out(self, filename=None):
+        if filename is None:
+            return
+
         if ".html" not in filename:
             filename += ".html"
-        save(self._fig, filename=filename, title=os.path.splitext(filename)[0])
+        output_file(filename)
+        save(self._fig, filename=filename, title=os.path.splitext(filename)[1])
 
     
     def add_legends(self, group_size=16, **kwargs):
@@ -520,12 +524,14 @@ class FigRag(BaseFigure):
     def fig(self):
         return self._fig
 
-    def write_out_static(self, mdata, filename="oster.png", dpi=None, group_size=16):
+    def write_out_static(self, mdata, filename=None, dpi=None, group_size=16):
         """
-        Save plots in png,ps, pdf and svg format
+        Save plots in png,ps, pdf and svg format for all the fields
         """
-        print("Setting up static image")
+        if filename is None:
+            return
 
+        print("Setting up static image")
         name, ext = os.path.splitext(filename)
         ext = ext.lower() if ext else ".png"
 
@@ -543,6 +549,10 @@ class FigRag(BaseFigure):
                               gridspec_kw=dict(wspace=0.2, hspace=0.3),
                               figsize=(20, 8), dpi=dpi)
 
+        # ensure ax is an array because squeezing is on        
+        if not hasattr(ax, "len"):
+            ax = np.array([ax])
+
         for idx, fid in enumerate(mdata.active_fields):
             rends = sorted(self._fig.select(tags=f"f{fid}"), key=skey)
             for rend in rends:
@@ -556,29 +566,35 @@ class FigRag(BaseFigure):
                         "o", color=rend.glyph.fill_color, label=src["ant"][0],
                         markersize=msize)
         
+           
             ax[idx].set_xlabel(self._fig.xaxis.axis_label)
+
             ax[idx].set_ylabel(self._fig.yaxis.axis_label)
             ax[idx].set_title(mdata.reverse_field_map[fid] + " "
                               + self._fig.select_one({"tags": "title"}).text)
 
         ax_handles, labels = ax[0].get_legend_handles_labels()
-        
-        labels = np.unique(labels).tolist()
+        labels, indices = np.unique(labels, return_index=True)
+        ax_handles = np.array(ax_handles)[indices]
         ax[0].legend(ax_handles, labels, loc=(0, 1.2), ncol=group_size,
                   markerscale=mscale, fontsize=9, labelspacing=0.3,
                   title="Antenna", columnspacing=1.0)
 
         fig.suptitle(f"Table: {mdata.ms_name}", ha="center")
-        fig.savefig(filename, bbox_inches='tight')
+        fig.savefig(f"{name}_{self._fig.yaxis.axis_label}{ext}",
+            bbox_inches='tight')
         
         print(f"Image at: {filename}")
 
-    def potato(self, mdata, filename="oster.png", dpi=None, group_size=None):
+    def potato(self, mdata, filename=None, dpi=None, group_size=None):
         """
         Save plots in png,ps, pdf and svg format split out per field,
         and antenna batch. Remember flags were inverted to make cds views!!!
         """
         print("Setting up static image")
+
+        if filename is None:
+            return 
 
         name, ext = os.path.splitext(filename)
         ext = ext.lower() if ext else ".png"
@@ -589,6 +605,8 @@ class FigRag(BaseFigure):
             dpi = 72
         # set up renderer sorting function
         skey = lambda x: int(x.id)
+
+        marks = {0: "o", 1: "x", 2: "p", 3: "*"}
         
         if group_size is None:
             group_size = len(mdata.active_antennas)
@@ -609,14 +627,12 @@ class FigRag(BaseFigure):
                     figsize=(20, 8), dpi=dpi)
                 row = -1
                 for aidx, aid in enumerate(mdata.active_antennas):
-                  
                     frends = [rend for rend in self._fig.renderers
                         if {f"b{bid}",f"a{aid}",f"f{fid}"}.issubset(
                             set(rend.tags))]
-                    
+            
                     if len(frends) ==0:
                         continue
-
                     frends = sorted(frends, key=skey)
                     col = aidx % ncols
                     
@@ -630,8 +646,10 @@ class FigRag(BaseFigure):
                         mscale = 10 // msize
 
                         ax[row, col].plot(src["x"],
-                            np.ma.masked_array(data=src["y"],mask=~src["flags"]),
-                            "o", color=rend.glyph.fill_color,
+                            np.ma.masked_array(data=src["y"],
+                                mask=~src["flags"]),
+                            marks[src['corr'][0]],
+                            color=rend.glyph.fill_color,
                             label= f"corr {src['corr'][0]}",
                             markersize=msize)
                         ax_handles, labels = ax[row, col].get_legend_handles_labels()
@@ -651,6 +669,7 @@ class FigRag(BaseFigure):
                 fig.text(0.1, 0.5, self._fig.yaxis.axis_label, ha='center',
                         va='center', rotation='vertical')
                 fig.savefig(f"{name}"
+                    + f"_{self._fig.yaxis.axis_label}"
                     + f"_{mdata.reverse_field_map[fid]}"
                     + f"_grp{bid}{ext}", bbox_inches='tight')
         
