@@ -48,6 +48,7 @@ class MsData:
         self._num_corrs = None
         self._corr_map = None
         self._scans = None
+        self._table_type = "ms"
 
         self.initialise_data()
         """
@@ -69,6 +70,8 @@ class MsData:
             self._process_polarisation_table()
             self._get_scan_table()
             self._colnames = self._ms.colnames()
+            if "VisCal" in self._ms.keywordnames():
+                self._table_type = self._ms.getkeyword("VisCal")
             self._ms.close()
     
     def _process_observation_table(self):
@@ -166,7 +169,7 @@ class MsData:
 
     @property
     def table_type(self):
-        pass
+        return self._table_type
 
     @property
     def num_chans(self):
@@ -304,7 +307,7 @@ class Axargs:
         if self.ydata is None:
             self.ydata = self.ms_obj[self.ydata_col]
             
-        if len(re.findall(f"{self.xaxis}\w*", "channel frequency")) > 0:
+        if len(re.findall(rf"{self.xaxis}\w*", "channel frequency")) > 0:
             self.xdata = self.msdata.active_channels
         else:
             self.xdata = self.ms_obj[self.xdata_col]
@@ -333,7 +336,7 @@ class Axargs:
         axes["spw"] = "DATA_DESC_ID"
         axes["corr"] = "corr"
         axes.update({key: data_column for key in ("a", "amp", "amplitude",
-                        "i", "imag", "imaginary", "p", "phase", "r", "real")})
+                "delay", "i", "imag", "imaginary", "p", "phase", "r", "real")})
         axes.update({key: "UVW" for key in ("uvdist", "UVdist", "uvdistance",
                         "uvdistl", "uvdist_l", "UVwave", "uvwave")})
         axes.update({key: "ANTENNA1" for key in ("ant1", "antenna1")})
@@ -343,7 +346,16 @@ class Axargs:
                         "frequency")})
         return axes
 
-    def get_colname(self, axis, data_column):        
+    def get_colname(self, axis, data_column):
+        """
+        Get the appropriate column name for axis from MS
+        Parameters
+        ----------
+        axis: : obj:`str`
+
+        data_column: :obj:`str`
+            The main DATA column to be used for this run
+        """        
         col_maps = self.colname_map(data_column)
 
         if axis.upper() in self.msdata.colnames:
@@ -376,7 +388,6 @@ class Selargs:
     taql: str
     t0: str
     t1: str
-
 
 @dataclass
 class Plotargs:
