@@ -2,6 +2,20 @@ import matplotlib.colors as mpc
 import matplotlib.pyplot as plt
 
 import bokeh.palettes as bp
+from time import perf_counter
+
+
+def timer(func):
+    def wrapper(*args, **kwargs):
+        start = perf_counter()
+        res = func(*args, **kwargs)
+        end = perf_counter()
+        out = f"{func.__name__}: run in {end-start} sec"
+        print(out)
+        print("="*len(out))
+        return res
+    return wrapper
+
 
 
 def get_colours(n, cmap="coolwarm"):
