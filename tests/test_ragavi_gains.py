@@ -29,12 +29,13 @@ def outputs():
     return [f"{table}_ap.html" for table in tables()]
 
 def test_cleanup():
-    [os.remove(out) for out in glob(f"{PATH}/*.html")]
-    [os.remove(out) for out in glob(f"{PATH}/*.png")]
-    [os.remove(out) for out in glob(f"{PATH}/*.pdf")]
-    [os.remove(out) for out in glob(f"{PATH}/*.svg")]
+    for ext in "html png pdf svg".split():
+        [os.remove(out) for out in glob(f"{PATH}/*.{ext}")]
     assert True
 
+@pytest.mark.single
+def test_basic_out():
+    assert main(gains_argparser, ["-t", tables()[0]]) == 0
 
 # @pytest.mark.skip
 @pytest.mark.parametrize(

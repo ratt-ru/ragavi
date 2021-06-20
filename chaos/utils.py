@@ -1,9 +1,14 @@
+import re
 import matplotlib.colors as mpc
 import matplotlib.pyplot as plt
-
+import numpy as np
 import bokeh.palettes as bp
+import colorcet as cc
 from time import perf_counter
+from difflib import get_close_matches
+from lograg import logging, get_logger
 
+snitch = get_logger(logging.getLogger(__name__))
 
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -16,30 +21,31 @@ def timer(func):
         return res
     return wrapper
 
-
-
 def get_colours(n, cmap="coolwarm"):
     """
     cmap: colormap to select
     n: Number colours to return
     """
     #check if the colormap is in mpl
-    if cmap in plt.colormaps():
+    if re.search(f"\w*{cmap}\w*", ",".join(plt.colormaps()),
+                    re.IGNORECASE):
+        cmap = re.search(f"\w*{cmap}\w*", ",".join(plt.colormaps()),
+                           re.IGNORECASE).group()
         cmap = plt.get_cmap(cmap)
         norm = mpc.Normalize(vmin=0, vmax=n)
         return [mpc.to_hex(cmap(norm(a))) for a in range(n)]
 
-    elif re.search(f"{cmap}\w*", ",".join(plt.colormaps()), re.IGNORECASE):
-        cmap = re.search(f"{cmap}\w*", ",".join(plt.colormaps()),
-                         re.IGNORECASE).group()
+    elif len(get_close_matches(cmap, plt.colormaps())) > 0:
+        #TODO: Maybe this elif should be the first an only for mpl
+        cmap, = get_close_matches(cmap, plt.colormaps(), n=1)
         cmap = plt.get_cmap(cmap)
         norm = mpc.Normalize(vmin=0, vmax=n)
         return [mpc.to_hex(cmap(norm(a))) for a in range(n)]
 
     #check if the colormap is in bokeh
-    elif re.search(f"{cmap}\w*", ",".join(bp.all_palettes.keys()),
+    elif re.search(f"\w*{cmap}\w*", ",".join(bp.all_palettes.keys()),
                     re.IGNORECASE):
-        cmaps = re.findall(f"{cmap}\w*", ",".join(bp.all_palettes.keys()),
+        cmaps = re.findall(f"\w*{cmap}\w*", ",".join(bp.all_palettes.keys()),
                            re.IGNORECASE)
         for cm in cmaps:
             if max(bp.all_palettes[cm].keys()) > n:
@@ -47,5 +53,30 @@ def get_colours(n, cmap="coolwarm"):
                 break
         cmap = bp.linear_palette(cmap, n)
         return cmap
+    elif len(get_close_matches(cmap, bp.all_palettes.keys())) > 0:
+        cmaps = get_close_matches(cmap, bp.all_palettes.keys(), n=4)
+        for cm in cmaps:
+            if max(bp.all_palettes[cm].keys()) > n:
+                cmap = bp.all_palettes[cmap][max(bp.all_palettes[cmap].keys())]
+                break
+        cmap = bp.linear_palette(cmap, n)
+        return cmap
+    #check if colormap is in colorcet
+    elif len(get_close_matches(cmap, cc.palette.keys())) > 0:
+        cmap = cc.palette(get_close_matches(cmap, cc.palette.keys(), n=1)[0])
+        return cmap[:n]
     else:
         raise InvalidCmap(f"cmap {cmap} not found.")
+        return -1
+
+
+def pair(x, y):
+    """
+    Get a unique int representation from two distinct non-negative numbers
+    This function is an implementation of cantor's pairing function which can
+    be found in (page 1127 of A New Kind Of Science). Obtained from
+    http://szudzik.com/ElegantPairing.pdf Follow this link to get more:
+    https://stackoverflow.com/questions/919612/mapping-two-integers-to-one-in-a-unique-and-deterministic-way/13871379#13871379
+    """
+    val = np.square(x) + (3*x) + (2*x*y) + y + np.square(y)
+    return val//2

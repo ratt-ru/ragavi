@@ -1,30 +1,29 @@
 import os
-import numpy as np
 from concurrent import futures
 from functools import partial
 
 import daskms as xm
-from itertools import zip_longest, product
+import numpy as np
 from dask import compute
-
+from itertools import zip_longest, product
 from bokeh.layouts import grid, gridplot, column, row, layout
 from bokeh.io import save, output_file, output_notebook
 
-
-from holy_chaos.chaos.exceptions import (InvalidCmap, InvalidColumnName,
+from exceptions import (InvalidCmap, InvalidColumnName,
     EmptyTable)
-from holy_chaos.chaos.ragdata import (dataclass, field, MsData, Axargs,
+from ragdata import (dataclass, field, MsData, Axargs,
     Genargs, Selargs, Plotargs)
-from holy_chaos.chaos.arguments import gains_argparser
-from holy_chaos.chaos.plotting import FigRag, Circle, Scatter
-from holy_chaos.chaos.processing import Chooser, Processor
-from holy_chaos.chaos.widgets import (F_MARKS, make_widgets, make_stats_table,
+from arguments import gains_argparser
+from plotting import FigRag, Circle, Scatter
+from processing import Chooser, Processor
+from widgets import (F_MARKS, make_widgets, make_stats_table,
     make_table_name)
+from utils import get_colours, timer
+from lograg import logging, get_logger
 
-from holy_chaos.chaos.utils import get_colours, timer
+snitch = get_logger(logging.getLogger(__name__))
 
 from ipdb import set_trace
-
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False
     
@@ -36,7 +35,7 @@ def get_table(msdata, sargs, group_data):
         time=(sargs.t0, sargs.t1))
     msdata.taql_selector = super_taql
 
-    # print(f"Selection string: {super_taql}")
+    snitch.debug(f"Selection string: {super_taql}")
     mss = xm.xds_from_table(
         msdata.ms_name, taql_where=super_taql, group_cols=group_data,
         table_schema={"CPARAM": {"dims": ("chan", "corr")},
@@ -135,24 +134,24 @@ def set_xaxis(gain):
     gains.update({k: "time" for k in "d g f k kcross".split()})
     return gains.get(gain.lower(), "time")
     
-
 def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
-    # print(f"Axis: {yaxis}")
+    snitch.debug(f"Axis: {yaxis}")
     figrag = FigRag(add_toolbar=True, width=900, height=710,
                     x_scale=xaxis if xaxis == "time" else "linear",
                     plot_args={"frame_height": None, "frame_width": None})
-    count = 0
     for it, (sub, corr) in enumerate(product(subs, msdata.active_corrs)):
 
-        # print(f"spw: {sub.SPECTRAL_WINDOW_ID}, " +
-        #       f"field: {msdata.reverse_field_map[sub.FIELD_ID]}, " +
-        #       f"corr: {corr}, yaxis: {yaxis}")
+        snitch.debug(f"spw: {sub.SPECTRAL_WINDOW_ID}, " +
+              f"field: {msdata.reverse_field_map[sub.FIELD_ID]}, " +
+              f"corr: {corr}, yaxis: {yaxis}")
         colour = cmap[msdata.active_antennas.index(sub.ANTENNA1)]
         msdata.active_channels = msdata.freqs.sel(chan=selections.channels,
                                                   row=sub.SPECTRAL_WINDOW_ID)
 
         axes = Axargs(xaxis=xaxis, yaxis=yaxis, data_column="CPARAM",
-                      ms_obj=sub, msdata=msdata)
+                      msdata=msdata)
+        axes.set_axis_data("xaxis", ms_obj=sub)
+        axes.set_axis_data("yaxis", ms_obj=sub)
         axes.xdata = Processor(axes.xdata).calculate(axes.xaxis).data
 
         # setting ydata here for reinit. Otherwise, autoset in axargs
@@ -174,9 +173,6 @@ def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
             line_color=colour, tags=[f"a{sub.ANTENNA1}",
                 f"s{sub.SPECTRAL_WINDOW_ID}", f"c{corr}", f"f{sub.FIELD_ID}"])
 
-    
-
-
     figrag.update_xlabel(axes.xaxis)
     figrag.update_ylabel(axes.yaxis)
 
@@ -187,20 +183,18 @@ def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
     figrag.update_title(f"{axes.yaxis} vs {axes.xaxis}")
     figrag.show_glyphs(selection="b0")
 
- 
     #attach this data column here to be collected
     figrag.data_column = axes.data_column
     return figrag
-
-
 
 def main(parser, gargs):
     ps = parser().parse_args(gargs)
 
     for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1,
-        taql, cmap, yaxes, xaxis, html_name, image_name) in zip_longest(ps.msnames,
-        ps.antennas, ps.baselines, ps.channels, ps.corrs, ps.ddids, ps.fields, ps.t0s,
-        ps.t1s, ps.taqls, ps.cmaps, ps.yaxes, ps.xaxes, ps.html_names, ps.image_names):
+        taql, cmap, yaxes, xaxis, html_name, image_name) in zip_longest(
+        ps.msnames, ps.antennas, ps.baselines, ps.channels, ps.corrs, ps.ddids,
+        ps.fields, ps.t0s, ps.t1s, ps.taqls, ps.cmaps, ps.yaxes, ps.xaxes,
+        ps.html_names, ps.image_names):
         
         #we're grouping the arguments into 4
         generals = Genargs(msname=msname, version="testwhatever")
@@ -210,7 +204,7 @@ def main(parser, gargs):
         
         #initialise data ssoc with ms
         msdata = MsData(msname)
-        print(f"MS: {msname}")
+        snitch.info(f"MS: {msname}")
 
         subs = get_table(msdata, selections, group_data=["SPECTRAL_WINDOW_ID", 
                                                         "FIELD_ID", "ANTENNA1"])
@@ -259,7 +253,6 @@ def main(parser, gargs):
                 msdata=msdata, subs=subs, selections=selections,
                 static_name=image_name), yaxes)
 
-        
         all_figs = list(all_figs)
         
         if image_name:           
@@ -267,8 +260,9 @@ def main(parser, gargs):
             with futures.ThreadPoolExecutor() as executor:
                 executor.map(
                     partial(statics, mdata=msdata, filename=image_name,
-                        group_size=_GROUP_SIZE_), 
-                    *zip(*product(["write_out_static", "potato"], all_figs)))
+                        group_size=_GROUP_SIZE_),
+                        *zip(*product(["write_out_static", "potato"], 
+                    all_figs)))
                 #generate all differnt combinations of all_figs and the name of
                 #the static functions and then split them into individual lists
                 # by unpacking the output of zip
@@ -296,12 +290,14 @@ def main(parser, gargs):
             output_file(filename=html_name)
             save(final_layout, filename=html_name,
                 title=os.path.splitext(os.path.basename(html_name))[0])
-        print("Plotting Done")
+        snitch.info("Plotting Done")
     return 0
 
 def plot_table(**kwargs):
     """
-    Plot gain tables within Jupyter notebooks. Parameter names correspond to the long names of each argument (i.e those with --) from the `ragavi-vis` command line help
+    Plot gain tables within Jupyter notebooks. Parameter names correspond
+    to the long names of each argument (i.e those with --) from the
+    `ragavi-vis` command line help
 
     Parameters
     ----------
@@ -352,10 +348,3 @@ def plot_table(**kwargs):
     show(main_layout)
     print("Notebook plots ready")
     return 0
-
-
-if __name__ == "__main__":
-    main(gains_argparser,
-    ["-t",
-     "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables/workflow2-1576687564_sdp_l0-1gc1_primary.B0",
-     "-y", "apri"])

@@ -2,26 +2,26 @@ import os
 import math
 
 import numpy as np
-from bokeh.models import (BasicTicker, Circle, Line, Scatter,
-                          CDSView, BooleanFilter, DatetimeAxis, DataRange1d, Grid, Legend,
-                          LinearAxis, LinearScale, LogAxis, LogScale,
-                          Toolbar, Plot, Range1d,
-                          Title, ColumnDataSource, Whisker, Scatter, Line, Circle)
+import matplotlib.pyplot as plt
+from bokeh.models import (BasicTicker, Circle, Line, Scatter,CDSView,
+                          BooleanFilter, DatetimeAxis, DataRange1d, Grid, Legend,
+                          LinearAxis, LinearScale, LogAxis, LogScale,Toolbar,
+                          Plot, Range1d, Title, ColumnDataSource, Whisker,
+                          Scatter, Line, Circle)
 from bokeh.models.tools import (BoxSelectTool, BoxZoomTool,
                                 HoverTool, LassoSelectTool, PanTool,
                                 ResetTool, SaveTool, UndoTool,
                                 WheelZoomTool)
 from bokeh.models.renderers import GlyphRenderer
-
 from bokeh.io import save, output_file
 
-import matplotlib.pyplot as plt
-
-from holy_chaos.chaos.overrides import set_multiple_defaults
+from overrides import set_multiple_defaults
+from lograg import logging, get_logger
 
 # for testing
 from ipdb import set_trace
 
+snitch = get_logger(logging.getLogger(__name__))
 
 class BaseFigure:
     """
@@ -86,22 +86,24 @@ class BaseFigure:
         """Initalise a bokeh figure from scratch i.e."""
         # Set these defaults only if they haven't been set by user explicitly
         self.plot_args = set_multiple_defaults(self.plot_args, dict(
-                background="white", border_fill_alpha=0.1, 
-                border_fill_color="white",
-                min_border=3, outline_line_dash="solid",
-                outline_line_width=2, outline_line_color="#017afe", outline_line_alpha=0.4, 
-                output_backend="canvas", sizing_mode="stretch_width", title_location="above",
-                toolbar_location="above", plot_width=self.width,
-                plot_height=self.height, frame_height=int(0.93 * self.height),
-                frame_width=int(0.98*self.width), name=f"fig{self.f_num}_plot"
-                )
+            background="white", border_fill_alpha=0.1, 
+            border_fill_color="white", min_border=3, 
+            outline_line_dash="solid", outline_line_width=2,
+            outline_line_color="#017afe", outline_line_alpha=0.4, 
+            output_backend="canvas", sizing_mode="stretch_width",
+            title_location="above", toolbar_location="above",
+            plot_width=self.width, plot_height=self.height,
+            frame_height=int(0.93 * self.height),
+            frame_width=int(0.98*self.width), name=f"fig{self.f_num}_plot"
+            )
         )
 
         fig = Plot()
 
         for axis, scale in [("x", self.x_scale), ("y", self.y_scale)]:
             self.plot_args[f"{axis}_range"] = self.make_range(dim=axis)
-            self.plot_args[f"{axis}_scale"] = self.make_scale(dim=axis, scale=scale)
+            self.plot_args[f"{axis}_scale"] = self.make_scale(dim=axis,
+                scale=scale)
 
         if self.add_toolbar:
             self.plot_args["toolbar"] = self.make_toolbar()
@@ -391,16 +393,18 @@ class FigRag(BaseFigure):
         -------
         Nothing
         """
-        #allow passing actual data objects or AxInfo objects
+        #allow passing actual data dict objects or AxInfo objects
         if type(data) != dict:
             pdata = dict(x=data.xdata, y=data.ydata)
         else:
             pdata = data
-            data = pdata.pop("data")
+            data = pdata.pop("data", None)
         data_src = self.create_data_source(pdata,
                         name=f"fig{self.f_num}_gl{self.rend_idx}_ds",
                                            tags=[self.rend_idx])
-        if data.flags is not None:
+        data_view = None
+        if (data is not None and hasattr(data, "flags") and 
+            data.flags is not None):
             markers = np.full_like(data.flags, glyph, dtype="U17")
             markers[np.where(data.flags == False)] = "inverted_triangle"
             data_src.add(markers, name="markers")
@@ -411,13 +415,22 @@ class FigRag(BaseFigure):
                 tags=[self.rend_idx],
                 name=f"fig{self.f_num}_gl{self.rend_idx}_view")
             
-        tags = kwargs.pop("tags") or []
-        rend = self._fig.add_glyph(data_src, Scatter(x="x", y="y",
-            marker=glyph, tags=["glyph"], size=4, **kwargs))
-        rend.update(name=f"fig{self.f_num}_ren_{self.rend_idx}", tags=tags,
-            view=data_view)
+        tags = kwargs.pop("tags", [])
+        
+        # Assume that an actual glyph object has been passed if glyph is not
+        #  a string
+        if type(glyph) == str:
+            rend = self._fig.add_glyph(data_src, Scatter(x="x", y="y",
+                marker=glyph, tags=["glyph"], size=4, **kwargs))
+        else:
+            rend = self._fig.add_glyph(data_src, glyph(**kwargs))
 
-        if data.errors is not None:
+        rend.update(name=f"fig{self.f_num}_ren_{self.rend_idx}", tags=tags)
+        if data_view is not None:
+            rend.update(view=data_view)
+
+        if (data is not None and hasattr(data, "errors") and 
+            data.errors is not None):
             self.add_errors(data_src, data.errors)
 
         if legend is not None:
@@ -517,8 +530,10 @@ class FigRag(BaseFigure):
         for idx, renderer in enumerate(self._fig.renderers):
             for other_fig in others:
                 # Link their renderer's visible properties
-                renderer.js_link("visible", other_fig.fig.renderers[idx], "visible")
-                other_fig.fig.renderers[idx].js_link("visible", renderer, "visible")
+                renderer.js_link("visible", other_fig.fig.renderers[idx], 
+                    "visible")
+                other_fig.fig.renderers[idx].js_link("visible", renderer,
+                    "visible")
 
     @property
     def fig(self):
@@ -531,7 +546,7 @@ class FigRag(BaseFigure):
         if filename is None:
             return
 
-        print("Setting up static image")
+        snitch.info("Setting up static image")
         name, ext = os.path.splitext(filename)
         ext = ext.lower() if ext else ".png"
 
@@ -584,7 +599,7 @@ class FigRag(BaseFigure):
         fig.savefig(f"{name}_{self._fig.yaxis.axis_label}{ext}",
             bbox_inches='tight')
         
-        print(f"Image at: {filename}")
+        snitch.info(f"Image at: {filename}")
 
     def potato(self, mdata, filename=None, dpi=None, group_size=None):
         """
@@ -593,7 +608,7 @@ class FigRag(BaseFigure):
         """
         if filename is None:
             return 
-        print("Setting up static image")
+        snitch.info("Setting up static image with subplots")
         name, ext = os.path.splitext(filename)
         ext = ext.lower() if ext else ".png"
 
@@ -671,4 +686,4 @@ class FigRag(BaseFigure):
                     + f"_{mdata.reverse_field_map[fid]}"
                     + f"_grp{bid}{ext}", bbox_inches='tight')
         
-        print(f"Image at: {filename}")
+        snitch.info(f"Image at: {filename}")

@@ -3,7 +3,7 @@ import numpy as np
 from ipdb import set_trace
 from itertools import zip_longest, product
 
-from holy_chaos.chaos.processing import Processor
+from processing import Processor
 
 from bokeh.models import (Button, CheckboxGroup, CustomJS, PreText, Slider,
                           Scatter, Title, Whisker, ColumnDataSource, CDSView)

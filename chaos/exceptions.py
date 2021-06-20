@@ -1,3 +1,5 @@
+from warnings import warn
+
 class ExRag(Exception):
     pass
 

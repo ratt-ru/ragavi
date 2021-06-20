@@ -2,18 +2,23 @@ import re
 import numpy as np
 import dask.array as da
 
+from itertools import combinations
+from psutil import cpu_count, virtual_memory
 from difflib import get_close_matches
 from casacore.tables import table
 from dataclasses import dataclass, field
 from typing import Any
 
-from holy_chaos.chaos.exceptions import TableNotFound
+from exceptions import TableNotFound
+from lograg import logging, get_logger
+from utils import pair
 
 #for testing purposes
 from ipdb import set_trace
 import daskms as xm
 import xarray as xr
 
+snitch = get_logger(logging.getLogger(__name__))
 
 class MsData:
     """
@@ -59,8 +64,10 @@ class MsData:
             - y-data
             - iter-data column name
             - color-data column name
-            - maybe a util function that converts input name to actual data column name
+            - maybe a util function that converts input name to actual 
+            data column name
         """
+
     def initialise_data(self):
         with table(self.ms_name, ack=False) as self._ms:
             self._process_antenna_table()
@@ -129,11 +136,11 @@ class MsData:
             pass
 
     def _process_polarisation_table(self):
-        stokes_types = np.array(["I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
-                        "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
-                        "YL", "PP", "PQ", "QP", "QQ", "RCircular", "LCircular",
-                        "Linear", "Ptotal", "Plinear", "PFtotal", "PFlinear",
-                        "Pangle"])
+        stokes_types = np.array([
+            "I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
+            "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
+            "YL", "PP", "PQ", "QP", "QQ", "RCircular", "LCircular",
+            "Linear", "Ptotal", "Plinear", "PFtotal", "PFlinear", "Pangle"])
         try:                        
             with table(self._ms.getkeyword("POLARIZATION"), ack=False) as sub:
                 self._corr_types = sub.getcell("CORR_TYPE", 0)
@@ -143,7 +150,12 @@ class MsData:
             self._corr_types = stokes_types[self._corr_types-1]
             if self._corr_types.size == 2 and self._corr_types.ndim==2:
                 self._corr_types = self._corr_types[0]
+
             self._corr_map = {name: ids for ids, name in enumerate(self._corr_types)}
+            #update here for custom names
+            self._corr_map.update({_: f"0,{self.num_corrs-1}" for _ in 
+                                    ["DIAGONAL", "DIAG"]})
+            self._corr_map.update({_: "1,2" for _ in ["OFF-DIAGONAL", "OFF-DIAG"]})
         except RuntimeError:
             # raise TableNotFound(f"No Polarization table for {self.ms_name}")
             self._num_corrs = self._ms.getcell("FLAG",0).shape[-1]
@@ -151,13 +163,20 @@ class MsData:
     def _get_scan_table(self):
         self._scans = np.unique(self._ms.getcol("SCAN_NUMBER"))
     
-    def calc_baselines(self):
-        # unique baselines
-        self._num_bl = (self.num_ants * (self.num_ants-1))/2
-
-        ant2 = self._ms.getcol("ANTENNA1")
-        ant1 = self._ms.getcol("ANTENNA2")
-        #TODO: find an algorithm to calculate the unique baselines
+    def _make_bl_map(self):
+        # unique baselines        
+        bl_combis = list(set(combinations(range(self.num_ants), 2)))
+        bl_combis.sort()
+        return {f"{self.reverse_ant_map[a1]}-{self.reverse_ant_map[a2]}": 
+                    pair(a1, a2) for a1, a2 in bl_combis}
+    
+    @property
+    def bl_map(self):
+        return self._make_bl_map()
+    
+    @property
+    def reverse_bl_map(self):
+        return {v: k for k, v in self.bl_map.items()}
 
     @property
     def start_time(self):
@@ -200,7 +219,7 @@ class MsData:
     
     @property
     def num_baselines(self):
-        pass
+        return len(self.bl_map)
     
     @property
     def spws(self):
@@ -273,29 +292,76 @@ class MsData:
 
 @dataclass
 class Genargs:
-    version: str
-    msname: str
+    version: str = "0.0.1"
+    msname: str = None
     chunks: str = None
     mem_limit: str = None
     ncores: str = None
 
+    def __post_init__(self):
+        self.ncores, self.mem_limit = self.resource_defaults(self.mem_limit,
+                                                                self.ncores)
+
+    def get_mem(self):
+        """Get 90% of the memory available"""
+        GB = 2**30
+        mem = virtual_memory().total
+        snitch.info(f"Total RAM size: ~{(mem / GB):.2f} GB")
+        mem = int((mem*0.9)//GB)
+        return mem
+
+    def get_cores(self):
+        """Get half the number of cores available. Max at 10"""
+        snitch.info(f"Total number of Cores: {cpu_count()}")
+        cores = cpu_count() // 2
+        cores = 10 if cores > 10 else cores
+        return cores
+
+    def resource_defaults(self, ml, nc):
+        cores = self.get_cores()
+        mem_size = self.get_mem()
+
+        ml = 2 if ml is None else ml
+        nc = cores if nc is None else nc
+
+        snitch.info(f"Current performance config: {nc} cores and {ml} GB per core")
+        snitch.info(f"Expecting to use {nc*ml} GB of RAM")
+        # bigger than mem_size reduce the number of cores
+        if nc*ml > mem_size:
+            nc = int(mem_size//ml)
+            snitch.warn(f"Reducing cores from {self.ncores} -> {nc}")
+            snitch.info(f"Expecting to use {nc * ml} GB of RAM")
+        return nc, f"{ml}GB"
+
 
 @dataclass
 class Axargs:
-    """ Dataclass containing axis arguments. ie. x and y axis, respective
+    """
+    Dataclass containing axis arguments. ie. x and y axis, respective
     column names, and data corresponding to those columns
+
+    - *axis: Name of the axis chosen
+    - *data_col: actual data column name for axis in the MS
+    - *data: data contained in the column name for the axis
+
     """
     xaxis: str
     yaxis: str
     data_column: str
-    ms_obj: Any
     msdata: Any
-    xdata_col: str = field(init=False)
-    ydata_col: str = field(init=False)
+    iaxis: str = None
+    caxis: str = None
+    xdata_col: str = field(init=False, default=None)
+    ydata_col: str = field(init=False, default=None)
+    cdata_col: str = field(init=False, default=None)
+    idata_col: str = field(init=False, default=None)
     xdata: da.array = None
     ydata: da.array = None
+    cdata: da.array = None
+    # idata: da.array = None # This is not necessary here, iterating over ms
     flags: da.array = None
     errors: da.array = None
+  
 
     def __post_init__(self):
         #Get the proper name for the data column first before getting other names
@@ -304,13 +370,21 @@ class Axargs:
         self.xdata_col = self.get_colname(self.xaxis, self.data_column)
         self.ydata_col = self.get_colname(self.yaxis, self.data_column)
 
-        if self.ydata is None:
-            self.ydata = self.ms_obj[self.ydata_col]
-            
-        if len(re.findall(rf"{self.xaxis}\w*", "channel frequency")) > 0:
-            self.xdata = self.msdata.active_channels
-        else:
-            self.xdata = self.ms_obj[self.xdata_col]
+        if self.iaxis is not None:
+            if self.iaxis == "baseline":
+                self.idata_col = "ANTENNA1 ANTENNA2"
+            elif self.iaxis in ["corr", "antenna"]:
+                self.idata_col = None
+            else:
+                self.idata_col = self.get_colname(self.iaxis, self.data_column)
+        if self.caxis is not None:
+            if self.caxis == "baseline":
+                self.cdata_col = "ANTENNA1 ANTENNA2"
+            elif self.caxis in ["corr", "antenna"]:
+                self.cdata_col = None
+            else:
+                self.cdata_col = self.get_colname(self.caxis, self.data_column)
+        
         
     def translate_y(ax):
         axes = {}
@@ -320,21 +394,25 @@ class Axargs:
         axes["r"] = "real"
         return axes.get(ax) or ax
     
-    
-    def update_data(self, kwargs):
+    def update_data(self, **kwargs):
         """
+        Parameters
+        ----------
         kwargs: :obj:`dict` containing the name of the data to add and its 
         value
         """
         for key, value in kwargs.items():
             self.__setattr__(key, value)
 
-
     def colname_map(self, data_column):
+        """Map some custom axis names to actual column names
+        
+        Note that: "chan" and "corr" axes are defaulted to `data_column`
+        """
         axes = dict()
         axes["time"] = "TIME"
         axes["spw"] = "DATA_DESC_ID"
-        axes["corr"] = "corr"
+        axes["corr"] = data_column
         axes.update({key: data_column for key in ("a", "amp", "amplitude",
                 "delay", "i", "imag", "imaginary", "p", "phase", "r", "real")})
         axes.update({key: "UVW" for key in ("uvdist", "UVdist", "uvdistance",
@@ -342,7 +420,7 @@ class Axargs:
         axes.update({key: "ANTENNA1" for key in ("ant1", "antenna1")})
         axes.update({key: "ANTENNA2" for key in ("ant2", "antenna2")})
         axes.update({key: ("ANTENNA1", "ANTENNA2") for key in ("bl", "baseline")})
-        axes.update({key: "chan" for key in ("chan", "channel", "freq",
+        axes.update({key: data_column for key in ("chan", "channel", "freq",
                         "frequency")})
         return axes
 
@@ -364,32 +442,191 @@ class Axargs:
                        ", ".join(self.msdata.colnames),
                        re.IGNORECASE) and len(axis) > 1:
             colname = re.search(r"\w*{}\w*".format(axis),
-                                ", ".join(cols), re.IGNORECASE).group()
+                                ", ".join(self.msdata.colnames),
+                                re.IGNORECASE).group()
         elif axis in col_maps:
             colname = col_maps[axis]
         elif len(get_close_matches(axis.upper(), self.msdata.colnames,
                                n=1)) > 0:
             colname = get_close_matches(axis.upper(), self.msdata.colnames,
                                         n=1)[0]
-            # print(f"'{axis}' column not found, using closest '{colname}'")
+            snitch.info(f"'{axis}' column not found, using closest '{colname}'")
         else:
-            print(f"column: {axis} not found")
+            colname = None
+            snitch.info(f"column for: {axis} not found. Setting Column to {colname}")
         return colname
+    
+    def set_axis_data(self, axis, ms_obj):
+        """
+        Automatically Set axis data for a certain column
+
+        Parameters
+        ----------
+        axis: str
+            Name of selected axis: {yaxis, xaxis, iaxis, caxis}
+        ms_obj:
+            MS xarray object
+        """
+        axis_name = getattr(self, f"{axis}axis")
+        _axis = f"{axis}data"
+        column = getattr(self, f"{_axis}_col")
+        if len(re.findall(rf"{axis_name}\w*", "channel frequency")) > 0:
+            snitch.debug(f"{axis}axis column is channel/frequency")
+            # setattr(self, _axis, ms_obj[column].chan)
+            setattr(self, _axis, self.msdata.active_channels/1e9)
+        else:
+            snitch.debug(f"{axis}axis data column is {column}")
+            if column is not None:
+                if column == "ANTENNA1 ANTENNA2":
+                    ms_obj = ms_obj.assign(BASELINE=pair(ms_obj.ANTENNA1,
+                                                        ms_obj.ANTENNA2))
+                    setattr(self, _axis, ms_obj["BASELINE"])
+                else:
+                    setattr(self, _axis, ms_obj[column])
+        return
+
+    @property
+    def active_columns(self):
+        actives = {self.xdata_col, self.ydata_col}
+        if self.cdata_col:
+            actives.update({*self.cdata_col.split()})
+        if self.idata_col:
+            actives.update({*self.idata_col.split()})
+        return list(actives)
 
 
 @dataclass
 class Selargs:
-    antennas: str
-    baselines: str
-    corrs: str
-    channels: str
-    ddids: str
-    fields: str
-    taql: str
-    t0: str
-    t1: str
+    antennas: str = None
+    baselines: str = None
+    corrs: str = None
+    channels: str = None
+    ddids: str = None
+    fields: str = None
+    taql: str = None
+    t0: str = None
+    t1: str = None
+    scans: str = None
 
 @dataclass
 class Plotargs:
-    cmap: str
+    cmap: str = None
     html_name: str = None
+    c_height: int = None
+    c_width: int = None
+    grid_cols: int = None
+    link_plots: bool = None
+    x_min: float = None
+    x_max: float = None
+    y_min: float = None
+    y_max: float = None
+    plot_width: int = 1920
+    plot_height: int = 1080
+    partitions: int =  None #Number or partions in the dataset
+    grid_rows: int = None # number of rows in the grid. To be calculated
+    title: str = None
+    n_categories: int = None
+    # categories: str = None
+    cat_map: dict = None
+    i_title: str = ""
+    i_ttips: dict = None
+
+    def __post_init__(self):
+        self.i_ttips = {}
+        if self.grid_cols is None:
+            # No grid is needed therefore
+            self.c_height = 720 if not self.c_height else self.c_height
+            self.c_width = 1080 if not self.c_width else self.c_width
+        else:
+            # meaning the iteration axis is active
+            self.c_height = 200 if not self.c_height else self.c_height
+            self.c_width = 200 if not self.c_width else self.c_width
+        snitch.debug(f"Canvas (w x h): {self.c_width} x {self.c_height}")
+
+    def set_grid_cols_and_rows(self):
+        """Set the number of rows and columns to be in subploting grid"""
+        # set columns depending on the numer of partitions
+        if self.partitions is None:
+            snitch.info("No partition size. Please set 'partitions' attribute")
+            return
+
+        if self.grid_cols:
+            if self.partitions < self.grid_cols:
+                self.grid_cols = self.partitions
+            
+            self.grid_rows = np.ceil(self.partitions // self.grid_cols)
+            self.plot_width = int((self.plot_width * 0.961) // self.grid_cols)
+            self.plot_height = int(self.plot_width * 0.83)
+            snitch.debug(f"Plot grid (r x c): {self.grid_rows} x {self.grid_cols}")
+
+    def form_plot_title(self, axargs):
+        self.title = f"{axargs.yaxis} vs {axargs.xaxis}"
+        self.title += f" coloured by {axargs.caxis}" if axargs.caxis else ""
+        self.title += f" iterated by {axargs.iaxis}" if axargs.iaxis else ""
+        self.title = self.title.title()
+
+    def get_category_maps(self, cat, msd):
+        cat_maps = {
+            "antenna": "ant_map", "rantenna": "reverse_ant_map",
+            "antenna1": "ant_map", "rantenna1": "reverse_ant_map",
+            "antenna2": "ant_map", "rantenna2": "reverse_ant_map",
+            "baseline": "bl_map", "rbaseline": "reverse_bl_map",
+            "corr": "corr_map", "rcorr": "reverse_corr_map",
+            "field": "field_map", "rfield": "reverse_field_map",
+            "scan": "scans", "rscan": "scans",
+            "chan": "", "ddid": "", "spw": "",
+        }
+        return getattr(msd, cat_maps[cat])
+    
+    def get_category_sizes(self, cat, msd):
+        cat_sizes = {
+            "antenna": getattr(msd, "num_ants"),
+            "antenna1": getattr(msd, "num_ants")-1,
+            "antenna2": getattr(msd, "num_ants")-1,
+            "baseline": getattr(msd, "num_baselines"),
+            "corr": getattr(msd, "num_corrs"),
+            "field": getattr(msd, "num_fields"),
+            "scan": getattr(msd, "num_scans"),
+            "chan": getattr(msd, "num_chans"),
+            "ddid": getattr(msd, "num_spws"),
+            "spw": getattr(msd, "num_spws"),
+        }
+        return cat_sizes[cat]
+
+    def set_category_ids_and_sizes(self, axis, msd):
+        """
+        Set the number of categories and their maps for plotting purposes.
+        One of the valid category axes: antenna, baseline, corr, field, chan, 
+        ddid, scan
+
+        Parameters
+        ----------
+        axis: str
+            Name of the category axis
+        msd: msdata
+            Data container for MS 
+        """
+        self.cat_map = self.get_category_maps(f"r{axis}", msd)
+        self.n_categories = self.get_category_sizes(axis, msd)
+
+    def set_iter_title(self, axes, sub, msd):
+        title, i_ttips = "", {}
+        if axes.iaxis == "baseline":
+            cat_map = self.get_category_maps(f"rantenna", msd)
+        else:
+            cat_map = self.get_category_maps(f"r{axes.iaxis}", msd)
+        for name, nid in sub.attrs.items():
+            if name == "DATA_DESC_ID":
+                title += f"{name} {nid} "
+                i_ttips[name] = nid
+            elif "ANTENNA" in name and axes.iaxis == "baseline":
+                title += f"{cat_map[nid]}-"
+                if "baseline" in i_ttips:
+                    i_ttips["baseline"] += f"-{cat_map[nid]}"
+                else:
+                    i_ttips["baseline"] = f"{cat_map[nid]}"
+            else:
+                title += f"{name} {cat_map[nid]} "
+                i_ttips[name] = cat_map[nid]
+        self.i_title = title.upper()
+        self.i_ttips = {k.title() : [v] for k, v in i_ttips.items()}

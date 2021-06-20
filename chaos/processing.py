@@ -8,47 +8,56 @@ from warnings import warn
 from ipdb import set_trace
 
 class Processor:
+    """Contains functions for:
+    amplitude
+    phase
+    imaginary
+    real
+    uv_distance (metres)
+    uv_distance (wavelengths)
+    mjd -> unix time
+    """
     def __init__(self, data):
         self.data = data
 
-    def amplitude(self):
-        if isinstance(self.data, np.ndarray):
-            return np.abs(self.data)
+    def amplitude(self, in_array):
+        if isinstance(in_array, np.ndarray):
+            return np.abs(in_array)
         else:
-            return da.absolute(self.data)
+            return da.absolute(in_array)
 
-    def phase(self, unwrap=False):
-        if isinstance(self.data, np.ndarray):
-            data = np.angle(self.data)
+    def phase(self, in_array, unwrap=False):
+        if isinstance(in_array, np.ndarray):
+            data = np.angle(in_array)
             if unwrap:
                 data = np.unwrap(data)
             return np.rad2deg(data)
         else:
             #unwrap radians before converting to degrees
-            data = self.data.copy(deep=True)
+            data = in_array.copy(deep=True)
             data.data = data.data.map_blocks(da.angle)
             if unwrap:
                 data.data = data.data.map_blocks(np.unwrap)
             data.data = data.data.map_blocks(da.rad2deg)
             return data
 
-    def real(self):
-        return self.data.real
+    def real(self, in_array):
+        return in_array.real
 
-    def imaginary(self):
-        return self.data.imag
+    def imaginary(self, in_array):
+        return in_array.imag
     
     def calculate(self, axis=None, freqs=None):
         if axis is None:
             return self.data
         elif axis.startswith("a"):
-            return self.amplitude()
+            return self.amplitude(self.data)
         elif axis.startswith("i"):
-            return self.imaginary()
+            return self.imaginary(self.data)
         elif axis.startswith("r"):
-            return self.real()
+            return self.real(self.data)
         elif axis.startswith("p"):
-            return self.phase()
+            return self.phase(self.data)
         elif axis == "time":
             return Processor.unix_timestamp(self.data)
         elif "wave" in axis.lower():
@@ -56,7 +65,7 @@ class Processor:
         elif "dist" in axis.lower():
             return Processor.uv_distance(self.data)
         elif len(re.findall(f"{axis}\w*", "channel frequency")) > 0:
-            return self.data.chan
+            return self.data
         else:
             return self.data
 
@@ -87,7 +96,8 @@ class Processor:
         day
         """
         munix = 3506716800.0
-        return (in_time - munix).astype("datetime64[s]")
+        in_time = (in_time - munix).astype("datetime64[s]")
+        return in_time
 
 
 class Chooser:
@@ -227,6 +237,7 @@ class Chooser:
                 uv_range = f"any(sqrt(sumsqr(UVW[:2])) < {uv_range})"
             super_taql.append(uv_range)
         if return_ids:
+            # Return the super selector string and a dict containing ids
             " && ".join(super_taql), super_dict
         return " && ".join(super_taql)
 
