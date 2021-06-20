@@ -13,8 +13,6 @@ from exceptions import TableNotFound
 from lograg import logging, get_logger
 from utils import pair
 
-#for testing purposes
-from ipdb import set_trace
 import daskms as xm
 import xarray as xr
 

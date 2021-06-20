@@ -18,9 +18,6 @@ from bokeh.io import save, output_file
 from overrides import set_multiple_defaults
 from lograg import logging, get_logger
 
-# for testing
-from ipdb import set_trace
-
 snitch = get_logger(logging.getLogger(__name__))
 
 class BaseFigure:

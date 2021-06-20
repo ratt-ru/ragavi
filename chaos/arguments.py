@@ -1,6 +1,5 @@
 from argparse import ArgumentParser
 import argparse
-from ipdb import set_trace
 
 __version__ = "dao"
 class ArgumentParserError(Exception):

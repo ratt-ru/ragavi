@@ -252,7 +252,7 @@ def create_df(axes):
             axes.cdata = repeat_ravel_viz(axes.cdata, max_size, chunk_size)
             candidates[axes.caxis] = axes.cdata
     
-    ddf = dd.concat([dd.from_array(compute(series)[0], chunksize=chunk_size,
+    ddf = dd.concat([dd.from_array(series.compute_chunk_sizes(), chunksize=chunk_size,
         columns=column) for column, series in candidates.items()], axis=1)
 
     #make the colour axes categorical
@@ -284,7 +284,6 @@ def image_callback(xy_df, plargs, axes):
             agg = cvs.points(xy_df, axes.xaxis, axes.yaxis, ds.count())
 
     snitch.info("Aggregation done")
-    
     # change dtype to uint32 if agg contains a negative number
     agg = agg.astype(np.uint32) if (agg.values < 0).any() else agg
     return agg
@@ -336,7 +335,7 @@ def sort_the_plot(fig, axes, plargs):
         img = tf.shade(agg, cmap=plargs.cmap)
     else:
         plargs.cmap = cycle(plargs.cmap[slice(0, plargs.n_categories)])
-        img = tf.shade(agg, color_key=plargs.cmap[0])
+        img = tf.shade(agg, color_key=plargs.cmap)
 
     fig.add_glyphs(ImageRGBA,
         dict(image=[img.data], x=[plargs.x_min], y=[plargs.y_min],
@@ -474,7 +473,7 @@ def main(parser, gargs):
             [axes.set_axis_data(_, sub) for _ in list("xyci")]
             if ps.flag:
                 axes.flags = sub.FLAG
-                # sub = sub.where(axes.flags == False)
+                sub = sub.where(axes.flags == False)
           
             axes.xdata = Processor(axes.xdata).calculate(axes.xaxis).data
             axes.ydata = Processor(axes.ydata).calculate(axes.yaxis).data

@@ -5,8 +5,6 @@ import dask.array as da
 
 from warnings import warn
 
-from ipdb import set_trace
-
 class Processor:
     """Contains functions for:
     amplitude

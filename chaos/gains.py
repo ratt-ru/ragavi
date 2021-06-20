@@ -23,7 +23,6 @@ from lograg import logging, get_logger
 
 snitch = get_logger(logging.getLogger(__name__))
 
-from ipdb import set_trace
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False
     

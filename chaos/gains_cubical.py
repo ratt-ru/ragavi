@@ -16,7 +16,6 @@ from processing import Processor
 from widgets_cubical import make_widgets
 
 from collections import namedtuple
-from ipdb import set_trace
 
 class TableData:
     def __init__(self, ms_name, ants=None, fields=None,
@@ -141,7 +140,7 @@ def main(parser, gargs):
 output_file(filename="ghost.html")
 widgets = make_widgets(tdata, all_figs[0], group_size=8)
 save(column(row(widgets), *all_figs), filename="ghost.html", title="oster")
-set_trace()
+
 
 
 
