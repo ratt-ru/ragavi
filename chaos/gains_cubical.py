@@ -47,7 +47,7 @@ class TableData:
 
 def add_extra_xaxis(channels, figrag, sargs):
     chans = chans[[0, -1]] / 1e9
-    figrag.add_axis(chans[0], chans[-1], "x", "linear", "Frequency GHz",
+    figrag.add_axis(*chans, "x", "linear", "Frequency GHz",
                     "above")
 
 
@@ -90,10 +90,12 @@ def main(parser, gargs):
                             x_scale=xaxis if xaxis == "time" else "linear")
             Axargs = namedtuple("Axargs", ["flags", "errors", "xaxis", "yaxis"])
         
-            for ant, corr1, corr2 in product(tdata.ants[:3], tdata.corr1s, tdata.corr2s):
+            for ant, corr1, corr2 in product(tdata.ants[:3], tdata.corr1s,
+                tdata.corr2s):
                 print(f"Antenna: {ant}, corr: {corr1} {corr2}")
 
-                masked_data, (time, freq) = gain_data.get_slice(ant=ant, corr1=corr1, corr2=corr2)
+                masked_data, (time, freq) = gain_data.get_slice(ant=ant,
+                                                    corr1=corr1, corr2=corr2)
                 masked_err = gain_err.get_slice(ant=ant, corr1=corr1, corr2=corr2)[0]
 
                 if masked_data is None or corr1 != corr2:
@@ -107,6 +109,7 @@ def main(parser, gargs):
                 
                 axes = Axargs(flags=~masked_data.mask, errors=masked_err.data,
                                 xaxis=xaxis, yaxis=yaxis)
+               # TODO: are this necessary, if not delete. Lookgin superfluous
                 axes.set_axis_data("xaxis")
                 axes.set_axis_data("yaxis")
                 xaxes = {
@@ -137,9 +140,9 @@ def main(parser, gargs):
 
             all_figs.append(figrag.fig)
 
-output_file(filename="ghost.html")
-widgets = make_widgets(tdata, all_figs[0], group_size=8)
-save(column(row(widgets), *all_figs), filename="ghost.html", title="oster")
+        output_file(filename="ghost.html")
+        widgets = make_widgets(tdata, all_figs[0], group_size=8)
+        save(column(row(widgets), *all_figs), filename="ghost.html", title="oster")
 
 
 
