@@ -18,6 +18,12 @@ import xarray as xr
 
 snitch = get_logger(logging.getLogger(__name__))
 
+stokes_types = np.array([
+    "I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
+    "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
+    "YL", "PP", "PQ", "QP", "QQ", "RCircular", "LCircular",
+    "Linear", "Ptotal", "Plinear", "PFtotal", "PFlinear", "Pangle"])
+
 class MsData:
     """
     Get some general data that will be required in the Plotter.
@@ -52,7 +58,7 @@ class MsData:
         self._corr_map = None
         self._scans = None
         self._table_type = "ms"
-
+        self._num_rows = None
         self.initialise_data()
         """
         TODO: Add in
@@ -75,6 +81,7 @@ class MsData:
             self._process_polarisation_table()
             self._get_scan_table()
             self._colnames = self._ms.colnames()
+            self._num_rows = self._ms.nrows()
             if "VisCal" in self._ms.keywordnames():
                 self._table_type = self._ms.getkeyword("VisCal").split()[0]
             self._ms.close()
@@ -134,11 +141,11 @@ class MsData:
             pass
 
     def _process_polarisation_table(self):
-        stokes_types = np.array([
-            "I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
-            "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
-            "YL", "PP", "PQ", "QP", "QQ", "RCircular", "LCircular",
-            "Linear", "Ptotal", "Plinear", "PFtotal", "PFlinear", "Pangle"])
+        # stokes_types = np.array([
+        #     "I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
+        #     "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
+        #     "YL", "PP", "PQ", "QP", "QQ", "RCircular", "LCircular",
+        #     "Linear", "Ptotal", "Plinear", "PFtotal", "PFlinear", "Pangle"])
         try:                        
             with table(self._ms.getkeyword("POLARIZATION"), ack=False) as sub:
                 self._corr_types = sub.getcell("CORR_TYPE", 0)
@@ -199,6 +206,10 @@ class MsData:
     @property
     def num_spws(self):
         return self._num_spws
+    
+    @property
+    def num_rows(self):
+        return self._num_rows
 
     @property
     def num_ants(self):
@@ -297,8 +308,8 @@ class Genargs:
     ncores: str = None
 
     def __post_init__(self):
-        self.ncores, self.mem_limit = self.resource_defaults(self.mem_limit,
-                                                                self.ncores)
+        self.ncores, self.mem_limit = self.resource_defaults(
+            self.mem_limit, self.ncores)
 
     def get_mem(self):
         """Get 90% of the memory available"""
@@ -316,7 +327,7 @@ class Genargs:
         return cores
 
     def resource_defaults(self, ml, nc):
-        cores = self.get_cores()
+        cores = self.get_cores() - 1
         mem_size = self.get_mem()
 
         ml = 2 if ml is None else ml
