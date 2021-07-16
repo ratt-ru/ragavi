@@ -568,15 +568,20 @@ class FigRag(BaseFigure):
         for idx, fid in enumerate(mdata.active_fields):
             rends = sorted(self._fig.select(tags=f"f{fid}"), key=skey)
             for rend in rends:
-                src = rend.data_source.data
+                src = dict(rend.data_source.data)
+                if "flags" in src:
+                    src["flags"] = ~src["flags"] 
+                else:
+                    src["flags"] = None
                 msize = 5 / (src["x"].size / 2000)
                 msize = 4 if msize > 4 else msize
                 mscale = 10 // msize
 
-                ax[idx].plot(src["x"],
-                        np.ma.masked_array(data=src["y"], mask=~src["flags"]),
-                        "o", color=rend.glyph.fill_color, label=src["ant"][0],
-                        markersize=msize)
+                ax[idx].plot(
+                    src["x"],
+                    np.ma.masked_array(data=src["y"], mask=src["flags"]),
+                    "o", color=rend.glyph.fill_color, label=src["ant"][0],
+                    markersize=msize)
         
            
             ax[idx].set_xlabel(self._fig.xaxis.axis_label)
@@ -620,6 +625,8 @@ class FigRag(BaseFigure):
         
         if group_size is None:
             group_size = len(mdata.active_antennas)
+        elif group_size > len(mdata.active_antennas):
+            group_size = len(mdata.active_antennas)
 
         ncols = int(np.sqrt(group_size))
         ncols = 5 if ncols > 5 else ncols
@@ -650,14 +657,18 @@ class FigRag(BaseFigure):
                         row += 1
                     
                     for ridx, rend in enumerate(frends):
-                        src = rend.data_source.data
+                        src = dict(rend.data_source.data)
+                        if "flags" in src:
+                            src["flags"] = ~src["flags"]
+                        else:
+                            src["flags"] = None
                         msize = 5 / (src["x"].size / 2000)
                         msize = 4 if msize > 4 else msize
                         mscale = 10 // msize
 
                         ax[row, col].plot(src["x"],
                             np.ma.masked_array(data=src["y"],
-                                mask=~src["flags"]),
+                                mask=src["flags"]),
                             marks[src['corr'][0]],
                             color=rend.glyph.fill_color,
                             label= f"corr {src['corr'][0]}",
