@@ -56,7 +56,7 @@ def add_extra_xaxis(msdata, figrag, sargs):
         else:
             chans = channels
         chans = chans[[0, -1]].values/1e9
-        figrag.add_axis(chans[0], chans[-1], "x",
+        figrag.add_axis(*chans, "x",
                         "linear", "Frequency GHz", "above")
 
 def iron_data(axes):
@@ -197,9 +197,10 @@ def main(parser, gargs):
         
         #we're grouping the arguments into 4
         generals = Genargs(msname=msname, version="testwhatever")
-        selections = Selargs(antennas=antennas, corrs=Chooser.get_knife(corrs),
-                        baselines=baselines, channels=Chooser.get_knife(channels),
-                        ddids=ddids, fields=fields, taql=taql, t0=t0, t1=t1)
+        selections = Selargs(
+            antennas=antennas, corrs=Chooser.get_knife(corrs),
+            baselines=baselines, channels=Chooser.get_knife(channels),
+            ddids=ddids, fields=fields, taql=taql, t0=t0, t1=t1)
         
         #initialise data ssoc with ms
         msdata = MsData(msname)
@@ -272,8 +273,8 @@ def main(parser, gargs):
             all_figs = [fig.fig for fig in all_figs]
             widgets = make_widgets(msdata, all_figs[0], group_size=_GROUP_SIZE_)
             stats = make_stats_table(msdata, data_column, yaxes,
-                    get_table(msdata, selections,group_data=["SPECTRAL_WINDOW_ID",
-                                                            "FIELD_ID"]))
+                    get_table(msdata, selections,
+                        group_data=["SPECTRAL_WINDOW_ID", "FIELD_ID"]))
             # Set up my layouts
             all_widgets = grid([widgets[0], column(widgets[1:]+[stats])],
                                 sizing_mode="fixed", nrows=1)
