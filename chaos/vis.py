@@ -165,11 +165,8 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
     if axes.data_column not in ["DATA", "CORRECTED_DATA"]:
         ms_schema[data_col] = ms_schema["DATA"]
 
-    #removed chan and corr chunking
-    if chunks is None:
-        chunks = dict(row=5000)
-    
-    xds_inputs = dict(chunks=chunks, taql_where=where,
+    #removed chan and corr chunking    
+    xds_inputs = dict(chunks=dict(row=chunks), taql_where=where,
                       columns=sel_cols, group_cols=group_cols,
                     #   table_schema=ms_schema
                       )
@@ -288,6 +285,12 @@ def image_callback(xy_df, plargs, axes):
     agg = agg.astype(np.uint32) if (agg.values < 0).any() else agg
     return agg
 
+
+def apply_blockwise(arr, func):
+    dims = "ijkl"[:len(arr.shape)]
+    arr = da.blockwise(func, dims, arr, dims, dtype=arr.dtype)
+    return arr
+
 def sort_the_plot(fig, axes, plargs):
     """
     Finalise the plot
@@ -302,15 +305,20 @@ def sort_the_plot(fig, axes, plargs):
         axes.xdata = axes.xdata.astype(np.float64)
     if axes.ydata.dtype == "datetime64[s]":
         axes.ydata = axes.ydata.astype(np.float64)
-    plargs.x_min = axes.xdata.min() if plargs.x_min is None else plargs.x_min
-    plargs.x_max = axes.xdata.max() if plargs.x_max is None else plargs.x_max
-    plargs.y_min = axes.ydata.min() if plargs.y_min is None else plargs.y_min
-    plargs.y_max = axes.ydata.max() if plargs.y_max is None else plargs.y_max
+    if plargs.x_min is None:
+        plargs.x_min = apply_blockwise(axes.xdata, np.nanmin)
+    if plargs.x_max is None:
+        plargs.x_max = apply_blockwise(axes.xdata, np.nanmax)
+    if plargs.y_min is None:
+        plargs.y_min = apply_blockwise(axes.ydata, np.nanmin)
+    if plargs.y_max is None:
+        plargs.y_max = apply_blockwise(axes.ydata, np.nanmax)
 
     snitch.info("Calculating x and y Min and Max ranges")
-    with ProgressBar():
-        plargs.x_min, plargs.x_max, plargs.y_min, plargs.y_max = compute(
-            plargs.x_min, plargs.x_max, plargs.y_min, plargs.y_max)
+    compute(plargs.x_max)
+    # with ProgressBar():
+    plargs.x_min, plargs.x_max, plargs.y_min, plargs.y_max = compute(
+        plargs.x_min, plargs.x_max, plargs.y_min, plargs.y_max)
 
     if plargs.x_min == plargs.x_max:
         snitch.debug("Incrementing x-max + 1 because x-min==x-max")
@@ -376,6 +384,19 @@ def sort_the_plot(fig, axes, plargs):
     return fig
 
 
+def get_row_chunk(msd):
+    """Get good chunk size for row depending
+    
+    Parameters
+    ----------
+    msd: MsData object
+        MS data containing object
+    """
+    max_chunk = 10_000*4096*4
+    row_cs = max_chunk // (msd.num_chans * msd.num_corrs)
+    row_cs = int(np.floor(row_cs/10_000)*10_000)
+    return row_cs
+
 def main(parser, gargs):
     ps = parser().parse_args(gargs)
     # ps.debug, ps.link_plots, ps.flag,
@@ -384,7 +405,7 @@ def main(parser, gargs):
     generals = Genargs(chunks=ps.chunk_size, mem_limit=ps.mem_limit,
         ncores=ps.ncores)
 
-    # config.set(num_workers=generals.ncores, memory_limit=generals.mem_limit)
+    config.set(num_workers=generals.ncores, memory_limit=generals.mem_limit)
 
     # repeated for all 
     for (msname, xaxis, yaxis, data_column, cmap, c_axis, i_axis, html_name,
@@ -394,8 +415,11 @@ def main(parser, gargs):
         ps.channels, ps.corrs, ps.ddids, ps.fields, ps.scans, ps.taqls):
 
         msdata = MsData(msname)
+        snitch.info(msdata.ms_name)
 
-        print(msdata.ms_name)
+        if generals.chunks is None:
+            generals.chunks = get_row_chunk(msdata)
+
         if data_column is None:
             data_column = "DATA"
             snitch.info(f"Default data column: {data_column}")
@@ -439,8 +463,8 @@ def main(parser, gargs):
         axes = Axargs(xaxis=xaxis, yaxis=yaxis, data_column=data_column,
             msdata=msdata, iaxis=i_axis, caxis=c_axis)
 
-        subs = get_ms(msdata, selections, axes, cbin=None, chunks=None,
-                      tbin=None)
+        subs = get_ms(msdata, selections, axes, cbin=None,
+                     chunks=generals.chunks, tbin=None)
 
         # set plot arguments
         plargs = Plotargs(cmap=cmap, c_height=ps.c_height, c_width=ps.c_width,
@@ -524,10 +548,13 @@ def main(parser, gargs):
         for _x in parsed_opts.split('\n'):
             snitch.info(_x)
         snitch.info(">" * 70)
-
+    
 
 if __name__ == "__main__":
     main(vis_argparser, 
-    ("--ms /home/lexya/Documents/test_gaintables/test.ms -x time -y amp "+
+    (
+    "--ms /home/lexya/Documents/test_gaintables/test.ms" +
+    # "--ms /home/lexya/Downloads/radioastro/test.ms" +
+    " -x time -y amp "+
     "" ).split()
     )
