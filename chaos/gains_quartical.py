@@ -1,28 +1,25 @@
 import os
 import numpy as np
-
 import dask.array as da
 import xarray as xr
-from dask import compute
-from collections import namedtuple
-from itertools import product, zip_longest
-from daskms.experimental.zarr import xds_from_zarr
 
-from bokeh.layouts import grid, gridplot, column, row, layout
+from concurrent import futures
+from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.io import save, output_file
-
-from exceptions import InvalidCmap, InvalidColumnName, EmptyTable
-from arguments import gains_argparser
-from plotting import FigRag, Circle, Scatter
-from ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
-from gains import get_colours
-from processing import Chooser, Processor
-from widgets import (F_MARKS, make_widgets, make_stats_table,
-                     make_table_name)
-
-from concurrent import futures 
+from collections import namedtuple
+from dask import compute
+from daskms.experimental.zarr import xds_from_zarr
 from functools import partial
+from itertools import product, zip_longest
+
+from arguments import gains_argparser
+from exceptions import InvalidCmap, InvalidColumnName, EmptyTable
+from gains import get_colours
 from lograg import logging, get_logger
+from plotting import Circle, Scatter, FigRag
+from processing import Chooser, Processor
+from ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
+from widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
 import time as tme
 
@@ -177,7 +174,7 @@ def organise_table(ms, sels, tdata):
     """
     ms = sorted(ms, key=lambda x: x.SCAN_NUMBER)
     dd_fi = sorted(list({(m.DATA_DESC_ID, m.FIELD_ID) for m in ms}))
-    variables = "gains fields scans ddids flags".split()
+    variables = "gains fields scans ddids FLAG".split()
 
     if sels.fields is not None:
         fields = sels.fields.replace(" ", "").split(",")
@@ -197,25 +194,29 @@ def organise_table(ms, sels, tdata):
     else:
         sels.antennas = list(tdata.ant_map.values())
 
-    tdata.active_fields = sels.fields
-    tdata.active_antennas = sels.antennas
-    # TODO: antenna slection needs to be fixed properly
+
     new_order = []
     for (dd, fi) in dd_fi:
         sub_order = []
         for i, sub in enumerate(ms):
             if (sub.DATA_DESC_ID, sub.FIELD_ID) == (dd, fi) and fi in sels.fields:
-                sub = sub.sel(corr=sels.corrs, ant=sels.antennas, gain_f=sels.channels)
+                sub = sub.sel(corr=sels.corrs, ant=sels.antennas,
+                             gain_f=sels.channels)
                 sub["fields"] = new_darray(sub.gains, "fields", sub.FIELD_ID)
                 sub["scans"] = new_darray(sub.gains, "scans", sub.SCAN_NUMBER)
                 sub["ddids"] = new_darray(sub.gains, "ddids", sub.DATA_DESC_ID)
-                sub["flags"] = new_darray(sub.gains, "flags", False)
+                sub["FLAG"] = new_darray(sub.gains, "flags", False)
                 ms[i] = sub[variables]
                 ms[i].attrs = {var: sub.attrs[var]
                                for var in ["DATA_DESC_ID", "FIELD_ID"]}
                 sub_order.append(ms[i])
         new_order.append(xr.concat(sub_order, "gain_t",
                          combine_attrs="drop_conflicts"))
+    
+    tdata.active_fields = sels.fields
+    tdata.active_antennas = sels.antennas
+    tdata.active_corrs = new_order[0].corr.values
+    # TODO: antenna slection needs to be fixed properly
     return new_order
 
 def main(parser, gargs):
@@ -238,7 +239,7 @@ def main(parser, gargs):
 
         ms = organise_table(ms, selections, msdata)
 
-        cmap = get_colours(ms[0].ant.size)
+        cmap = get_colours(ms[0].ant.size, cmap)
 
         points = calculate_points(ms[0], len(ms))
 
@@ -302,12 +303,9 @@ def main(parser, gargs):
             all_figs = [fig.fig for fig in all_figs]
             widgets = make_widgets(
                 msdata, all_figs[0], group_size=_GROUP_SIZE_)
-            # stats = make_stats_table(msdata, data_column, yaxes,
-            #                          get_table(msdata, selections,
-            #                                    group_data=["SPECTRAL_WINDOW_ID", "FIELD_ID"]))
-            stats = None
+            stats = make_stats_table(msdata, data_column, yaxes, ms)
             # Set up my layouts
-            all_widgets = grid([widgets[0], column(widgets[1:]+[])],
+            all_widgets = grid([widgets[0], column(widgets[1:]+[stats])],
                                sizing_mode="fixed", nrows=1)
             plots = gridplot([all_figs], toolbar_location="right",
                              sizing_mode="stretch_width")

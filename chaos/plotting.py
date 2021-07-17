@@ -3,20 +3,19 @@ import math
 
 import numpy as np
 import matplotlib.pyplot as plt
-from bokeh.models import (BasicTicker, Circle, Line, Scatter,CDSView,
-                          BooleanFilter, DatetimeAxis, DataRange1d, Grid, Legend,
-                          LinearAxis, LinearScale, LogAxis, LogScale,Toolbar,
-                          Plot, Range1d, Title, ColumnDataSource, Whisker,
-                          Scatter, Line, Circle)
-from bokeh.models.tools import (BoxSelectTool, BoxZoomTool,
-                                HoverTool, LassoSelectTool, PanTool,
-                                ResetTool, SaveTool, UndoTool,
-                                WheelZoomTool)
-from bokeh.models.renderers import GlyphRenderer
 from bokeh.io import save, output_file
+from bokeh.models import (BasicTicker, BooleanFilter, LinearAxis, Plot, Scatter,
+                          CDSView, Circle, Circle, ColumnDataSource, DataRange1d,
+                          DatetimeAxis, Grid, Legend, Line, Line, LinearScale,
+                          LogAxis, LogScale, Range1d, Scatter, Title, Toolbar,
+                          Whisker)
+from bokeh.models.renderers import GlyphRenderer
+from bokeh.models.tools import (BoxSelectTool, BoxZoomTool, HoverTool,
+                                LassoSelectTool, PanTool, ResetTool, SaveTool,
+                                UndoTool, WheelZoomTool)
 
-from overrides import set_multiple_defaults
 from lograg import logging, get_logger
+from overrides import set_multiple_defaults
 
 snitch = get_logger(logging.getLogger(__name__))
 

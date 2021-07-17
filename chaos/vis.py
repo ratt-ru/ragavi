@@ -3,32 +3,30 @@ import json
 from concurrent import futures
 from functools import partial
 
-import daskms as xm
 import numpy as np
-import dask.dataframe as dd
 import dask.array as da
+import dask.dataframe as dd
+import daskms as xm
 import datashader as ds
 import datashader.transfer_functions as tf
 
+from itertools import cycle, product, zip_longest
 from dask import compute, config
 from dask.diagnostics import ProgressBar
-from itertools import zip_longest, product, cycle
-from bokeh.layouts import grid, gridplot, column, row, layout
-from bokeh.io import save, output_file, output_notebook
-from bokeh.models import Div, ImageRGBA, Text, PreText
 from daskms.table_schemas import MS_SCHEMA
+from bokeh.io import output_file, output_notebook, save
+from bokeh.layouts import column, grid, gridplot, layout, row
+from bokeh.models import Div, ImageRGBA, PreText, Text
 
-from exceptions import (InvalidCmap, InvalidColumnName,
-                                         EmptyTable, warn)
-from ragdata import (dataclass, field, MsData, Axargs,
-                                      Genargs, Selargs, Plotargs)
 from arguments import vis_argparser
+from exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
+from lograg import logging, get_logger
 from plotting import FigRag, Circle, Scatter
 from processing import Chooser, Processor
-from widgets import (F_MARKS, make_widgets, make_stats_table,
-                                      make_table_name)
+from ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
+    Selargs)
 from utils import get_colours, timer
-from lograg import logging, get_logger
+from widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = get_logger(logging.getLogger(__name__))
 

@@ -1,9 +1,10 @@
 import re
+import bokeh.palettes as bp
+import colorcet as cc
 import matplotlib.colors as mpc
 import matplotlib.pyplot as plt
 import numpy as np
-import bokeh.palettes as bp
-import colorcet as cc
+
 from time import perf_counter
 from difflib import get_close_matches
 from lograg import logging, get_logger
@@ -32,7 +33,7 @@ def get_colours(n, cmap="coolwarm"):
         cmap = re.search(f"\w*{cmap}\w*", ",".join(plt.colormaps()),
                            re.IGNORECASE).group()
         cmap = plt.get_cmap(cmap)
-        norm = mpc.Normalize(vmin=0, vmax=n)
+        norm = mpc.Normalize(vmin=0, vmax=n-1)
         return [mpc.to_hex(cmap(norm(a))) for a in range(n)]
 
     elif len(get_close_matches(cmap, plt.colormaps())) > 0:
@@ -76,7 +77,8 @@ def pair(x, y):
     This function is an implementation of cantor's pairing function which can
     be found in (page 1127 of A New Kind Of Science). Obtained from
     http://szudzik.com/ElegantPairing.pdf Follow this link to get more:
-    https://stackoverflow.com/questions/919612/mapping-two-integers-to-one-in-a-unique-and-deterministic-way/13871379#13871379
+    https://stackoverflow.com/questions/919612/mapping-two-integers-to-\
+        one-in-a-unique-and-deterministic-way/13871379#13871379
     """
     val = np.square(x) + (3*x) + (2*x*y) + y + np.square(y)
     return val//2

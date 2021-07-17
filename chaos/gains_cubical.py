@@ -1,21 +1,19 @@
-from itertools import product
-import cubical.param_db as  db
+import cubical.param_db as db
+import dask.array as da
 import numpy as np
 
-import dask.array as da
-
-from bokeh.layouts import grid, gridplot, column, row
-from bokeh.io import save, output_file
-
-from exceptions import InvalidCmap, InvalidColumnName, EmptyTable
-from arguments import gains_argparser
-from plotting import FigRag, Circle, Scatter
-from ragdata import Axargs
-from gains import get_colours
-from processing import Processor
-from widgets_cubical import make_widgets
-
+from itertools import product
 from collections import namedtuple
+from bokeh.layouts import column,  grid, gridplot, row
+from bokeh.io import output_file, save
+
+from arguments import gains_argparser
+from exceptions import EmptyTable, InvalidCmap, InvalidColumnName
+from gains import get_colours
+from plotting import Circle, FigRag, Scatter
+from processing import Processor
+from ragdata import Axargs
+from widgets_cubical import make_widgets
 
 class TableData:
     def __init__(self, ms_name, ants=None, fields=None,

@@ -1,20 +1,19 @@
 import re
 import numpy as np
 import dask.array as da
-
-from itertools import combinations
-from psutil import cpu_count, virtual_memory
-from difflib import get_close_matches
-from casacore.tables import table
-from dataclasses import dataclass, field
-from typing import Any
-
-from exceptions import TableNotFound
-from lograg import logging, get_logger
-from utils import pair
-
 import daskms as xm
 import xarray as xr
+
+from dataclasses import dataclass, field
+from difflib import get_close_matches
+from itertools import combinations
+from psutil import cpu_count, virtual_memory
+from typing import Any
+from casacore.tables import table
+
+from exceptions import TableNotFound
+from lograg import get_logger, logging
+from utils import pair
 
 snitch = get_logger(logging.getLogger(__name__))
 

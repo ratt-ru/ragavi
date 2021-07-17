@@ -1,14 +1,14 @@
 import numpy as np
 
-from ipdb import set_trace
-from itertools import zip_longest, product
+from itertools import product, zip_longest
+from bokeh.layouts import column
+from bokeh.models import (Button, CDSView, CheckboxGroup, ColumnDataSource,
+                          CustomJS, PreText, Scatter, Slider, Title, Whisker)
+from bokeh.models.widgets import Div, DataTable, TableColumn
 
 from processing import Processor
 
-from bokeh.models import (Button, CheckboxGroup, CustomJS, PreText, Slider,
-                          Scatter, Title, Whisker, ColumnDataSource, CDSView)
-from bokeh.models.widgets import DataTable, TableColumn, Div
-from bokeh.layouts import column
+from ipdb import set_trace
 
 f_codes = {0: u"\u2B24", 1: u"\u25C6", 2: u"\u25FC", 3: u"\u25B2", 4: u"\u25BC",
            5: u"\u2B22"}

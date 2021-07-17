@@ -1,13 +1,12 @@
 import numpy as np
 
-from itertools import zip_longest, product
+from itertools import product, zip_longest
+from bokeh.layouts import column, grid
+from bokeh.models import (Button, CDSView, CheckboxGroup, ColumnDataSource,
+                          CustomJS, PreText, Scatter, Slider, Title, Whisker)
+from bokeh.models.widgets import DataTable, TableColumn, Div
 
 from processing import Processor
-
-from bokeh.models import (Button, CheckboxGroup, CustomJS, PreText, Slider,
-                          Scatter, Title, Whisker, ColumnDataSource, CDSView)
-from bokeh.models.widgets import DataTable, TableColumn, Div
-from bokeh.layouts import column, grid
 
 F_CODES = {0: "O", 1: u"\u2003\u20DF", 2: u"\u2003\u20E3", 3: u"\u2206",
                       4: u"\u2B21", 5: u"\u2207"}
@@ -331,8 +330,8 @@ def axis_fs_callback():
     code : :obj:`str`
     """
     code = """
-            axes.forEach(axis => axis.axis_label_text_font_size = `${cb_obj.value}pt`);
-           """
+        axes.forEach(axis => axis.axis_label_text_font_size = `${cb_obj.value}pt`);
+        """
     return code
 
 
@@ -379,7 +378,6 @@ def save_selected_callback():
     return code
 
 
-
 def gen_checkbox_labels(ant_names, group_size=8):
     """
     Auto-generating Check box labels
@@ -424,7 +422,10 @@ def make_stats_table(msdata, data_column, yaxes, subs):
         for yaxis, corr in product(yaxes, msdata.active_corrs):
             pro = Processor(sub[data_column]).calculate(yaxis).sel(corr=corr)
             flags = sub.FLAG.sel(corr=corr)
-            stats["spw"].append(sub.SPECTRAL_WINDOW_ID)
+            if "SPECTRAL_WINDOW_ID" in sub:
+                stats["spw"].append(sub.SPECTRAL_WINDOW_ID)
+            else:
+                stats["spw"].append(sub.DATA_DESC_ID)
             stats["field"].append(msdata.reverse_field_map[sub.FIELD_ID])
             stats["corr"].append(corr)
             stats[yaxis].append(
@@ -444,7 +445,6 @@ def make_stats_table(msdata, data_column, yaxes, subs):
         DataTable(source=stats, columns=columns, fit_columns=True, height=150,
                   max_height=180, max_width=600, sizing_mode="stretch_width")],
         sizing_mode="stretch_both")
-
 
 
 def make_table_name(version, tname):
@@ -476,7 +476,8 @@ def make_widgets(msdata, fig, group_size=8):
     #number of batches avail. Depends on the group_size
     nbatch = len(batch_labels)
     corr_labels = [f"Corr {corr}" for corr in msdata.active_corrs]
-    field_labels = [f"{msdata.reverse_field_map[f]} {F_CODES[fi]}" for fi, f in enumerate(msdata.active_fields)]
+    field_labels = [f"{msdata.reverse_field_map[f]} {F_CODES[fi]}" 
+                        for fi, f in enumerate(msdata.active_fields)]
     spw_labels = [f"Spw {spw}" for spw in msdata.active_spws]
 
     # Selection group
@@ -485,7 +486,8 @@ def make_widgets(msdata, fig, group_size=8):
                                 width=150, height=30)
 
     #select antennas in batches
-    batch_selector = CheckboxGroup(labels=batch_labels, active=[0], width=150, height=30)
+    batch_selector = CheckboxGroup(labels=batch_labels, active=[0], width=150,
+    height=30)
 
     corr_selector = CheckboxGroup(labels=corr_labels, active=[], width=150)
 
@@ -504,8 +506,9 @@ def make_widgets(msdata, fig, group_size=8):
     ant_selector.js_on_change("active", CustomJS(
         args=dict(ax=fig, bsel=batch_selector, fsel=field_selector,
                   csel=corr_selector, ssel=spw_selector, nbatches=nbatch,
-                  nfields=msdata.num_fields, ncorrs=msdata.num_corrs, terr=toggle_error,
-                  nspws=msdata.num_spws, errors=fig.select(tags=["ebar"], type=Whisker)),
+                  nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
+                  terr=toggle_error,nspws=msdata.num_spws,
+                  errors=fig.select(tags=["ebar"], type=Whisker)),
         code=ant_selector_callback())
         )
     batch_selector.js_on_change("active", CustomJS(
@@ -514,14 +517,16 @@ def make_widgets(msdata, fig, group_size=8):
                   nfields=msdata.num_fields, ncorrs=msdata.num_corrs,
                   nspws=msdata.num_spws, fsel=field_selector,
                   csel=corr_selector, antsel=ant_selector, ssel=spw_selector,
-                  errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
+                  errors=fig.select(tags=["ebar"], type=Whisker),
+                  terr=toggle_error),
         code=batch_selector_callback()))
     corr_selector.js_on_change("active", CustomJS(
         args=dict(bsel=batch_selector, 
                   fsel=field_selector, nants=msdata.num_ants,
                   ncorrs=msdata.num_corrs, nfields=msdata.num_fields,
                   nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
-                  ssel=spw_selector, errors=fig.select(tags=["ebar"], type=Whisker),
+                  ssel=spw_selector, errors=fig.select(tags=["ebar"],
+                  type=Whisker),
                   terr=toggle_error),
         code=corr_selector_callback()
         ))
@@ -531,7 +536,8 @@ def make_widgets(msdata, fig, group_size=8):
                   nants=msdata.num_ants, nfields=msdata.num_fields,
                   ncorrs=msdata.num_corrs, nbatches=nbatch,
                   nspws=msdata.num_spws, ax=fig, ssel=spw_selector,
-                  errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
+                  errors=fig.select(tags=["ebar"], type=Whisker),
+                  terr=toggle_error),
         code=field_selector_callback()))
 
     ex_ax = fig.select(tags="extra_yaxis")
@@ -539,9 +545,11 @@ def make_widgets(msdata, fig, group_size=8):
     ex_ax = [_[1] for _ in ex_ax]
     spw_selector.js_on_change("active", CustomJS(
         args=dict(bsel=batch_selector, csel=corr_selector, fsel=field_selector, 
-                  ncorrs=msdata.num_corrs, nfields=msdata.num_fields, nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
+                  ncorrs=msdata.num_corrs, nfields=msdata.num_fields,
+                  nbatches=nbatch, nspws=msdata.num_spws, ax=fig,
                   spw_ids=msdata.spws.values, ex_ax=ex_ax,
-                  errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
+                  errors=fig.select(tags=["ebar"], type=Whisker),
+                  terr=toggle_error),
         code=spw_selector_callback()))
 
 
@@ -612,5 +620,4 @@ def make_widgets(msdata, fig, group_size=8):
                 Div(text="Select spw"), Div(text="Select correlation")],
             [batch_selector, field_selector, spw_selector, corr_selector]]),
         save_selected]
-
 

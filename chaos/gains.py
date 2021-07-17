@@ -5,21 +5,19 @@ from functools import partial
 import daskms as xm
 import numpy as np
 from dask import compute
-from itertools import zip_longest, product
-from bokeh.layouts import grid, gridplot, column, row, layout
-from bokeh.io import save, output_file, output_notebook
+from itertools import product, zip_longest
+from bokeh.layouts import column, grid, gridplot, layout, row
+from bokeh.io import output_file, output_notebook, save
 
-from exceptions import (InvalidCmap, InvalidColumnName,
-    EmptyTable)
-from ragdata import (dataclass, field, MsData, Axargs,
-    Genargs, Selargs, Plotargs)
 from arguments import gains_argparser
+from exceptions import EmptyTable, InvalidCmap, InvalidColumnName
+from lograg import logging, get_logger
 from plotting import FigRag, Circle, Scatter
 from processing import Chooser, Processor
-from widgets import (F_MARKS, make_widgets, make_stats_table,
-    make_table_name)
+from ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
+                     Selargs)
 from utils import get_colours, timer
-from lograg import logging, get_logger
+from widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = get_logger(logging.getLogger(__name__))
 
