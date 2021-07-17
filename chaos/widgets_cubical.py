@@ -1,7 +1,7 @@
 import numpy as np
 
 from itertools import product, zip_longest
-from bokeh.layouts import column
+from bokeh.layouts import column, grid
 from bokeh.models import (Button, CDSView, CheckboxGroup, ColumnDataSource,
                           CustomJS, PreText, Scatter, Slider, Title, Whisker)
 from bokeh.models.widgets import Div, DataTable, TableColumn
@@ -138,7 +138,7 @@ def corr_selector_callback():
     """Correlation selection callback"""
     code = """        
         var final_array = ax.renderers;
-
+        
         if (bsel.active.length > 0){
             final_array = reduceArray(final_array, bsel, nbatches, "b");
         }
@@ -157,7 +157,6 @@ def corr_selector_callback():
         }
        """
     return redux_fn() + code + activate_batch_if_no_other_sel()
-
 
 
 # Show additional data callbacks
@@ -309,8 +308,7 @@ def save_selected_callback():
     return code
 
 
-
-def gen_checkbox_labels(ant_names, group_size=8):
+def gen_checkbox_labels(msdata, group_size=8):
     """
     Auto-generating Check box labels
 
@@ -324,6 +322,7 @@ def gen_checkbox_labels(ant_names, group_size=8):
     ------
     List containing batch labels for the batch selection check box group
     """
+    ant_names = [msdata.ant_names[a] for a in msdata.active_ants]
     lhs = ant_names[slice(0, None, group_size)]
     rhs = ant_names[slice(group_size-1, None, group_size)]
     last = ant_names[-1]
@@ -361,10 +360,9 @@ def make_stats_table(msdata, data_column, yaxes, subs):
         sizing_mode="stretch_both")
 
 
-
-def make_table_name(tab_name):
+def make_table_name(version, tname):
     """Create div for stats data table"""
-    div = PreText(text=f"ragavi: v{__version__} | Table: {msdata.ms_name}",
+    div = PreText(text=f"ragavi: v{version} | Table: {tname}",
                   margin=(1, 1, 1, 1))
     return div
 
@@ -386,11 +384,11 @@ def make_widgets(msdata, fig, group_size=8):
     Nothing    
     """
 
-    batch_labels = gen_checkbox_labels(msdata.ants, group_size)
+    batch_labels = gen_checkbox_labels(msdata, group_size)
     
     #number of batches avail. Depends on the group_size
     nbatch = len(batch_labels)
-    corr_labels = [f"Corr {corr}" for corr in msdata.active_corrs]
+    corr_labels = [f"Corr {corr.upper()}" for corr in msdata.active_corrs]
 
     # Selection group
     #select and deselect all antennas
@@ -398,7 +396,7 @@ def make_widgets(msdata, fig, group_size=8):
                                 width=150, height=30)
 
     #select antennas in batches
-    batch_selector = CheckboxGroup(labels=batch_labels, active=[0], width=150, height=30)
+    batch_selector = CheckboxGroup(labels=batch_labels, active=[0], width=150, height=70)
 
     corr_selector = CheckboxGroup(labels=corr_labels, active=[], width=150)
 
@@ -493,9 +491,10 @@ def make_widgets(msdata, fig, group_size=8):
         args=dict(titles=fig.select(tags="title")),
         code=title_fs_callback()))
 
-    return [ant_selector, batch_selector, corr_selector,
-            toggle_error, legend_toggle, toggle_flagged,
-            size_slider, alpha_slider, axis_fontslider,
-            title_fontslider, save_selected]
-
-
+    return [
+        grid(children=[
+            [ant_selector, toggle_error, size_slider, title_fontslider],
+            [legend_toggle, toggle_flagged, alpha_slider, axis_fontslider],
+            [Div(text="Select antenna group"), Div(text="Select correlation")],
+            [batch_selector, corr_selector]]),
+        save_selected]
