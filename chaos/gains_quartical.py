@@ -21,8 +21,6 @@ from processing import Chooser, Processor
 from ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
 from widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
-import time as tme
-
 snitch = get_logger(logging.getLogger(__name__))
 
 _GROUP_SIZE_ = 16
@@ -95,7 +93,6 @@ class Axes:
 def calculate_points(subms, nsubs):
     return subms.gains.size * nsubs
 
-
 def add_extra_xaxis(channels, figrag, sargs):
     channels = channels[sargs][[0, -1]] /1e9
     figrag.add_axis(*channels, "x", "linear", "Frequency GHz", "above")
@@ -110,42 +107,43 @@ def init_table_data(msname, sub_list):
     scans = sorted(np.unique(scans))
     spws = sorted(np.unique(spws))
     ants = sub_list[0].ant_names.values
-    corrs = stokes_types[sub_list[0].corr_type.values]
+    corrs = stokes_types[sub_list[0].corr_type.values-1]
 
     return TableData(msname, ant_names=ants, corr_names=corrs,
         field_names=fields, spws=spws)
 
-
-def populate_fig_data(subms, axes, cmap, figrag):
+def populate_fig_data(subms, axes, cmap, figrag, msdata):
     time, freq = subms.gain_t.values, subms.gain_f.values / 1e9
     ants_corrs = product(range(subms.ant.size), range(subms.corr.size))
-    for ant, corr in ants_corrs:
-        start = tme.perf_counter()
-        
+    for ant, corr in ants_corrs:        
         sub = subms.sel(ant=ant, corr=corr)
         gains, sdict = sub.gains, {}
-        
-        # original = ("gain_t", "gain_f", "ant", "dir", "corr")
-        gains = np.ravel(gains.transpose("gain_f", "gain_t", "dir").data)
-        
+
+        if axes.xaxis == "time":
+            original = ("gain_t", "gain_f", "dir")
+        else:
+            original = ("gain_f", "gain_t", "dir")
+    
+        gains = np.ravel(gains.transpose(*original).data)
         total_reps = gains.size
         data_reps = gains.size // freq.size
 
         xaxes={
-            "time": np.repeat(Processor.unix_timestamp(time), gains.size // time.size),
+            "time": np.repeat(Processor.unix_timestamp(time),
+                                gains.size // time.size),
             "channel": np.repeat(np.arange(freq.size), gains.size // freq.size)
         }
+        xaxes["chan"]=xaxes["freq"]=xaxes["frequency"] = xaxes["channel"]
 
         sdict["y"], sdict["field"], sdict["scan"], sdict["ddid"]= \
             compute(
             Processor(gains).calculate(axes.yaxis), sub.fields.data.flatten(),
             sub.scans.data.flatten(), sub.ddids.data.flatten(),
         )
-
         sdict["x"] = xaxes[axes.xaxis]
-        sdict["ant"] = np.repeat(ant, total_reps)
-        sdict["colors"] = np.repeat(cmap[ant], total_reps)
-        sdict["corr"] = np.repeat(corr, total_reps)
+        sdict["ant"] = np.repeat(msdata.reverse_ant_map[ant], total_reps)
+        # sdict["colors"] = np.repeat(cmap[ant], total_reps)
+        sdict["corr"] = np.repeat(msdata.reverse_corr_map[corr], total_reps)
         sdict["markers"] = np.repeat(F_MARKS[sub.FIELD_ID], total_reps)
         sdict["data"] = axes
         
@@ -156,10 +154,7 @@ def populate_fig_data(subms, axes, cmap, figrag):
             line_color=cmap[ant],
             tags=[f"a{ant}", f"c{corr}",
                   f"s{sub.DATA_DESC_ID}", f"f{sub.FIELD_ID}"])
-
-        print(f"Loop Done at {tme.perf_counter() - start} secs")
     return figrag
-
 
 def new_darray(in_model, out_name, out_value):
     types = {bool: bool, int: np.int8}
@@ -167,6 +162,35 @@ def new_darray(in_model, out_name, out_value):
         in_model.shape, out_value, dtype=types[type(out_value)]))
     bn.name = out_name
     return bn
+
+def add_hover_data(fig, axes):
+    """
+    Add spw, field, scan, corr, antenna into the hover tooltips
+
+    Parameters
+    ----------
+    fig : :obj:`Plot`
+        The figure itself
+    
+    Returns
+    -------
+    Updated data dictionary (with htool data)
+    """
+    #format unix time in tooltip
+    if axes.xaxis == "time":
+        tip0 = (f"({axes.xaxis:.4}, {axes.yaxis:.4})",
+                "(@x{%F %T}, @y)")
+        fig.fig.tools[0].formatters = {"@x": "datetime"}
+    else:
+        tip0 = (f"({axes.xaxis:.4}, {axes.yaxis:.4})", f"(@x, @y)")
+
+    # fig.select_one({"tags": "hover"}).tooltips
+    fig.fig.tools[0].tooltips = [
+        tip0,
+        ("spw", "@ddid"), ("field", "@field"), ("scan", "@scan"),
+        ("ant", "@ant"), ("corr", "@corr")
+        ]
+    return fig
 
 def organise_table(ms, sels, tdata):
     """
@@ -187,10 +211,10 @@ def organise_table(ms, sels, tdata):
 
     if sels.antennas is not None:
         antennas = sels.antennas.replace(" ", "").split(",")
-        if all([f.isdigit() for f in antennas]):
-            sels.antennas = [int(f) for f in antennas]
+        if all([a.isdigit() for a in antennas]):
+            sels.antennas = [int(a) for a in antennas]
         else:
-            sels.antennas = [tdata.ant_map[f] for f in fields]
+            sels.antennas = [tdata.ant_map[a] for a in antennas]
     else:
         sels.antennas = list(tdata.ant_map.values())
 
@@ -238,9 +262,7 @@ def main(parser, gargs):
             ddids=Chooser.get_knife(ddids))
 
         ms = organise_table(ms, selections, msdata)
-
         cmap = get_colours(ms[0].ant.size, cmap)
-
         points = calculate_points(ms[0], len(ms))
 
         if html_name is None and image_name is None:
@@ -259,20 +281,17 @@ def main(parser, gargs):
 
         all_figs = []
         for yaxis in yaxes:
-            print(f"Axis: {yaxis}")
-            figrag = FigRag(add_toolbar=True,
-                            x_scale=xaxis if xaxis == "time" else "linear")
+            snitch.info(f"Axis: {yaxis}")
+            figrag = FigRag(
+                add_toolbar=True, width=900, height=710,
+                x_scale=xaxis if xaxis == "time" else "linear",
+                plot_args={"frame_height": None, "frame_width": None})
 
-            start = tme.perf_counter()
             for sub in ms:
                 axes = Axes(flags=None, errors=None,
                     xaxis=xaxis, yaxis=yaxis)
                 figrag = populate_fig_data(sub, axes=axes,
-                    cmap=cmap, figrag=figrag)
-           
-            print(f"Done at {tme.perf_counter() - start} secs")
-            
-            print("Here")
+                    cmap=cmap, figrag=figrag, msdata=msdata)
 
             figrag.update_xlabel(axes.xaxis)
             figrag.update_ylabel(axes.yaxis)
@@ -280,13 +299,13 @@ def main(parser, gargs):
             if "chan" in axes.xaxis:
                 add_extra_xaxis(freqs, figrag, selections.channels)
 
-            figrag.add_legends(group_size=16, visible=True)
+            figrag.add_legends(group_size=_GROUP_SIZE_, visible=True)
             figrag.update_title(f"{axes.yaxis} vs {axes.xaxis}")
             figrag.show_glyphs(selection="b0")
+            figrag = add_hover_data(figrag, axes)
 
             all_figs.append(figrag)
         
-        image_name ="lost.png"
         if image_name:
             statics = lambda func, _x, **kwargs: getattr(_x, func)(**kwargs)
             with futures.ThreadPoolExecutor() as executor:
@@ -325,7 +344,6 @@ def main(parser, gargs):
 if __name__ == "__main__":
     ms_name="/home/lexya/Documents/test_gaintables/quartical/gains.qc"
     #synonyms for the the tables available here
-
     yaxes = "a"
     xaxis = "time"
     main(gains_argparser, ["-t", ms_name, "-y", yaxes, "-x", xaxis, "--ant", 
