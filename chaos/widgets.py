@@ -422,7 +422,7 @@ def make_stats_table(msdata, data_column, yaxes, subs):
         for yaxis, corr in product(yaxes, msdata.active_corrs):
             pro = Processor(sub[data_column]).calculate(yaxis).sel(corr=corr)
             flags = sub.FLAG.sel(corr=corr)
-            if "SPECTRAL_WINDOW_ID" in sub:
+            if "SPECTRAL_WINDOW_ID" in sub.attrs:
                 stats["spw"].append(sub.SPECTRAL_WINDOW_ID)
             else:
                 stats["spw"].append(sub.DATA_DESC_ID)
@@ -475,7 +475,10 @@ def make_widgets(msdata, fig, group_size=8):
     
     #number of batches avail. Depends on the group_size
     nbatch = len(batch_labels)
-    corr_labels = [f"Corr {corr}" for corr in msdata.active_corrs]
+
+    corr_labels = [f"Corr {msdata.reverse_corr_map[a]}"
+                   if msdata.corr_map is not None else f"Corr {a}" 
+                   for a in msdata.active_corrs]
     field_labels = [f"{msdata.reverse_field_map[f]} {F_CODES[fi]}" 
                         for fi, f in enumerate(msdata.active_fields)]
     spw_labels = [f"Spw {spw}" for spw in msdata.active_spws]
