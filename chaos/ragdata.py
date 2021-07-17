@@ -475,8 +475,8 @@ class Axargs:
         ms_obj:
             MS xarray object
         """
-        axis_name = getattr(self, f"{axis}axis")
-        _axis = f"{axis}data"
+        axis_name = getattr(self, f"{axis[0]}axis")
+        _axis = f"{axis[0]}data"
         column = getattr(self, f"{_axis}_col")
         if len(re.findall(rf"{axis_name}\w*", "channel frequency")) > 0:
             snitch.debug(f"{axis}axis column is channel/frequency")
