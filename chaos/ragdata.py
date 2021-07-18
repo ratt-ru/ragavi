@@ -116,16 +116,6 @@ class MsData:
         except RuntimeError:
             pass
     
-    # def _process_frequency_table(self):
-    #     """Uses daskms to get frequency data as xarray"""
-    #     try:
-    #         with table(self._ms.getkeyword("SPECTRAL_WINDOW"), ack=False) as sub:
-    #             self._freqs = sub.getcol("CHAN_FREQ")
-    #             self._spws = sub.rownumbers()
-    #             self._num_spws = len(self._spws)
-    #             self._num_chans = sub.getcell("NUM_CHAN", 0)
-    #     except RuntimeError:
-    #         pass
 
     def _process_frequency_table(self):
         """Uses daskms to get frequency data as xarray"""
@@ -140,11 +130,6 @@ class MsData:
             pass
 
     def _process_polarisation_table(self):
-        # stokes_types = np.array([
-        #     "I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
-        #     "YX", "YY", "RX", "RY", "LX", "LY", "XR", "XL", "YR",
-        #     "YL", "PP", "PQ", "QP", "QQ", "RCircular", "LCircular",
-        #     "Linear", "Ptotal", "Plinear", "PFtotal", "PFlinear", "Pangle"])
         try:                        
             with table(self._ms.getkeyword("POLARIZATION"), ack=False) as sub:
                 self._corr_types = sub.getcell("CORR_TYPE", 0)

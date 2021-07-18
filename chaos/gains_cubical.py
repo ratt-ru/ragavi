@@ -18,6 +18,7 @@ from plotting import Circle, FigRag, Scatter
 from processing import Chooser, Processor
 from ragdata import Axargs, Genargs, Selargs
 from widgets_cubical import make_table_name, make_widgets
+from widgets import F_MARKS
 
 snitch = get_logger(logging.getLogger(__name__))
 _GROUP_SIZE_ = 16
@@ -29,6 +30,7 @@ class TableData:
         self.ant_names = ants
         self.field_names = [str(f) for f in fields]
         self.corr1s = [c.upper() for c in corr1s]
+        self.corrs = None
         self.active_antennas = None
         self.active_corrs = []
         self.active_corr1s = None
@@ -127,12 +129,12 @@ def organise_data(sels, tdata):
             corrs = [tdata.reverse_corr_map[int(c)] for c in corrs]
         else:
             corrs = [c for c in corrs if c in tdata.corr_map]
-        tdata.active_corr1s, tdata.active_corr2s = (
-            [tdata.corr1s.index(c[0]) for c in corrs],
-            [tdata.corr1s.index(c[1]) for c in corrs])
+        # this list will contain tuples of the form (corr1, corr2)
+        tdata.corrs = [(tdata.corr1s.index(c[0]), tdata.corr1s.index(c[1]))
+                       for c in corrs]
     else:
-        tdata.active_corr1s, tdata.active_corr2s = (
-            [*range(len(tdata.corr1s))], [*range(len(tdata.corr1s))])
+        # this list will contain tuples of the form (corr1, corr2)
+        tdata.corrs = [*product(range(len(tdata.corr1s)), repeat=2)]
     
     return tdata
 
@@ -144,6 +146,7 @@ def main(parser, gargs):
         ps.channels, ps.corrs, ps.fields, ps.t0s, ps.t1s, ps.cmaps, ps.yaxes,
         ps.xaxes, ps.html_names, ps.image_names):
         
+        snitch.info(f"Reading {msname}")
         table = db.load(msname)
         syns = {("error" if "err" in _ else "gain"): _ for _ in table.names()}
         gain_data = table[syns["gain"]]
@@ -188,23 +191,24 @@ def main(parser, gargs):
 
             Axes = namedtuple("Axes", ["flags", "errors", "xaxis", "yaxis"])
         
-            for ant, corr1, corr2 in product(tdata.active_antennas,
-                tdata.active_corr1s, tdata.active_corr2s):
+            for fid, ant, (corr1, corr2) in product(
+                tdata.active_fields, tdata.active_antennas, tdata.corrs):
 
                 _corr = f"{tdata.corr1s[corr1]}{tdata.corr1s[corr2]}"
-                snitch.info(
-                    f"Antenna: {tdata.reverse_ant_map[ant]}, corr: {_corr}")
+                snitch.info(f"Antenna: {tdata.reverse_ant_map[ant]}, " +
+                            f"Dir: {fid} " + f"corr: {_corr}")
 
                 masked_data, (time, freq) = gain_data.get_slice(
-                    ant=ant, corr1=corr1, corr2=corr2)
+                    ant=ant, corr1=corr1, corr2=corr2, dir=fid)
                 
                 # Select item 0 cause tuple containin array is returned
                 masked_err = gain_err.get_slice(
-                    ant=ant, corr1=corr1,corr2=corr2)[0]
+                    ant=ant, corr1=corr1, corr2=corr2, dir=fid)[0]
 
                 if masked_data is None:
                     # remove antenna, messes up with plotting fn
-                    tdata.active_antennas.remove(ant)
+                    if ant in tdata.active_antennas:
+                        tdata.active_antennas.remove(ant)
                     snitch.info(f"Antenna {tdata.reverse_ant_map[ant]} " +
                             f"corr {_corr} contains no data.")
                     continue
@@ -235,13 +239,13 @@ def main(parser, gargs):
                     "y": Processor(masked_data.data).calculate(yaxis),
                     "ant": np.repeat(tdata.reverse_ant_map[ant], total_reps),
                     "corr": np.repeat(_corr, total_reps),
-                    "field": np.repeat(0, total_reps),
+                    "field": np.repeat(fid, total_reps),
                     "data": axes
                 }
-                figrag.add_glyphs("circle", data=data, 
+                figrag.add_glyphs(F_MARKS[fid], data=data, 
                     legend=tdata.reverse_ant_map[ant], fill_color=cmap[ant],
                     line_color=cmap[ant],
-                    tags=[f"a{ant}", "s0", f"c{_corr}", f"f{0}"])
+                    tags=[f"a{ant}", "s0", f"c{_corr}", f"f{fid}"])
 
             figrag.update_xlabel(axes.xaxis)
             figrag.update_ylabel(axes.yaxis)
@@ -257,8 +261,7 @@ def main(parser, gargs):
             all_figs.append(figrag)
 
         points = calculate_points(
-            len(tdata.active_antennas)*len(tdata.active_corr1s)*
-            len(tdata.active_corr2s), total_reps)
+            len(tdata.active_antennas)*len(tdata.corrs), total_reps)
         if points > 30000 and image_name is None:
             image_name = tdata.ms_name + ".png"
         if image_name:
@@ -285,17 +288,19 @@ def main(parser, gargs):
             output_file(filename=html_name)
             save(final_layout, filename=html_name,
                  title=os.path.splitext(os.path.basename(html_name))[0])
+            snitch.info(f"HTML file at: {html_name}")
         snitch.info("Plotting Done")
 
 
 if __name__ == "__main__":
-    cb_name = "/home/lexya/Documents/test_gaintables/cubical/reduction02-cubical-G-field_0-ddid_None.parmdb"
+    # cb_name = "/home/lexya/Documents/test_gaintables/cubical/reduction02-cubical-G-field_0-ddid_None.parmdb"
     # cb_name = "/home/lexya/Documents/test_gaintables/cubical/reduction02-cubical-BBC-field_0-ddid_None.parmdb"
+    cb_name = "/home/lexya/Documents/test_gaintables/cubical/selfcal-cubical-11th-smallms-noxcal-kde-kdd-dE-field_0-ddid_None.parmdb"
     #synonyms for the the tables available here
-
     yaxes = "a"
     xaxis = "time"
-    main(gains_argparser, ["-t", cb_name, "-y", yaxes, "-x", xaxis, "--corr", "0",
-        "--cmap", "glasbey"
-                        #    "--ant", "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19"
-                        ])
+    main(gains_argparser, [
+        "-t", cb_name, "-y", yaxes, "-x", xaxis,
+        "--corr", "0,3", "--cmap", "glasbey"
+        #    "--ant", "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19"
+        ])

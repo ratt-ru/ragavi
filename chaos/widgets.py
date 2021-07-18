@@ -13,7 +13,10 @@ F_CODES = {0: "O", 1: u"\u2003\u20DF", 2: u"\u2003\u20E3", 3: u"\u2206",
 F_MARKS = {0: "circle", 1: "diamond", 2: "square", 3: "triangle", 5: "hex"}
 
 def activate_batch_if_no_other_sel(sel1, sel2):
-    """Activate if only batch selection is active"""
+    """Activate if only batch selection is active
+    sel1: Name of other selector to check
+    cb_obj: is the object to whose callback this function will be attached
+    """
     return """
         errors.forEach(error => error.visible = false);
         terr.active = [];

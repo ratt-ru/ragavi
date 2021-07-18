@@ -288,6 +288,7 @@ def main(parser, gargs):
             output_file(filename=html_name)
             save(final_layout, filename=html_name,
                 title=os.path.splitext(os.path.basename(html_name))[0])
+            snitch.info(f"HTML file at: {html_name}")
         snitch.info("Plotting Done")
     return 0
 

@@ -7,21 +7,22 @@ from bokeh.models import (Button, CDSView, CheckboxGroup, ColumnDataSource,
 from bokeh.models.widgets import Div, DataTable, TableColumn
 
 from processing import Processor
+from widgets import F_CODES
 
 from ipdb import set_trace
 
-f_codes = {0: u"\u2B24", 1: u"\u25C6", 2: u"\u25FC", 3: u"\u25B2", 4: u"\u25BC",
-           5: u"\u2B22"}
 
-f_marks = {0: "circle", 1: "diamond", 2: "square", 3: "triangle", 5: "hex"}
-
-def activate_batch_if_no_other_sel():
-    """Activate if only batch selection is active"""
+def activate_batch_if_no_other_sel(sel1):
+    """Activate only selected batch if only the batch selection is ticked
+    sel1: Name of other selector to check
+    cb_obj: is the object to whose callback this function will be attached
+    """
     return """
         errors.forEach(error => error.visible = false);
         terr.active = [];
 
         if (bsel.active.length > 0
+            && %s.active.length == 0
             && cb_obj.active.length == 0){
             for (let b = 0; b < nbatches; b++) {
                 if (bsel.active.includes(b)) {
@@ -31,7 +32,7 @@ def activate_batch_if_no_other_sel():
                 }
             }
         }
-    """
+    """%(sel1)
 
 
 def redux_fn():
@@ -84,11 +85,13 @@ def ant_selector_callback():
             //activate all the checkboxes whose antennas are active
             bsel.active = [...Array(nbatches).keys()];
             csel.active = [...Array(ncorrs).keys()];
+            fsel.active = [...Array(nfields).keys()];
         }
         else{
             ax.renderers.forEach(rend => rend.visible = false);
             bsel.active = [];
             csel.active = [];
+            fsel.active = [];
         }
         """
 
@@ -103,19 +106,11 @@ def batch_selector_callback():
 
         var final_array = ax.renderers;
 
-
+        if (fsel.active.length > 0) {
+            final_array = reduceArray(final_array, fsel, nfields, "f");
+        }
         if (csel.active.length > 0){
-            let intermediate = [];
-            for (let i=0; i<ncorrs; i++) {
-                if (csel.active.includes(i)){
-                    intermediate = intermediate.concat(
-                        final_array.filter(({ tags }) => {
-                            return tags.includes(`${tag}${corrs[i]}`);
-                            }));
-                }
-            }
-
-            final_array = intermediate;
+            final_array = reduceArray(final_array, csel, ncorrs, "c");
         }
 
         for (let b = 0; b < nbatches; b++) {
@@ -142,6 +137,10 @@ def corr_selector_callback():
         if (bsel.active.length > 0){
             final_array = reduceArray(final_array, bsel, nbatches, "b");
         }
+
+        if (fsel.active.length > 0) {
+            final_array = reduceArray(final_array, fsel, nfields, "f");
+        }
         
         for (let corr in corrs){
             if (cb_obj.active.includes(Number(corr))) {
@@ -156,7 +155,35 @@ def corr_selector_callback():
             }
         }
        """
-    return redux_fn() + code + activate_batch_if_no_other_sel()
+    return redux_fn() + code + activate_batch_if_no_other_sel("fsel")
+
+
+def field_selector_callback():
+    """Return JS callback for field selection checkboxes"""
+    code = """
+        var final_array = ax.renderers;
+
+        if (bsel.active.length > 0){
+            final_array = reduceArray(final_array, bsel, nbatches, "b");
+        }
+        if (csel.active.length > 0) {
+            final_array = reduceArray(final_array, csel, ncorrs, "c");
+        }
+
+        for (let f=0; f<nfields; f++) {
+            if (cb_obj.active.includes(f)) {
+                final_array.filter(({ tags }) => {
+                    return tags.includes(`f${f}`);
+                }).forEach(rend => rend.visible = true);
+            }
+            else{
+                final_array.filter(({ tags }) => {
+                    return tags.includes(`f${f}`);
+                }).forEach(rend => rend.visible = false);
+            }
+        }
+       """
+    return redux_fn() + code + activate_batch_if_no_other_sel("csel")
 
 
 # Show additional data callbacks
@@ -390,16 +417,22 @@ def make_widgets(msdata, fig, group_size=8):
     nbatch = len(batch_labels)
     corr_labels = [f"Corr {corr.upper()}" for corr in msdata.active_corrs]
 
+    field_labels = [f"Dir {msdata.reverse_field_map[f]} {F_CODES[fi]}"
+                    for fi, f in enumerate(msdata.active_fields)]
+
     # Selection group
     #select and deselect all antennas
     ant_selector = CheckboxGroup(labels=["Select all antennas"], active=[],
                                 width=150, height=30)
 
     #select antennas in batches
-    batch_selector = CheckboxGroup(labels=batch_labels, active=[0], width=150, height=70)
+    batch_selector = CheckboxGroup(labels=batch_labels, active=[0], width=150,
+                                    height=70)
 
     corr_selector = CheckboxGroup(labels=corr_labels, active=[], width=150)
 
+    field_selector = CheckboxGroup(labels=field_labels, active=[], width=150,
+                                   height=30)
 
     # configuring toggle button for showing all the errors
     toggle_error = CheckboxGroup(labels=["Show error bars"], active=[],
@@ -409,29 +442,35 @@ def make_widgets(msdata, fig, group_size=8):
         code=toggle_error_callback()))
     
     ant_selector.js_on_change("active", CustomJS(
-        args=dict(ax=fig, bsel=batch_selector, 
-                  csel=corr_selector, nbatches=nbatch,
+        args=dict(ax=fig, bsel=batch_selector, csel=corr_selector,
+                  fsel=field_selector, nbatches=nbatch, 
+                  nfields=len(msdata.active_fields),
                   ncorrs=len(msdata.active_corrs), terr=toggle_error,
                   errors=fig.select(tags=["ebar"], type=Whisker)),
-        code=ant_selector_callback())
-        )
+        code=ant_selector_callback()))
     batch_selector.js_on_change("active", CustomJS(
         args=dict(ax=fig, bsize=group_size,
-                  nants=msdata.num_ants, nbatches=nbatch,
+                  nants=msdata.num_ants, nbatches=nbatch, 
+                  nfields=len(msdata.active_fields),
                   ncorrs=len(msdata.active_corrs), corrs=msdata.active_corrs,
-                  csel=corr_selector, antsel=ant_selector,
-                  errors=fig.select(tags=["ebar"], type=Whisker), terr=toggle_error),
-        code=batch_selector_callback()))
-    corr_selector.js_on_change("active", CustomJS(
-        args=dict(bsel=batch_selector,
-                  nants=msdata.num_ants,
-                  corrs=msdata.active_corrs, 
-                  nbatches=nbatch, ax=fig,
+                  csel=corr_selector, antsel=ant_selector, fsel=field_selector,
                   errors=fig.select(tags=["ebar"], type=Whisker),
                   terr=toggle_error),
-        code=corr_selector_callback()
-        ))
-
+        code=batch_selector_callback()))
+    corr_selector.js_on_change("active", CustomJS(
+        args=dict(bsel=batch_selector, fsel=field_selector,
+                  nants=msdata.num_ants, corrs=msdata.active_corrs, 
+                  nfields=len(msdata.active_fields),
+                  nbatches=nbatch, ax=fig, errors=fig.select(tags=["ebar"],
+                  type=Whisker), terr=toggle_error),
+        code=corr_selector_callback()))
+    field_selector.js_on_change("active", CustomJS(
+        args=dict(bsel=batch_selector, csel=corr_selector,
+                  nants=msdata.num_ants, nfields=len(msdata.active_fields),
+                  ncorrs=len(msdata.active_corrs), nbatches=nbatch,
+                  ax=fig, errors=fig.select(tags=["ebar"], type=Whisker),
+                  terr=toggle_error),
+        code=field_selector_callback()))
 
     # Additions group
     # Checkbox to hide and show legends
@@ -495,6 +534,7 @@ def make_widgets(msdata, fig, group_size=8):
         grid(children=[
             [ant_selector, toggle_error, size_slider, title_fontslider],
             [legend_toggle, toggle_flagged, alpha_slider, axis_fontslider],
-            [Div(text="Select antenna group"), Div(text="Select correlation")],
-            [batch_selector, corr_selector]]),
+            [Div(text="Select antenna group"), Div(text="Directions"),
+                Div(text="Select correlation")],
+            [batch_selector, field_selector, corr_selector]]),
         save_selected]

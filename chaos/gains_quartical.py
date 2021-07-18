@@ -150,7 +150,7 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
         # TODO: change from ant to actual ant name
         figrag.add_glyphs(
             F_MARKS[sub.FIELD_ID], data=sdict,
-            legend=str(ant), fill_color=cmap[ant],
+            legend=msdata.reverse_ant_map[ant], fill_color=cmap[ant],
             line_color=cmap[ant],
             tags=[f"a{ant}", f"c{corr}",
                   f"s{sub.DATA_DESC_ID}", f"f{sub.FIELD_ID}"])
@@ -247,8 +247,8 @@ def main(parser, gargs):
             ps.msnames, ps.antennas, ps.channels, ps.corrs, ps.ddids, ps.fields,
             ps.cmaps, ps.yaxes, ps.xaxes, ps.html_names, ps.image_names):
 
-        ms = xds_from_zarr(msname + "::B")
-        msdata = init_table_data(msname + "B", ms)
+        ms = xds_from_zarr(msname + "::G")
+        msdata = init_table_data(msname + "G", ms)
 
         generals = Genargs(msname=msname, version="testwhatever")
 
@@ -265,6 +265,11 @@ def main(parser, gargs):
             html_name = msdata.ms_name + f"_{''.join(yaxes)}" + ".html"
 
         if points > 30000 and image_name is None:
+            snitch.info("This data contains more than 30K points. "+
+                "A png counterpart(s) of the plot will also be generated "+
+                "because the HTML file generated will be slow to load.")
+            snitch.info("Consider plotting antennas in groups for a better "+
+                "interactive experience.")
             image_name = msdata.ms_name + ".png"
         
         if yaxes is None:
@@ -293,7 +298,7 @@ def main(parser, gargs):
             figrag.update_ylabel(axes.yaxis)
 
             if "chan" in axes.xaxis:
-                add_extra_xaxis(freqs, figrag, selections.channels)
+                add_extra_xaxis(ms[0].gain_f.values, figrag, selections.channels)
 
             figrag.add_legends(group_size=_GROUP_SIZE_, visible=True)
             figrag.update_title(f"{axes.yaxis} vs {axes.xaxis}")
@@ -334,6 +339,7 @@ def main(parser, gargs):
             output_file(filename=html_name)
             save(final_layout, filename=html_name,
                  title=os.path.splitext(os.path.basename(html_name))[0])
+            snitch.info(f"HTML at: {html_name}")
         snitch.info("Plotting Done")
 
 
@@ -342,5 +348,5 @@ if __name__ == "__main__":
     #synonyms for the the tables available here
     yaxes = "a"
     xaxis = "time"
-    main(gains_argparser, ["-t", ms_name, "-y", yaxes, "-x", xaxis, "--ant", 
-    "0,1"])
+    main(gains_argparser, ["-t", ms_name, "-y", yaxes, "-x", xaxis,
+    "--cmap", "glasbey"])
