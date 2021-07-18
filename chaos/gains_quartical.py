@@ -171,10 +171,6 @@ def add_hover_data(fig, axes):
     ----------
     fig : :obj:`Plot`
         The figure itself
-    
-    Returns
-    -------
-    Updated data dictionary (with htool data)
     """
     #format unix time in tooltip
     if axes.xaxis == "time":

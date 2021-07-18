@@ -322,7 +322,7 @@ def gen_checkbox_labels(msdata, group_size=8):
     ------
     List containing batch labels for the batch selection check box group
     """
-    ant_names = [msdata.ant_names[a] for a in msdata.active_ants]
+    ant_names = [msdata.ant_names[a] for a in msdata.active_antennas]
     lhs = ant_names[slice(0, None, group_size)]
     rhs = ant_names[slice(group_size-1, None, group_size)]
     last = ant_names[-1]

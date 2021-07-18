@@ -566,6 +566,8 @@ class FigRag(BaseFigure):
 
         for idx, fid in enumerate(mdata.active_fields):
             rends = sorted(self._fig.select(tags=f"f{fid}"), key=skey)
+            if len(rends) == 0:
+                snitch.warning(f"No renderers found tagged f{fid}")
             for rend in rends:
                 src = dict(rend.data_source.data)
                 if "flags" in src:
@@ -582,7 +584,6 @@ class FigRag(BaseFigure):
                     "o", color=rend.glyph.fill_color, label=src["ant"][0],
                     markersize=msize)
         
-           
             ax[idx].set_xlabel(self._fig.xaxis.axis_label)
 
             ax[idx].set_ylabel(self._fig.yaxis.axis_label)
@@ -615,16 +616,17 @@ class FigRag(BaseFigure):
 
         if dpi is None and ext==".png":
             dpi = 300
-        else:
-            dpi = 72
+
         # set up renderer sorting function
         skey = lambda x: int(x.id)
-
-        marks = {0: "o", 1: "x", 2: "p", 3: "*"}
         
-        if group_size is None:
-            group_size = len(mdata.active_antennas)
-        elif group_size > len(mdata.active_antennas):
+        marks = ["o", "x", "^", "+"]
+        if mdata.corr_map is not None:
+            marks = {mdata.reverse_corr_map[i]: m for i,m in enumerate(marks)}
+        else:
+            marks = {i: m for i, m in enumerate(marks)}
+                
+        if group_size is None or group_size > len(mdata.active_antennas):
             group_size = len(mdata.active_antennas)
 
         ncols = int(np.sqrt(group_size))
@@ -647,7 +649,7 @@ class FigRag(BaseFigure):
                         if {f"b{bid}",f"a{aid}",f"f{fid}"}.issubset(
                             set(rend.tags))]
             
-                    if len(frends) ==0:
+                    if len(frends)==0:
                         continue
                     frends = sorted(frends, key=skey)
                     col = aidx % ncols
