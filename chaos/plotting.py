@@ -607,7 +607,7 @@ class FigRag(BaseFigure):
         """
         Save plots in png,ps, pdf and svg format split out per field,
         and antenna batch. Remember flags were inverted to make cds views!!!
-        """
+        """        
         if filename is None:
             return 
         snitch.info("Setting up static image with subplots")
@@ -645,6 +645,8 @@ class FigRag(BaseFigure):
                     figsize=(20, 8), dpi=dpi)
                 row = -1
                 for aidx, aid in enumerate(mdata.active_antennas):
+                    if type(aid) is not int:
+                        aid = mdate.ant_map[aid]
                     frends = [rend for rend in self._fig.renderers
                         if {f"b{bid}",f"a{aid}",f"f{fid}"}.issubset(
                             set(rend.tags))]
