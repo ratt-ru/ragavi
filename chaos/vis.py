@@ -14,6 +14,7 @@ from itertools import cycle, product, zip_longest
 from dask import compute, config
 from dask.diagnostics import ProgressBar
 from daskms.table_schemas import MS_SCHEMA
+from bokeh.core.properties import value
 from bokeh.io import output_file, output_notebook, save
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import Div, ImageRGBA, PreText, Text
@@ -211,6 +212,7 @@ def repeat_ravel_viz(arr, max_size, chunk_size):
                        repeats=max_size//arr.size, axis=0, dtype=arr.dtype)
     return da.ravel(arr).rechunk(chunk_size)
 
+
 def create_df(axes):
     """
     Create a dask dataframe from input x, y and iterate columns if
@@ -369,12 +371,15 @@ def sort_the_plot(fig, axes, plargs):
         # add some small title into the plot
         fig.fig.tools[0].tooltips.extend(
             [(name, f"@{name}") for name in plargs.i_ttips.keys()])
+        # use value with text_font to avoid bad column name error
+        # https://github.com/bokeh/bokeh/issues/11044
         fig.add_glyphs(
             Text,
             dict(
                 x=[plargs.x_min + ((plargs.x_max-plargs.x_min) * 0.5)],
                 y=[plargs.y_max * 0.87], text=[plargs.i_title]),
-            text_font="monospace", text_font_style="bold",
+            text_font=value("monospace"), 
+            text_font_style="bold",
             text_font_size="10pt", text_align="center")
     else:
         fig.update_title(plargs.title)
@@ -394,6 +399,7 @@ def get_row_chunk(msd):
     row_cs = max_chunk // (msd.num_chans * msd.num_corrs)
     row_cs = int(np.floor(row_cs/10_000)*10_000)
     return row_cs
+
 
 def main(parser, gargs):
     ps = parser().parse_args(gargs)
@@ -537,11 +543,14 @@ def main(parser, gargs):
             final_plot = column([pre, outp[0]], sizing_mode="stretch_width")
         
         output_file(html_name, title=plargs.title)
-        save(final_plot)
+        save(final_plot, filename=html_name)
         snitch.info(f"Rendered plot to: {html_name}")
         snitch.info("Specified options:")
-        parsed_opts = {k: v for k, v in ps.__dict__.items()
-                       if v is not None}
+        parsed_opts = dict()
+        for k, v in ps.__dict__.items():
+            if type(v) is list and None not in v or v is not None:
+                parsed_opts[k] = v
+    
         parsed_opts = json.dumps(parsed_opts, indent=2, sort_keys=True)
         for _x in parsed_opts.split('\n'):
             snitch.info(_x)
@@ -553,6 +562,7 @@ if __name__ == "__main__":
     (
     "--ms /home/lexya/Documents/test_gaintables/test.ms" +
     # "--ms /home/lexya/Downloads/radioastro/test.ms" +
-    " -x time -y amp "+
+    " -x time -y amp "+ #"--iter-axis field"
     "" ).split()
     )
+
