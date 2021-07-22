@@ -106,19 +106,20 @@ def init_table_data(msname, sub_list):
     fields = [fields[k] for k in sorted(fields.keys())]
     scans = sorted(np.unique(scans))
     spws = sorted(np.unique(spws))
-    ants = sub_list[0].ant_names.values
-    corrs = stokes_types[sub_list[0].corr_type.values-1]
+    ants = sub_list[0].ant.values
+    corrs = sub_list[0].corr.values
 
     return TableData(msname, ant_names=ants, corr_names=corrs,
         field_names=fields, spws=spws)
 
 def populate_fig_data(subms, axes, cmap, figrag, msdata):
     time, freq = subms.gain_t.values, subms.gain_f.values / 1e9
-    ants_corrs = product(range(subms.ant.size), range(subms.corr.size))
-    for ant, corr in ants_corrs:        
+    ants_corrs = product(msdata.active_antennas, msdata.active_corrs)
+    for ant, corr in ants_corrs:
         sub = subms.sel(ant=ant, corr=corr)
         gains, sdict = sub.gains, {}
 
+        snitch.info(f"Antenna {ant} corr: {ant}")
         if axes.xaxis == "time":
             original = ("gain_t", "gain_f", "dir")
         else:
@@ -141,18 +142,22 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
             sub.scans.data.flatten(), sub.ddids.data.flatten(),
         )
         sdict["x"] = xaxes[axes.xaxis]
-        sdict["ant"] = np.repeat(msdata.reverse_ant_map[ant], total_reps)
+        sdict["ant"] = np.repeat(ant, total_reps)
         # sdict["colors"] = np.repeat(cmap[ant], total_reps)
-        sdict["corr"] = np.repeat(msdata.reverse_corr_map[corr], total_reps)
+        sdict["corr"] = np.repeat(corr, total_reps)
         sdict["markers"] = np.repeat(F_MARKS[sub.FIELD_ID], total_reps)
         sdict["data"] = axes
         
         # TODO: change from ant to actual ant name
+
+        # aidx: antenna item number in theactive antennas array
+        aidx = msdata.active_antennas.tolist().index(ant)
         figrag.add_glyphs(
             F_MARKS[sub.FIELD_ID], data=sdict,
-            legend=msdata.reverse_ant_map[ant], fill_color=cmap[ant],
-            line_color=cmap[ant],
-            tags=[f"a{ant}", f"c{corr}",
+            legend=ant, 
+            fill_color=cmap[aidx],
+            line_color=cmap[aidx],
+            tags=[f"a{msdata.ant_map[ant]}", f"c{msdata.corr_map[corr]}",
                   f"s{sub.DATA_DESC_ID}", f"f{sub.FIELD_ID}"])
     return figrag
 
@@ -208,11 +213,11 @@ def organise_table(ms, sels, tdata):
     if sels.antennas is not None:
         antennas = sels.antennas.replace(" ", "").split(",")
         if all([a.isdigit() for a in antennas]):
-            sels.antennas = [int(a) for a in antennas]
+            sels.antennas = [tdata.reverse_ant_map[int(a)] for a in antennas]
         else:
-            sels.antennas = [tdata.ant_map[a] for a in antennas]
+            sels.antennas = [a for a in antennas]
     else:
-        sels.antennas = list(tdata.ant_map.values())
+        sels.antennas = slice(None, None)
 
 
     new_order = []
@@ -233,8 +238,9 @@ def organise_table(ms, sels, tdata):
         new_order.append(xr.concat(sub_order, "gain_t",
                          combine_attrs="drop_conflicts"))
     
+
     tdata.active_fields = sels.fields
-    tdata.active_antennas = sels.antennas
+    tdata.active_antennas = new_order[0].ant.values
     tdata.active_corrs = new_order[0].corr.values
     # TODO: antenna slection needs to be fixed properly
     return new_order
@@ -265,9 +271,9 @@ def main(parser, gargs):
             html_name = msdata.ms_name + f"_{''.join(yaxes)}" + ".html"
 
         if points > 30000 and image_name is None:
-            snitch.info("This data contains more than 30K points. "+
-                "A png counterpart(s) of the plot will also be generated "+
-                "because the HTML file generated will be slow to load.")
+            snitch.info("This data contains more than 30K points. ")
+            snitch.info("A png counterpart(s) of the plot will also be generated")
+            snitch.info("because the HTML file generated may be slow to load.")
             snitch.info("Consider plotting antennas in groups for a better "+
                 "interactive experience.")
             image_name = msdata.ms_name + ".png"
@@ -344,7 +350,7 @@ def main(parser, gargs):
 
 
 if __name__ == "__main__":
-    ms_name="/home/lexya/Documents/test_gaintables/quartical/gains.qc"
+    ms_name = "/home/lexya/Documents/test_gaintables/quartical/kgb_mad.qc"
     #synonyms for the the tables available here
     yaxes = "a"
     xaxis = "time"
