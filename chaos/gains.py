@@ -141,7 +141,7 @@ def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
         snitch.debug(f"spw: {sub.SPECTRAL_WINDOW_ID}, " +
               f"field: {msdata.reverse_field_map[sub.FIELD_ID]}, " +
               f"corr: {corr}, yaxis: {yaxis}")
-        colour = cmap[msdata.active_antennas.index(sub.ANTENNA1)]
+        colour = cmap[msdata.reverse_ant_map[sub.ANTENNA1]]
         msdata.active_channels = msdata.freqs.sel(chan=selections.channels,
                                                   row=sub.SPECTRAL_WINDOW_ID)
 
@@ -199,7 +199,7 @@ def main(parser, gargs):
             antennas=antennas, corrs=Chooser.get_knife(corrs),
             baselines=baselines, channels=Chooser.get_knife(channels),
             ddids=ddids, fields=fields, taql=taql, t0=t0, t1=t1)
-        
+
         #initialise data ssoc with ms
         msdata = MsData(msname)
         snitch.info(f"MS: {msname}")
@@ -218,7 +218,8 @@ def main(parser, gargs):
             if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
                 msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
             if sub.ANTENNA1 not in msdata.active_antennas:
-                msdata.active_antennas.append(sub.ANTENNA1)
+                msdata.active_antennas.append(
+                        msdata.reverse_ant_map[sub.ANTENNA1])
         
         if yaxes is None:
             yaxes = ["a", "p"]
