@@ -474,14 +474,15 @@ def make_widgets(msdata, fig, group_size=8):
     Nothing    
     """
 
-    batch_labels = gen_checkbox_labels(msdata.ant_names, group_size)
+    batch_labels = gen_checkbox_labels(msdata.active_antennas, group_size)
     
     #number of batches avail. Depends on the group_size
     nbatch = len(batch_labels)
 
-    corr_labels = [f"Corr {msdata.reverse_corr_map[a]}"
-                   if msdata.corr_map is not None else f"Corr {a}" 
-                   for a in msdata.active_corrs]
+    corr_labels = [
+        f"Corr {msdata.reverse_corr_map[a]}" 
+        if msdata.corr_map is not None and type(a) is int else f"Corr {a}" 
+        for a in msdata.active_corrs]
     field_labels = [f"{msdata.reverse_field_map[f]} {F_CODES[fi]}" 
                         for fi, f in enumerate(msdata.active_fields)]
     spw_labels = [f"Spw {spw}" for spw in msdata.active_spws]
