@@ -125,7 +125,7 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
         else:
             original = ("gain_f", "gain_t", "dir")
     
-        gains = np.ravel(gains.transpose(*original).data)
+        gains = gains.transpose(*original)
         total_reps = gains.size
         data_reps = gains.size // freq.size
 
@@ -137,10 +137,11 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
         xaxes["chan"]=xaxes["freq"]=xaxes["frequency"] = xaxes["channel"]
 
         sdict["y"], sdict["field"], sdict["scan"], sdict["ddid"]= \
-            compute(
-            Processor(gains).calculate(axes.yaxis), sub.fields.data.flatten(),
-            sub.scans.data.flatten(), sub.ddids.data.flatten(),
+            compute(Processor(gains).calculate(axes.yaxis).data,
+                    sub.fields.data.flatten(),
+                    sub.scans.data.flatten(), sub.ddids.data.flatten(),
         )
+        sdict["y"] = np.ravel(sdict["y"])
         sdict["x"] = xaxes[axes.xaxis]
         sdict["ant"] = np.repeat(ant, total_reps)
         # sdict["colors"] = np.repeat(cmap[ant], total_reps)
@@ -352,7 +353,7 @@ def main(parser, gargs):
 if __name__ == "__main__":
     ms_name = "/home/lexya/Documents/test_gaintables/quartical/kgb_mad.qc"
     #synonyms for the the tables available here
-    yaxes = "a"
+    yaxes = "p"
     xaxis = "time"
     main(gains_argparser, ["-t", ms_name, "-y", yaxes, "-x", xaxis,
     "--cmap", "glasbey"])
