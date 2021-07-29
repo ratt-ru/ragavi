@@ -9,6 +9,7 @@ import dask.dataframe as dd
 import daskms as xm
 import datashader as ds
 import datashader.transfer_functions as tf
+import xarray as xr
 
 from itertools import cycle, product, zip_longest
 from dask import compute, config
@@ -19,15 +20,15 @@ from bokeh.io import output_file, output_notebook, save
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import Div, ImageRGBA, PreText, Text
 
-from arguments import vis_argparser
-from exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
-from lograg import logging, get_logger
-from plotting import FigRag, Circle, Scatter
-from processing import Chooser, Processor
-from ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
+from chaos.arguments import vis_argparser
+from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
+from chaos.lograg import logging, get_logger
+from chaos.plotting import FigRag, Circle, Scatter
+from chaos.processing import Chooser, Processor
+from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
     Selargs)
-from utils import get_colours, timer
-from widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
+from chaos.utils import get_colours, new_darray, timer
+from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = get_logger(logging.getLogger(__name__))
 
@@ -101,14 +102,12 @@ def corr_iter(subs):
     for sub in subs:
         for c in range(n_corrs):
             snitch.debug(f"Corr: {c}")
-
             nsub = sub.copy(deep=True).sel(corr=c)
             nsub.attrs["CORR"] = c
             outp.append(nsub)
 
     snitch.debug("Done")
     return outp
-
 
 def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
     """
@@ -153,8 +152,8 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
                 spws=selections.ddids, scans=selections.scans,
                 taql=selections.taql, return_ids=True)
 
-    if axes.iaxis:
-        group_cols += axes.idata_col.split() if axes.idata_col else []
+    if axes.iaxis and axes.idata_col and axes.idata_col not in group_cols:
+            group_cols += axes.idata_col.split()
     
     ms_schema = MS_SCHEMA.copy()
     ms_schema["WEIGHT_SPECTRUM"] = ms_schema["SIGMA_SPECTRUM"] = ms_schema["DATA"]
@@ -169,8 +168,15 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
                       columns=sel_cols, group_cols=group_cols,
                     #   table_schema=ms_schema
                       )
-    if axes.iaxis == "antenna":
+    if {"antenna"}.issubset({axes.iaxis, axes.caxis}):
         tab_objs = antenna_iter(msdata, **xds_inputs)
+        if axes.caxis == "antenna":
+            # create an antenna column for colouration
+            snitch.warn(f"No iterations as colour axis: {axes.caxis} is active")
+            for sub in tab_objs:
+                sub["ANTENNA"] = new_darray(sub.FLAG.ROWID, "ANTENNA", sub.ANTENNA)
+            tab_objs = [xr.concat(tab_objs, dim="row",
+                                   combine_attrs="drop_conflicts").chunk(chunks)]
     elif axes.iaxis == "corr":
         tab_objs = corr_iter(xm.xds_from_ms(msdata.ms_name, **xds_inputs))
     else:
@@ -268,8 +274,8 @@ def create_df(axes):
 def image_callback(xy_df, plargs, axes):
     cvs = ds.Canvas(plot_width=plargs.c_width,
                     plot_height=plargs.c_height, 
-                    x_range=(plargs.x_min, plargs.x_max),
-                    y_range=(plargs.y_min, plargs.y_max))
+                    x_range=(plargs.xmin, plargs.xmax),
+                    y_range=(plargs.ymin, plargs.ymax))
     snitch.info("Datashader aggregation starting")
     if axes.caxis is not None:
         with ProgressBar():
@@ -301,40 +307,44 @@ def sort_the_plot(fig, axes, plargs):
     plargs:
         plot arguments dataclass
     """
+    """
+    # For future use
+    https://stackoverflow.com/questions/33037185/how-to-use-a-datetime-axis-with-a-bokeh-image-rgba-element
+    https://stackoverflow.com/questions/25134639/how-to-force-python-print-numpy-datetime64-with-specified-timezone
+    """
     if axes.xdata.dtype == "datetime64[s]":
         axes.xdata = axes.xdata.astype(np.float64)
     if axes.ydata.dtype == "datetime64[s]":
         axes.ydata = axes.ydata.astype(np.float64)
     if plargs.x_min is None:
-        plargs.x_min = apply_blockwise(axes.xdata, np.nanmin)
+        plargs.xmin = apply_blockwise(axes.xdata, np.nanmin)
     if plargs.x_max is None:
-        plargs.x_max = apply_blockwise(axes.xdata, np.nanmax)
+        plargs.xmax = apply_blockwise(axes.xdata, np.nanmax)
     if plargs.y_min is None:
-        plargs.y_min = apply_blockwise(axes.ydata, np.nanmin)
+        plargs.ymin = apply_blockwise(axes.ydata, np.nanmin)
     if plargs.y_max is None:
-        plargs.y_max = apply_blockwise(axes.ydata, np.nanmax)
+        plargs.ymax = apply_blockwise(axes.ydata, np.nanmax)
 
     snitch.info("Calculating x and y Min and Max ranges")
-    compute(plargs.x_max)
     # with ProgressBar():
-    plargs.x_min, plargs.x_max, plargs.y_min, plargs.y_max = compute(
-        plargs.x_min, plargs.x_max, plargs.y_min, plargs.y_max)
+    plargs.xmin, plargs.xmax, plargs.ymin, plargs.ymax = compute(
+        plargs.xmin, plargs.xmax, plargs.ymin, plargs.ymax)
 
-    if plargs.x_min == plargs.x_max:
+    if plargs.xmin == plargs.xmax:
         snitch.debug("Incrementing x-max + 1 because x-min==x-max")
-        plargs.x_max += 1
-    if plargs.y_min == plargs.y_max:
+        plargs.xmax += 1
+    if plargs.ymin == plargs.ymax:
         snitch.debug("Incrementing y-max + 1 one because y-min==y-max")
-        plargs.y_max += 1
+        plargs.ymax += 1
     
-    if np.all(np.isnan(plargs.y_min)) or np.all(np.isnan(plargs.y_max)):
-        plargs.y_min = plargs.x_min = 0
-        plargs.y_max = plargs.x_max = 1
+    if np.all(np.isnan(plargs.ymin)) or np.all(np.isnan(plargs.ymax)):
+        plargs.ymin = plargs.xmin = 0
+        plargs.ymax = plargs.xmax = 1
 
     snitch.info("x: {:.4}, min: {:10.4f}, max: {:10.4f}".format(axes.xaxis,
-                    plargs.x_min, plargs.x_max))
+                    plargs.xmin, plargs.xmax))
     snitch.info("y: {:.4}, min: {:10.4f}, max: {:10.4f}".format(axes.yaxis,
-                    plargs.y_min, plargs.y_max))
+                    plargs.ymin, plargs.ymax))
 
     df = create_df(axes)
     agg = image_callback(df, plargs, axes)
@@ -346,22 +356,33 @@ def sort_the_plot(fig, axes, plargs):
         img = tf.shade(agg, color_key=plargs.cmap)
 
     fig.add_glyphs(ImageRGBA,
-        dict(image=[img.data], x=[plargs.x_min], y=[plargs.y_min],
-             dw=[plargs.x_max-plargs.x_min],
-             dh=[plargs.y_max-plargs.y_min], **plargs.i_ttips),
+        dict(
+            image=[img.data], x=[plargs.xmin], y=[plargs.ymin],
+            dw=[plargs.xmax-plargs.xmin], dh=[plargs.ymax-plargs.ymin], 
+            minx=[plargs.xmin], miny=[plargs.ymin],
+            maxx=[plargs.xmax], maxy=[plargs.ymax],
+            **plargs.i_ttips),
         dilate=False)
     
     if axes.xaxis == "time":
-        tip0 = (f"({axes.xaxis:.4}, {axes.yaxis:.4})",
-                "(@x{%F %T}, @y)")
-        fig.fig.tools[0].formatters = {"@x": "datetime"}
+        plargs.xmin = plargs.xmin.astype("datetime64[s]")
+        plargs.xmax = plargs.xmax.astype("datetime64[s]")
+        fig.fig.renderers[0].data_source.data.update(
+            dw=[plargs.xmax-plargs.xmin], x=[plargs.xmin],
+            minx=[plargs.xmin], maxx=[plargs.xmax]
+            )
+        tip0 = (f"{axes.xaxis:.4}, {axes.yaxis:.4}",
+                "($x{%F %T}, $y)")
+        mmax = ("Min-x, Max-x", "(@minx{%F %T}, @maxx{%F %T})")
+        fig.fig.tools[0].formatters = {"$x": "datetime", "@minx": "datetime",
+                                        "@maxx": "datetime", }
     else:
-        tip0 = (f"({axes.xaxis:.4}, {axes.yaxis:.4})", f"(@x, @y)")
+        tip0 = (f"{axes.xaxis:.4}, {axes.yaxis:.4}", f"($x, $y)")
+        mmax = ("Min-x, Max-x", f"({plargs.xmin:.2f}, {plargs.xmax:.2f})")
     
     fig.fig.tools[0].tooltips = [
-        tip0,
-        ("(min_x, max_x)", f"({plargs.x_min:.2f}, {plargs.x_max:.2f})"),
-        ("(min_y, max_y)", f"({plargs.y_min:.2f}, {plargs.y_max:.2f})")
+        tip0, mmax,
+        ("Min-y, Max-y", "(@miny{0.00}, @maxy{0.00})")
     ]
     
     fig.update_xlabel(axes.xaxis)
@@ -376,8 +397,8 @@ def sort_the_plot(fig, axes, plargs):
         fig.add_glyphs(
             Text,
             dict(
-                x=[plargs.x_min + ((plargs.x_max-plargs.x_min) * 0.5)],
-                y=[plargs.y_max * 0.87], text=[plargs.i_title]),
+                x=[plargs.xmin + ((plargs.xmax-plargs.xmin) * 0.5)],
+                y=[plargs.ymax * 0.87], text=[plargs.i_title]),
             text_font=value("monospace"), 
             text_font_style="bold",
             text_font_size="10pt", text_align="center")
@@ -409,7 +430,7 @@ def main(parser, gargs):
     generals = Genargs(chunks=ps.chunk_size, mem_limit=ps.mem_limit,
         ncores=ps.ncores)
 
-    config.set(num_workers=generals.ncores, memory_limit=generals.mem_limit)
+    # config.set(num_workers=generals.ncores, memory_limit=generals.mem_limit)
 
     # repeated for all 
     for (msname, xaxis, yaxis, data_column, cmap, c_axis, i_axis, html_name,
@@ -466,6 +487,13 @@ def main(parser, gargs):
             ddids=ddids, fields=fields, scans=scans, taql=taql)
         axes = Axargs(xaxis=xaxis, yaxis=yaxis, data_column=data_column,
             msdata=msdata, iaxis=i_axis, caxis=c_axis)
+        
+        if axes.yaxis == axes.xaxis:
+            raise RuntimeError(
+                f"x-axis '{axes.xaxis}' and y-axis '{axes.yaxis}' are similar")
+        if axes.caxis == axes.iaxis and (axes.caxis and axes.iaxis):
+            raise RuntimeError(
+                f"x-axis '{axes.xaxis}' and y-axis '{axes.yaxis}' are similar")
 
         subs = get_ms(msdata, selections, axes, cbin=None,
                      chunks=generals.chunks, tbin=None)
@@ -488,6 +516,7 @@ def main(parser, gargs):
             msdata.active_channels = msdata.freqs.sel(chan=selections.channels,
                                                       row=sub.DATA_DESC_ID)
 
+            print(f"shape:{sub.DATA.shape}")
             if axes.iaxis is not None:
                 plargs.set_iter_title(axes, sub, msdata)
 
@@ -498,11 +527,13 @@ def main(parser, gargs):
                 t_matrix += ["corr"] if "corr" in sub.dims else []
                 sub = sub.transpose(*t_matrix)
 
+            # Set the axis data
             [axes.set_axis_data(_, sub) for _ in list("xyci")]
+            
             if ps.flag:
                 axes.flags = sub.FLAG
                 sub = sub.where(axes.flags == False)
-          
+
             axes.xdata = Processor(axes.xdata).calculate(axes.xaxis).data
             axes.ydata = Processor(axes.ydata).calculate(axes.yaxis).data
             
@@ -532,14 +563,18 @@ def main(parser, gargs):
                         f" | Linked: {ps.link_plots}")
 
             pre = PreText(text=info_text, width=int(plargs.plot_width * 0.961),
-                          height=50, align="start", margin=(0, 0, 0, 0))
+                          height=50, align="start", margin=(0, 0, 0, 0),
+                          sizing_mode="stretch_width")
             final_plot = gridplot(children=outp, ncols=plargs.grid_cols,
                                   sizing_mode="stretch_width")
-            final_plot = column(children=[title_div, pre, final_plot])
+            final_plot = column(children=[title_div, pre, final_plot],
+                sizing_mode="stretch_width")
         else:
-            info_text = f"MS: {msdata.ms_name}"
+            info_text = (f"ragavi   : v{generals.version}\n" +
+                         f"MS       :{msdata.ms_name}")
             pre = PreText(text=info_text, width=int(plargs.plot_width * 0.961),
-                          height=50, align="start", margin=(0, 0, 0, 0))
+                          height=50, align="start", margin=(0, 0, 0, 0),
+                          sizing_mode="stretch_width")
             final_plot = column([pre, outp[0]], sizing_mode="stretch_width")
         
         output_file(html_name, title=plargs.title)
@@ -556,13 +591,21 @@ def main(parser, gargs):
             snitch.info(_x)
         snitch.info(">" * 70)
     
+    return 0
+"""
+we iterate over:
+ iter_choices = [
+        "field", "ant", "antenna", 
+        "ant1", "antenna1", "ant2", "antenna2", "bl",
+        "baseline", "corr", , "scan", "spw"]
 
+check if cmaps are corectly chose
+"""
 if __name__ == "__main__":
     main(vis_argparser, 
     (
-    "--ms /home/lexya/Documents/test_gaintables/test.ms" +
-    # "--ms /home/lexya/Downloads/radioastro/test.ms" +
-    " -x time -y amp "+ #"--iter-axis field"
+    "--ms /home/lexya/Downloads/radioastro/tutorial_docs/clueless_calibration/1491291289.1ghz.1.1ghz.4hrs.ms" +
+    " -x time -y amp "+ "--colour-axis ant"
     "" ).split()
     )
 
