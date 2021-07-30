@@ -3,16 +3,16 @@ from setuptools import setup, find_packages
 setup(
     name="holy_chaos",
     # packages = ["holy_chaos"],
-    packages=find_packages(exclude=["docs", "tests*"]),
+    packages=find_packages(where="chaos", exclude=["docs"]),
     install_requires=[ #minimal set of requireement necessaru for the package to run
         "bokeh",
         "ipdb",
         "dask[complete]",
         "dask-ms[xarray]",
         "datashader",
-        "future"
+        "future",
         "matplotlib",
-        "numpy >= 1.15",
+        "numpy",
         "python-casacore",
         "xarray",
         "numcodecs", #for dask experimental zarr
