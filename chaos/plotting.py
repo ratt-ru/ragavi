@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from bokeh.io import save, output_file
 from bokeh.models import (BasicTicker, BooleanFilter, LinearAxis, Plot, Scatter,
-                          CDSView, Circle, Circle, ColumnDataSource, DataRange1d,
-                          DatetimeAxis, Grid, Legend, Line, Line, LinearScale,
+                          CDSView, Circle, ColumnDataSource, DataRange1d,
+                          DatetimeAxis, Grid, Legend, Line, LinearScale,
                           LogAxis, LogScale, Range1d, Scatter, Title, Toolbar,
                           Whisker)
 from bokeh.models.renderers import GlyphRenderer
@@ -479,8 +479,52 @@ class FigRag(BaseFigure):
         output_file(filename)
         save(self._fig, filename=filename, title=os.path.splitext(filename)[1])
 
+    def add_categorical_colourbar(self, caxis, plargs, visible=False,
+        position="right"):
+        """Add a colourbar for categorical data
+        Parameters
+        ----------
+       
+        caxis: :obj:`str`
+            Name of the categorizing axis
+        plargs: :obj:`chaos.ragdata.PlotArgs`
+            An object containing cmap-list with colours, n_categories-number
+            of categories, cat_map- category id to name mapping dictionary
+        """
+        self._fig.plot_width = int(self._fig.plot_width * 0.98)
+        snitch.debug("Adding colour bar")
+        caxis, labels = caxis.capitalize(), list(plargs.cat_map.values())
+
+        rends = []
+
+        # legend height
+        lh = int((self._fig.plot_height / plargs.n_categories) * 0.85)
+
+        for c, cidx in enumerate(plargs.cat_map.keys()):
+            # ignore other cats. This was added because of corr mapings
+            if c >= plargs.n_categories:
+                continue
+            ssq = dict(
+                x=[plargs.xmin, plargs.xmin], y=[plargs.ymin, plargs.ymin])
+
+            self.add_glyphs(Line, ssq, legend=str(plargs.cat_map[cidx]),
+                            line_color=next(plargs.cmap), line_width=lh)
+
+        self.add_legends(
+            group_size=60, position=position, visible=visible,
+            name="cb_legend", title_standoff=2, border_line_width=1,
+            title=caxis, glyph_height=lh, glyph_width=25,
+            title_text_line_height=0.3, padding=4,
+            title_text_font="monospace", title_text_font_style="normal",
+            title_text_font_size="10pt", title_text_align="left",
+            label_text_font_style="bold", spacing=0, margin=0,
+            label_height=5, label_width=10, label_text_font_size="8pt",
+            orientation="vertical"
+        )
+        snitch.debug("Colour bar Added")
+
     
-    def add_legends(self, group_size=16, **kwargs):
+    def add_legends(self, group_size=16, position="above", **kwargs):
         """
         Group legend items into group_size each, create legend objects and
         attach them to figure. This function also adds a batch number to
@@ -516,7 +560,7 @@ class FigRag(BaseFigure):
             legends.append(Legend(items=items, tags=["legend"], **kwargs))
         legends.reverse()
         for item in legends:
-            self._fig.add_layout(item, "above")
+            self._fig.add_layout(item, position)
        
     def link_figures(self, *others):
         """

@@ -415,6 +415,7 @@ class Genargs:
     def __post_init__(self):
         self.ncores, self.mem_limit = self.resource_defaults(
             self.mem_limit, self.ncores)
+        self.chunks = int(self.chunks)
 
     def get_mem(self):
         """Get 90% of the memory available"""
@@ -727,18 +728,21 @@ class Plotargs:
             snitch.info("No partition size. Please set 'partitions' attribute")
             return
 
-        self.plot_height = int(self.plot_height * 0.72)
         if self.grid_cols:
-            if self.partitions < self.grid_cols:
+            if self.partitions < self.grid_cols: 
                 self.grid_cols = self.partitions
             self.grid_rows = int(np.ceil(self.partitions // self.grid_cols))
             self.plot_width = int((self.plot_width * 0.961) // self.grid_cols)
             # set plot height same as width for iter mode. I want a square box
-            if self.grid_cols <= self.partitions:
+            # Default number of grid columns is 5
+            if self.grid_rows > 1:
                 self.plot_height = int(self.plot_width *0.9)
+            else:
+                self.plot_height = int(self.plot_height * 0.72)
             snitch.debug(f"Plot grid (r x c): {self.grid_rows} x {self.grid_cols}")
         else:
             self.plot_width = int(self.plot_width * 0.961)
+            self.plot_height = int(self.plot_height * 0.8)
             
 
     def form_plot_title(self, axargs):
