@@ -1,13 +1,14 @@
 import re
 import bokeh.palettes as bp
 import colorcet as cc
+import dask.array as da
 import matplotlib.colors as mpc
 import matplotlib.pyplot as plt
 import numpy as np
 
 from time import perf_counter
 from difflib import get_close_matches
-from lograg import logging, get_logger
+from chaos.lograg import logging, get_logger
 
 snitch = get_logger(logging.getLogger(__name__))
 
@@ -70,6 +71,30 @@ def get_colours(n, cmap="coolwarm"):
         raise InvalidCmap(f"cmap {cmap} not found.")
         return -1
 
+def new_darray(in_model, out_name, out_value):
+    """Generate a new data array emulating the sstructure of  another
+    This is for custom variables that are not included in some dataset.
+    Note that the output value is repeated in the new array.
+    
+    Parameters
+    ----------
+    in_model: :obj:`xr.dataArray`
+        Data array to be emulated
+    out_name: :obj:`str`
+        Name of output data array
+    out_value: :obj:
+        Value to be filled in the new array
+    
+    Returns
+    -------
+    bn : :obj:`xr.dataArray`
+        New data array containing the repeated value
+    """
+    types = {bool: bool, int: np.int8}
+    bn = in_model.copy(deep=True, data=da.full(
+        in_model.shape, out_value, dtype=types[type(out_value)]))
+    bn.name = out_name
+    return bn
 
 def pair(x, y):
     """
