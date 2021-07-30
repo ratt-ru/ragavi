@@ -139,12 +139,10 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
         A list containing the specified table objects as
         :obj:`xarray.Dataset`
     """
-    # snitch.debug("Starting MS acquisition")
+    snitch.info(f"Working on {msdata.ms_name}")
 
     # Nb for i/c axis not in MS e.g baseline, corr, antenna, axes returns None
     # Always group by DDID
-
-
     group_cols, sel_cols = ["DATA_DESC_ID"], [*{"FLAG", *axes.active_columns}]
     
     where = Chooser.form_taql_string(msdata, antennas=selections.antennas,
@@ -157,7 +155,6 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
     
     ms_schema = MS_SCHEMA.copy()
     ms_schema["WEIGHT_SPECTRUM"] = ms_schema["SIGMA_SPECTRUM"] = ms_schema["DATA"]
-    # ms_schema = None
 
     # defining part of the gain table schema
     if axes.data_column not in ["DATA", "CORRECTED_DATA"]:
@@ -165,18 +162,18 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
 
     #removed chan and corr chunking    
     xds_inputs = dict(chunks=dict(row=chunks), taql_where=where,
-                      columns=sel_cols, group_cols=group_cols,
-                    #   table_schema=ms_schema
-                      )
+                      columns=sel_cols, group_cols=group_cols)
     if {"antenna"}.issubset({axes.iaxis, axes.caxis}):
         tab_objs = antenna_iter(msdata, **xds_inputs)
         if axes.caxis == "antenna":
             # create an antenna column for colouration
             snitch.warn(f"No iterations as colour axis: {axes.caxis} is active")
             for sub in tab_objs:
-                sub["ANTENNA"] = new_darray(sub.FLAG.ROWID, "ANTENNA", sub.ANTENNA)
-            tab_objs = [xr.concat(tab_objs, dim="row",
-                                   combine_attrs="drop_conflicts").chunk(chunks)]
+                sub["ANTENNA"] = new_darray(sub.FLAG.ROWID, "ANTENNA", 
+                                            sub.ANTENNA)
+            tab_objs = [xr.concat(
+                tab_objs, dim="row", combine_attrs="drop_conflicts"
+                ).chunk(xds_inputs["chunks"])]
     elif axes.iaxis == "corr":
         tab_objs = corr_iter(xm.xds_from_ms(msdata.ms_name, **xds_inputs))
     else:
@@ -184,14 +181,12 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
     if len(tab_objs) == 0:
         snitch.warning("No Data found in the MS" +
                      "Please check your selection criteria")
-        # sys.exit(-1)
-        raise EmptyTable()
+        raise EmptyTable(f"MS {msdata.ms_name}")
     else:
         # get some info about the data        
         chunk_sizes = " x ".join(map(str, tab_objs[0].FLAG.data.chunksize))
         snitch.info(f"Chunk size: {chunk_sizes}")
         snitch.info(f"Number of Partitions: {tab_objs[0].FLAG.data.npartitions}")
-
         if selections.channels is not None:
             tab_objs = [_.sel(chan=selections.channels) for _ in tab_objs]
         
@@ -292,10 +287,13 @@ def image_callback(xy_df, plargs, axes):
     return agg
 
 
-def apply_blockwise(arr, func):
+def apply_blockwise(arr, func, out_dim=None):
     dims = "ijkl"[:len(arr.shape)]
-    arr = da.blockwise(func, dims, arr, dims, dtype=arr.dtype)
+    out_dim = dims if out_dim is None else out_dim
+    arr = da.blockwise(func, out_dim, arr, dims, dtype=arr.dtype, 
+        concatenate=True)
     return arr
+
 
 def sort_the_plot(fig, axes, plargs):
     """
@@ -317,13 +315,13 @@ def sort_the_plot(fig, axes, plargs):
     if axes.ydata.dtype == "datetime64[s]":
         axes.ydata = axes.ydata.astype(np.float64)
     if plargs.x_min is None:
-        plargs.xmin = apply_blockwise(axes.xdata, np.nanmin)
+        plargs.xmin = apply_blockwise(axes.xdata, np.nanmin, "")
     if plargs.x_max is None:
-        plargs.xmax = apply_blockwise(axes.xdata, np.nanmax)
+        plargs.xmax = apply_blockwise(axes.xdata, np.nanmax, "")
     if plargs.y_min is None:
-        plargs.ymin = apply_blockwise(axes.ydata, np.nanmin)
+        plargs.ymin = apply_blockwise(axes.ydata, np.nanmin, "")
     if plargs.y_max is None:
-        plargs.ymax = apply_blockwise(axes.ydata, np.nanmax)
+        plargs.ymax = apply_blockwise(axes.ydata, np.nanmax, "")
 
     snitch.info("Calculating x and y Min and Max ranges")
     # with ProgressBar():
@@ -352,7 +350,7 @@ def sort_the_plot(fig, axes, plargs):
     if axes.caxis is None:
         img = tf.shade(agg, cmap=plargs.cmap)
     else:
-        plargs.cmap = cycle(plargs.cmap[slice(0, plargs.n_categories)])
+        plargs.cmap = cycle(plargs.cmap)
         img = tf.shade(agg, color_key=plargs.cmap)
 
     fig.add_glyphs(ImageRGBA,
@@ -405,6 +403,11 @@ def sort_the_plot(fig, axes, plargs):
     else:
         fig.update_title(plargs.title)
     
+    if axes.caxis:
+        fig.add_categorical_colourbar(axes.caxis, plargs, visible=True, 
+            position="right")
+
+    
     return fig
 
 
@@ -440,8 +443,6 @@ def main(parser, gargs):
         ps.channels, ps.corrs, ps.ddids, ps.fields, ps.scans, ps.taqls):
 
         msdata = MsData(msname)
-        snitch.info(msdata.ms_name)
-
         if generals.chunks is None:
             generals.chunks = get_row_chunk(msdata)
 
@@ -454,7 +455,6 @@ def main(parser, gargs):
             ps.grid_cols = ps.grid_cols if ps.grid_cols else 5
         if cmap is None:
             cmap = "blues" if c_axis is None else "glasbey_bw"
-            cmap = get_colours(10, cmap)
         if html_name is None:
             html_name = "{}_{}_vs_{}_{}_flagged_{}".format(
                 os.path.basename(msdata.ms_name), yaxis, xaxis, data_column,
@@ -508,6 +508,7 @@ def main(parser, gargs):
 
         if axes.caxis is not None:
             plargs.set_category_ids_and_sizes(axes.caxis, msdata)
+            plargs.cmap = get_colours(plargs.n_categories, plargs.cmap)
 
         outp = []
         for isub, sub in enumerate(subs):
@@ -592,20 +593,12 @@ def main(parser, gargs):
         snitch.info(">" * 70)
     
     return 0
-"""
-we iterate over:
- iter_choices = [
-        "field", "ant", "antenna", 
-        "ant1", "antenna1", "ant2", "antenna2", "bl",
-        "baseline", "corr", , "scan", "spw"]
 
-check if cmaps are corectly chose
-"""
 if __name__ == "__main__":
     main(vis_argparser, 
     (
     "--ms /home/lexya/Downloads/radioastro/tutorial_docs/clueless_calibration/1491291289.1ghz.1.1ghz.4hrs.ms" +
-    " -x time -y amp "+ "--colour-axis ant"
-    "" ).split()
+    " -x time -y amp "+ "--colour-axis corr"
+    +" --chunks 100000" ).split()
     )
 
