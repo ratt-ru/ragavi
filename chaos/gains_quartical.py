@@ -19,6 +19,7 @@ from chaos.lograg import logging, get_logger
 from chaos.plotting import Circle, Scatter, FigRag
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
+from chaos.ragdata import QuarticalTableData as TableData
 from chaos.utils import new_darray
 from chaos.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
@@ -26,63 +27,6 @@ snitch = get_logger(logging.getLogger(__name__))
 
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False  
-
-class TableData:
-    def __init__(self, ms_name, ant_names=None, field_names=None,
-                 corr_names=None, scans=None, spws=None):
-        self.ms_name = ms_name
-        self.ant_names = ant_names.tolist()
-        self.field_names = field_names
-        self.corr_names = corr_names.tolist()
-        self.scans = scans
-        self.spws = xr.DataArray(spws)
-        self.active_corrs = []
-        self.active_spws = [0]
-        self.active_fields = []
-
-    @property
-    def ant_map(self):
-        return {a: self.ant_names.index(a) for a in self.ant_names}
-    
-    @property
-    def reverse_ant_map(self):
-        return {v: k for k, v in self.ant_map.items()}
-    
-    @property
-    def field_map(self):
-        return {a: self.field_names.index(a) for a in self.field_names}
-
-    @property
-    def reverse_field_map(self):
-        return {v: k for k, v in self.field_map.items()}
-    
-    @property
-    def corr_map(self):
-        return {a: self.corr_names.index(a) for a in self.corr_names}
-
-    @property
-    def reverse_corr_map(self):
-        return {v: k for k, v in self.corr_map.items()}
-    
-    @property
-    def num_corrs(self):
-        return len(self.corr_names)
-
-    @property
-    def num_ants(self):
-        return len(self.ant_names)
-
-    @property
-    def num_fields(self):
-        return len(self.field_names)
-    
-    @property
-    def num_spws(self):
-        return len(self.spws)
-
-    @property
-    def num_scans(self):
-        return len(self. scans)
 
 @dataclass
 class Axes:

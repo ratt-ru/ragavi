@@ -17,67 +17,13 @@ from chaos.lograg import logging, get_logger
 from chaos.plotting import Circle, FigRag, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import Axargs, Genargs, Selargs
+from chaos.ragdata import CubicalTableData as TableData
 from chaos.widgets_cubical import make_table_name, make_widgets
 from chaos.widgets import F_MARKS
 
 snitch = get_logger(logging.getLogger(__name__))
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False
-
-class TableData:
-    def __init__(self, ms_name, ants=None, fields=None, corr1s=None):
-        self.ms_name = ms_name
-        self.ant_names = ants
-        self.field_names = [str(f) for f in fields]
-        self.corr1s = [c.upper() for c in corr1s]
-        self.corrs = None
-        self.active_antennas = None
-        self.active_corrs = []
-        self.active_corr1s = None
-        self.active_corr2s = None
-        self.active_fields = None
-        self.active_spws = [0]
-
-    @property
-    def ant_map(self):
-        return {a: self.ant_names.index(a) for a in self.ant_names}
-
-    @property
-    def reverse_ant_map(self):
-        return {v: k for k, v in self.ant_map.items()}
-
-    @property
-    def field_map(self):
-        return {a: self.field_names.index(a) for a in self.field_names}
-
-    @property
-    def reverse_field_map(self):
-        return {v: k for k, v in self.field_map.items()}
-
-    @property
-    def corr_names(self):
-        return [f"{c1}{c2}".upper() for c1, c2 in product(self.corr1s, self.corr1s)]
-
-    @property
-    def corr_map(self):
-        return {a: self.corr_names.index(a) for a in self.corr_names}
-
-    @property
-    def reverse_corr_map(self):
-        return {v: k for k, v in self.corr_map.items()}
-
-    @property
-    def num_corr1s(self):
-        return len(self.corr1s)
-    
-    @property
-    def num_ants(self):
-        return len(self.ant_names)
-
-    @property
-    def num_fields(self):
-        return len(self.fields)
-
 
 def add_extra_xaxis(chans, figrag, sargs):
     chans = chans[[0, -1]] / 1e9

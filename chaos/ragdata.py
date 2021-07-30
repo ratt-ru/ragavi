@@ -11,9 +11,9 @@ from psutil import cpu_count, virtual_memory
 from typing import Any
 from casacore.tables import table
 
-from exceptions import TableNotFound
-from lograg import get_logger, logging
-from utils import pair
+from chaos.exceptions import TableNotFound
+from chaos.lograg import get_logger, logging
+from chaos.utils import pair
 
 snitch = get_logger(logging.getLogger(__name__))
 
@@ -277,10 +277,131 @@ class MsData:
     @property
     def scans(self):
         return self._scans
+     
+    @property
+    def scan_map(self):
+        return {s: s for s in self._scans}
+    
+    @property
+    def reverse_scan_map(self):
+        return self.scan_map
     
     @property
     def colnames(self):
         return self._colnames
+
+
+class CubicalTableData:
+    def __init__(self, ms_name, ants=None, fields=None, corr1s=None):
+        self.ms_name = ms_name
+        self.ant_names = ants
+        self.field_names = [str(f) for f in fields]
+        self.corr1s = [c.upper() for c in corr1s]
+        self.corrs = None
+        self.active_antennas = None
+        self.active_corrs = []
+        self.active_corr1s = None
+        self.active_corr2s = None
+        self.active_fields = None
+        self.active_spws = [0]
+
+    @property
+    def ant_map(self):
+        return {a: self.ant_names.index(a) for a in self.ant_names}
+
+    @property
+    def reverse_ant_map(self):
+        return {v: k for k, v in self.ant_map.items()}
+
+    @property
+    def field_map(self):
+        return {a: self.field_names.index(a) for a in self.field_names}
+
+    @property
+    def reverse_field_map(self):
+        return {v: k for k, v in self.field_map.items()}
+
+    @property
+    def corr_names(self):
+        return [f"{c1}{c2}".upper() for c1, c2 in product(self.corr1s, self.corr1s)]
+
+    @property
+    def corr_map(self):
+        return {a: self.corr_names.index(a) for a in self.corr_names}
+
+    @property
+    def reverse_corr_map(self):
+        return {v: k for k, v in self.corr_map.items()}
+
+    @property
+    def num_corr1s(self):
+        return len(self.corr1s)
+
+    @property
+    def num_ants(self):
+        return len(self.ant_names)
+
+    @property
+    def num_fields(self):
+        return len(self.fields)
+
+
+class QuarticalTableData:
+    def __init__(self, ms_name, ant_names=None, field_names=None,
+                 corr_names=None, scans=None, spws=None):
+        self.ms_name = ms_name
+        self.ant_names = ant_names.tolist()
+        self.field_names = field_names
+        self.corr_names = corr_names.tolist()
+        self.scans = scans
+        self.spws = xr.DataArray(spws)
+        self.active_corrs = []
+        self.active_spws = [0]
+        self.active_fields = []
+
+    @property
+    def ant_map(self):
+        return {a: self.ant_names.index(a) for a in self.ant_names}
+
+    @property
+    def reverse_ant_map(self):
+        return {v: k for k, v in self.ant_map.items()}
+
+    @property
+    def field_map(self):
+        return {a: self.field_names.index(a) for a in self.field_names}
+
+    @property
+    def reverse_field_map(self):
+        return {v: k for k, v in self.field_map.items()}
+
+    @property
+    def corr_map(self):
+        return {a: self.corr_names.index(a) for a in self.corr_names}
+
+    @property
+    def reverse_corr_map(self):
+        return {v: k for k, v in self.corr_map.items()}
+
+    @property
+    def num_corrs(self):
+        return len(self.corr_names)
+
+    @property
+    def num_ants(self):
+        return len(self.ant_names)
+
+    @property
+    def num_fields(self):
+        return len(self.field_names)
+
+    @property
+    def num_spws(self):
+        return len(self.spws)
+
+    @property
+    def num_scans(self):
+        return len(self. scans)
 
 
 @dataclass
@@ -358,12 +479,14 @@ class Axargs:
 
     def __post_init__(self):
         #Get the proper name for the data column first before getting other names
-        self.yaxis = Axargs.translate_y(self.yaxis)
+        self.yaxis = self.get_proper_axis_names(self.yaxis)
+        self.xaxis = self.get_proper_axis_names(self.xaxis)
         self.data_column = self.get_colname(self.data_column, self.data_column)
         self.xdata_col = self.get_colname(self.xaxis, self.data_column)
         self.ydata_col = self.get_colname(self.yaxis, self.data_column)
 
         if self.iaxis is not None:
+            self.iaxis = self.get_proper_axis_names(self.iaxis)
             if self.iaxis == "baseline":
                 self.idata_col = "ANTENNA1 ANTENNA2"
             elif self.iaxis in ["corr", "antenna"]:
@@ -371,14 +494,58 @@ class Axargs:
             else:
                 self.idata_col = self.get_colname(self.iaxis, self.data_column)
         if self.caxis is not None:
+            self.caxis = self.get_proper_axis_names(self.caxis)
             if self.caxis == "baseline":
                 self.cdata_col = "ANTENNA1 ANTENNA2"
-            elif self.caxis in ["corr", "antenna"]:
+            elif self.caxis == "antenna":
+                self.cdata_col = "ANTENNA"
+            elif self.caxis == "corr":
                 self.cdata_col = None
             else:
                 self.cdata_col = self.get_colname(self.caxis, self.data_column)
         
+    def get_proper_axis_names(self, name):
+        """
+        Translate inpu axis name to name known and accepted by ragavi
+        name: obj:`str`
+            Input axis name
         
+        Returns
+        -------
+        name: :obj:`str`
+            Proper name of the given alias. Otherwise, returns the input
+        """
+        names, name = {}, name.lower()
+        names["a"] = names["amp"] = names["ampl"] = \
+            names["amplitude"] = "amplitude"
+        names["ant"] = names["antenna"] = "antenna"
+        names["ant1"] = names["antenna1"] = "antenna1"
+        names["ant2"] = names["antenna2"] = "antenna2"
+        names["bl"] = names["baseline"] = "baseline"
+        names["chan"] = names["freq"] = names["frequency"] = \
+            names["channel"] = "chan"
+        names["correlation"] = names["corr"] =  "corr"
+        names["ddid"] = names["spw"] = "spw"
+        names["field"] = "field"
+        names["i"] = names["im"] = names["imag"] = \
+            names["imaginary"] = "imaginary"
+        names["r"] = names["re"]=names["real"] = "real"    
+        names["p"] = names["ph"] = names["phase"] = "phase"
+        names["scan"] = "scan"
+        names["time"] = "time"
+        names["uvdist"] = names["uvdist_l"] = names["uvdistl"] = \
+            names["uvdistance"] = "uvdistance"
+        names["uvwave"] = names["uvwavelength"] = "uvwavelength"
+        
+        if name in names:
+            name = names.get(name)
+        elif len(get_close_matches(name, names, 1))>0:
+            name = names[get_close_matches(name, names, 1)[0]]
+            snitch.warn(f"'{name}' is not a valid name in ragavi")
+            snitch.info(f"Switching to '{names[name]}' as a close match")
+        return name
+
+
     def translate_y(ax):
         axes = {}
         axes["a"] = axes["amp"] = "amplitude"
@@ -475,13 +642,16 @@ class Axargs:
                                                         ms_obj.ANTENNA2))
                     setattr(self, _axis, ms_obj["BASELINE"])
                 else:
-                    setattr(self, _axis, ms_obj[column])
+                    if column in ms_obj:
+                        setattr(self, _axis, ms_obj.get(column))
+                    else:
+                        setattr(self, _axis, ms_obj.attrs[column])
         return
 
     @property
     def active_columns(self):
         actives = {self.xdata_col, self.ydata_col}
-        if self.cdata_col:
+        if self.cdata_col and self.cdata_col!="ANTENNA":
             actives.update({*self.cdata_col.split()})
         if self.idata_col:
             actives.update({*self.idata_col.split()})
@@ -509,10 +679,18 @@ class Plotargs:
     c_width: int = None
     grid_cols: int = None
     link_plots: bool = None
+    # user mins and maxes
     x_min: float = None
     x_max: float = None
     y_min: float = None
     y_max: float = None
+    # Grouped mins and maxes
+    xmin: float = None
+    xmax: float = None
+    ymin: float = None
+    ymax: float = None
+
+    #Default maximum screen size on my computer
     plot_width: int = 1920
     plot_height: int = 1080
     partitions: int =  None #Number or partions in the dataset
@@ -534,23 +712,34 @@ class Plotargs:
             # meaning the iteration axis is active
             self.c_height = 200 if not self.c_height else self.c_height
             self.c_width = 200 if not self.c_width else self.c_width
+        
+        self.xmin, self.xmax, self.ymin, self.ymax = (self.x_min, self.x_max,
+            self.y_min, self.y_max)
         snitch.debug(f"Canvas (w x h): {self.c_width} x {self.c_height}")
 
+
     def set_grid_cols_and_rows(self):
-        """Set the number of rows and columns to be in subploting grid"""
+        """Set the number of rows and columns to be in subploting grid
+        This function is called in the main plotting script
+        """
         # set columns depending on the numer of partitions
         if self.partitions is None:
             snitch.info("No partition size. Please set 'partitions' attribute")
             return
 
+        self.plot_height = int(self.plot_height * 0.72)
         if self.grid_cols:
             if self.partitions < self.grid_cols:
                 self.grid_cols = self.partitions
-            
-            self.grid_rows = np.ceil(self.partitions // self.grid_cols)
+            self.grid_rows = int(np.ceil(self.partitions // self.grid_cols))
             self.plot_width = int((self.plot_width * 0.961) // self.grid_cols)
-            self.plot_height = int(self.plot_width * 0.83)
+            # set plot height same as width for iter mode. I want a square box
+            if self.grid_cols <= self.partitions:
+                self.plot_height = int(self.plot_width *0.9)
             snitch.debug(f"Plot grid (r x c): {self.grid_rows} x {self.grid_cols}")
+        else:
+            self.plot_width = int(self.plot_width * 0.961)
+            
 
     def form_plot_title(self, axargs):
         self.title = f"{axargs.yaxis} vs {axargs.xaxis}"
@@ -559,17 +748,26 @@ class Plotargs:
         self.title = self.title.title()
 
     def get_category_maps(self, cat, msd):
+        """
+        Get attributes to be gotten from msdata for a specific axis
+        cat: str
+            Category name
+        msd: MsData objectt
+            Object containing some data for the ms
+        """
         cat_maps = {
+            "rant": "reverse_ant_map",
+            "ant": "ant_map", "rantenna": "reverse_ant_map",
             "antenna": "ant_map", "rantenna": "reverse_ant_map",
             "antenna1": "ant_map", "rantenna1": "reverse_ant_map",
             "antenna2": "ant_map", "rantenna2": "reverse_ant_map",
             "baseline": "bl_map", "rbaseline": "reverse_bl_map",
             "corr": "corr_map", "rcorr": "reverse_corr_map",
             "field": "field_map", "rfield": "reverse_field_map",
-            "scan": "scans", "rscan": "scans",
-            "chan": "", "ddid": "", "spw": "",
+            "scan": "scan_map", "rscan": "reverse_scan_map",
+            "chan": "", "ddid": "", "spw": "", "rspw": ""
         }
-        return getattr(msd, cat_maps[cat])
+        return getattr(msd, cat_maps[cat], None)
     
     def get_category_sizes(self, cat, msd):
         cat_sizes = {
@@ -609,7 +807,9 @@ class Plotargs:
         else:
             cat_map = self.get_category_maps(f"r{axes.iaxis}", msd)
         for name, nid in sub.attrs.items():
-            if name == "DATA_DESC_ID":
+            if name == "__daskms_partition_schema__":
+                continue
+            elif name == "DATA_DESC_ID":
                 title += f"{name} {nid} "
                 i_ttips[name] = nid
             elif "ANTENNA" in name and axes.iaxis == "baseline":
