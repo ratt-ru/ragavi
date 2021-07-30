@@ -10,15 +10,15 @@ from collections import namedtuple
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.io import output_file, save
 
-from arguments import gains_argparser
-from exceptions import EmptyTable, InvalidCmap, InvalidColumnName
-from gains import get_colours
-from lograg import logging, get_logger
-from plotting import Circle, FigRag, Scatter
-from processing import Chooser, Processor
-from ragdata import Axargs, Genargs, Selargs
-from widgets_cubical import make_table_name, make_widgets
-from widgets import F_MARKS
+from chaos.arguments import gains_argparser
+from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
+from chaos.gains import get_colours
+from chaos.lograg import logging, get_logger
+from chaos.plotting import Circle, FigRag, Scatter
+from chaos.processing import Chooser, Processor
+from chaos.ragdata import Axargs, Genargs, Selargs
+from chaos.widgets_cubical import make_table_name, make_widgets
+from chaos.widgets import F_MARKS
 
 snitch = get_logger(logging.getLogger(__name__))
 _GROUP_SIZE_ = 16
@@ -290,7 +290,6 @@ def main(parser, gargs):
                  title=os.path.splitext(os.path.basename(html_name))[0])
             snitch.info(f"HTML file at: {html_name}")
         snitch.info("Plotting Done")
-
 
 if __name__ == "__main__":
     # cb_name = "/home/lexya/Documents/test_gaintables/cubical/reduction02-cubical-G-field_0-ddid_None.parmdb"

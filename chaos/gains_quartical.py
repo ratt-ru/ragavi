@@ -12,14 +12,15 @@ from daskms.experimental.zarr import xds_from_zarr
 from functools import partial
 from itertools import product, zip_longest
 
-from arguments import gains_argparser
-from exceptions import InvalidCmap, InvalidColumnName, EmptyTable
-from gains import get_colours
-from lograg import logging, get_logger
-from plotting import Circle, Scatter, FigRag
-from processing import Chooser, Processor
-from ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
-from widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
+from chaos.arguments import gains_argparser
+from chaos.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
+from chaos.gains import get_colours
+from chaos.lograg import logging, get_logger
+from chaos.plotting import Circle, Scatter, FigRag
+from chaos.processing import Chooser, Processor
+from chaos.ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
+from chaos.utils import new_darray
+from chaos.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
 snitch = get_logger(logging.getLogger(__name__))
 
@@ -162,12 +163,6 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
                   f"s{sub.DATA_DESC_ID}", f"f{sub.FIELD_ID}"])
     return figrag
 
-def new_darray(in_model, out_name, out_value):
-    types = {bool: bool, int: np.int8}
-    bn = in_model.copy(deep=True, data=da.full(
-        in_model.shape, out_value, dtype=types[type(out_value)]))
-    bn.name = out_name
-    return bn
 
 def add_hover_data(fig, axes):
     """
@@ -353,7 +348,7 @@ def main(parser, gargs):
 if __name__ == "__main__":
     ms_name = "/home/lexya/Documents/test_gaintables/quartical/kgb_mad.qc"
     #synonyms for the the tables available here
-    yaxes = "p"
+    yaxes = "a"
     xaxis = "time"
     main(gains_argparser, ["-t", ms_name, "-y", yaxes, "-x", xaxis,
     "--cmap", "glasbey"])

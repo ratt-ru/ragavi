@@ -6,8 +6,8 @@ from bokeh.models import (Button, CDSView, CheckboxGroup, ColumnDataSource,
                           CustomJS, PreText, Scatter, Slider, Title, Whisker)
 from bokeh.models.widgets import Div, DataTable, TableColumn
 
-from processing import Processor
-from widgets import F_CODES
+from chaos.processing import Processor
+from chaos.widgets import F_CODES
 
 from ipdb import set_trace
 

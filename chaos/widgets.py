@@ -6,7 +6,7 @@ from bokeh.models import (Button, CDSView, CheckboxGroup, ColumnDataSource,
                           CustomJS, PreText, Scatter, Slider, Title, Whisker)
 from bokeh.models.widgets import DataTable, TableColumn, Div
 
-from processing import Processor
+from chaos.processing import Processor
 
 F_CODES = {0: "O", 1: u"\u2003\u20DF", 2: u"\u2003\u20E3", 3: u"\u2206",
                       4: u"\u2B21", 5: u"\u2207"}

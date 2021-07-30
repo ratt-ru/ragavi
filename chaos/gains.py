@@ -9,15 +9,15 @@ from itertools import product, zip_longest
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.io import output_file, output_notebook, save
 
-from arguments import gains_argparser
-from exceptions import EmptyTable, InvalidCmap, InvalidColumnName
-from lograg import logging, get_logger
-from plotting import FigRag, Circle, Scatter
-from processing import Chooser, Processor
-from ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
+from chaos.arguments import gains_argparser
+from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
+from chaos.lograg import logging, get_logger
+from chaos.plotting import FigRag, Circle, Scatter
+from chaos.processing import Chooser, Processor
+from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
                      Selargs)
-from utils import get_colours, timer
-from widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
+from chaos.utils import get_colours, timer
+from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = get_logger(logging.getLogger(__name__))
 

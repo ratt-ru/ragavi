@@ -14,8 +14,8 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool, HoverTool,
                                 LassoSelectTool, PanTool, ResetTool, SaveTool,
                                 UndoTool, WheelZoomTool)
 
-from lograg import logging, get_logger
-from overrides import set_multiple_defaults
+from chaos.lograg import logging, get_logger
+from chaos.overrides import set_multiple_defaults
 
 snitch = get_logger(logging.getLogger(__name__))
 
@@ -243,7 +243,7 @@ class BaseFigure:
                             LassoSelectTool(), PanTool(), ResetTool(),
                             SaveTool(), UndoTool(), WheelZoomTool()
                     ])
-    
+   
 
 class FigRag(BaseFigure):
     def __init__(self, width=1080,  height=720, x_scale="linear",
@@ -698,3 +698,8 @@ class FigRag(BaseFigure):
                     + f"_grp{bid}{ext}", bbox_inches='tight')
         
         snitch.info(f"Image at: {filename}")
+
+
+# Look here: https://www.geeksforgeeks.org/3d-scatter-plotting-in-python-using-matplotlib/
+# https://people.duke.edu/~ccc14/pcfb/numpympl/MatplotlibBarPlots.html
+# https://stackoverflow.com/questions/27267683/using-matplotlib-polycollection-to-plot-data-from-csv-files
