@@ -1,4 +1,5 @@
 import os
+import glob
 import pytest
 from chaos.vis import get_ms, main, vis_argparser
 
@@ -62,6 +63,23 @@ class TestAxes:
     def test_caxes(self, caxis, ms):
         ins = f"--ms {ms} -x time -y amp --colour-axis {caxis}".split()
         assert main(vis_argparser, ins) == 0
+
+
+@pytest.mark.usefixtures("ms")
+class TestPlotArgs:
+    def test_cosmetics(self):
+        fname = "test_post.html"
+        ins = (f"--ms {ms} -x time -y amp --colour-axis {caxis}"+
+               " -x time -y amp " + "-ch 100 -cw 200 --cmap glasbey_dark " +
+               f"--cols 3 -o {fname} --ymin 40 --ymax 50").split()
+        assert main(vis_argparser, ins) == 0
+        assert len(glob.glob(fname)) == 1
+    
+    def test_logfile_creation(self):
+        pass
+
+    def test_cachefile_creation(self):
+        pass
 
 #  pytest -q test_ragavi_vis.py
 #  pytest -q --lf test_ragavi_vis.py li
