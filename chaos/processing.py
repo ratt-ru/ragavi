@@ -61,7 +61,7 @@ class Processor:
         elif "wave" in axis.lower():
             return Processor.uv_wavelength(self.data, freqs)
         elif "dist" in axis.lower():
-            return Processor.uv_distance(self.data)
+            return Processor.uv_distance(self.data, freqs)
         elif len(re.findall(f"{axis}\w*", "channel frequency")) > 0:
             return self.data
         else:
@@ -70,19 +70,17 @@ class Processor:
     @staticmethod
     def uv_distance(uvw):
         if isinstance(uvw, np.ndarray):
-            return np.sqrt(np.square(uvw[:,:,0]).sum(axis=1))
+            return np.sqrt(np.square(uvw[:,:2]).sum(axis=1))
         else:
-            return da.sqrt(da.square(uvw.isel({'uvw': 0})) +
-                       da.square(uvw.isel({'uvw': 1})))
+            return da.sqrt(da.square(uvw.sel(uvw=slice(0, 2))).sum(axis=1))
 
     @staticmethod
     def uv_wavelength(uvw, freqs):
         if isinstance(uvw, np.ndarray):
             return Processor.uv_distance(uvw)[:, np.newaxis] / (3e8/freqs)
             
-        else:
-            return Processor.uv_distance(uvw).expand_dims(
-                                {"chan": 1}, axis=1) / (3e8/freqs)
+        else:    
+            return Processor.uv_distance(uvw) / (3e8/freqs)
 
     @staticmethod
     def unix_timestamp(in_time):

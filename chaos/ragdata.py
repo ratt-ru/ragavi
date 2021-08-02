@@ -576,8 +576,8 @@ class Axargs:
         axes["corr"] = data_column
         axes.update({key: data_column for key in ("a", "amp", "amplitude",
                 "delay", "i", "imag", "imaginary", "p", "phase", "r", "real")})
-        axes.update({key: "UVW" for key in ("uvdist", "UVdist", "uvdistance",
-                        "uvdistl", "uvdist_l", "UVwave", "uvwave")})
+        axes.update({key: "UVW" for key in ("uvdist", "uvdistance",
+                        "uvdistl", "uvdist_l", "uvwave", "uvwavelength")})
         axes.update({key: "ANTENNA1" for key in ("ant1", "antenna1")})
         axes.update({key: "ANTENNA2" for key in ("ant2", "antenna2")})
         axes.update({key: ("ANTENNA1", "ANTENNA2") for key in ("bl", "baseline")})
@@ -743,6 +743,9 @@ class Plotargs:
         else:
             self.plot_width = int(self.plot_width * 0.961)
             self.plot_height = int(self.plot_height * 0.8)
+            #set grid cols to 1 in this case for colour bar purpose
+            self.grid_cols = 1
+
             
 
     def form_plot_title(self, axargs):
