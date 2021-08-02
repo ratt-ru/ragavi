@@ -60,11 +60,16 @@ def antenna_iter(msdata, columns, **kwargs):
     taql_where = f"{taql_where} && " if taql_where else taql_where
     subs = []
 
+    if "DATA_DESC_ID" in kwargs["group_cols"]:
+        ddid_name = "DATA_DESC_ID"  
+    else:
+        ddid_name = "SPECTRAL_WINDOW_ID"
+
     for spw, ant in product(range(msdata.num_spws), range(msdata.num_ants)):
         snitch.debug(f"Spw: {spw}, antenna: {ant}")
 
         sel_str = (taql_where + 
-            f"ANTENNA1=={ant} || ANTENNA2=={ant} && DATA_DESC_ID=={spw}")
+            f"ANTENNA1=={ant} || ANTENNA2=={ant} && {ddid_name}=={spw}")
 
         # do not group to capture all the data
         sub, = xm.xds_from_ms(msdata.ms_name, taql_where=sel_str,
@@ -143,7 +148,11 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
 
     # Nb for i/c axis not in MS e.g baseline, corr, antenna, axes returns None
     # Always group by DDID
-    group_cols, sel_cols = ["DATA_DESC_ID"], [*{"FLAG", *axes.active_columns}]
+    if os.path.splitext(msdata.ms_name)[-1].lower() == ".ms":
+        group_cols = ["DATA_DESC_ID"]
+    else:
+        group_cols = ["SPECTRAL_WINDOW_ID"]
+    sel_cols = [*{"FLAG", *axes.active_columns}]
     
     where = Chooser.form_taql_string(msdata, antennas=selections.antennas,
                 baselines=selections.baselines, fields=selections.fields,
@@ -158,7 +167,7 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
 
     # defining part of the gain table schema
     if axes.data_column not in ["DATA", "CORRECTED_DATA"]:
-        ms_schema[data_col] = ms_schema["DATA"]
+        ms_schema[axes.data_column] = ms_schema["DATA"]
 
     #removed chan and corr chunking    
     xds_inputs = dict(chunks=dict(row=chunks), taql_where=where,
@@ -209,9 +218,10 @@ def repeat_ravel_viz(arr, max_size, chunk_size):
         number of chunks, which is determined by the user.
     """
     dims = "ijkl"[:len(arr.shape)]
-    arr = da.blockwise(np.repeat, dims, arr, dims,
+    arr = da.ravel(arr).rechunk(chunk_size)
+    arr = da.blockwise(np.repeat, "i", arr, "i",
                        repeats=max_size//arr.size, axis=0, dtype=arr.dtype)
-    return da.ravel(arr).rechunk(chunk_size)
+    return arr
 
 
 def create_df(axes):
@@ -295,7 +305,7 @@ def apply_blockwise(arr, func, out_dim=None):
     return arr
 
 
-def sort_the_plot(fig, axes, plargs):
+def sort_the_plot(fig_num, fig, axes, plargs):
     """
     Finalise the plot
     fig: :obj:`bokeh figure`
@@ -403,11 +413,9 @@ def sort_the_plot(fig, axes, plargs):
     else:
         fig.update_title(plargs.title)
     
-    if axes.caxis:
+    if axes.caxis and fig_num%plargs.grid_cols==plargs.grid_cols-1:
         fig.add_categorical_colourbar(axes.caxis, plargs, visible=True, 
             position="right")
-
-    
     return fig
 
 
@@ -425,7 +433,7 @@ def get_row_chunk(msd):
     return row_cs
 
 
-def main(parser, gargs):
+def main(parser, gargs): 
     ps = parser().parse_args(gargs)
     # ps.debug, ps.link_plots, ps.flag,
     # ps.cbin, ps.tbin
@@ -509,15 +517,19 @@ def main(parser, gargs):
         if axes.caxis is not None:
             plargs.set_category_ids_and_sizes(axes.caxis, msdata)
             plargs.cmap = get_colours(plargs.n_categories, plargs.cmap)
+        else:
+            plargs.cmap = get_colours(200, plargs.cmap)
 
         outp = []
         for isub, sub in enumerate(subs):
             snitch.info("Starting data processing")
 
-            msdata.active_channels = msdata.freqs.sel(chan=selections.channels,
-                                                      row=sub.DATA_DESC_ID)
+            msdata.active_channels = msdata.freqs.sel(
+                chan=selections.channels,
+                row=[_ for _ in map(sub.attrs.get, ["DATA_DESC_ID", 
+                    "SPECTRAL_WINDOW_ID"]) if _ is not None][0])
 
-            print(f"shape:{sub.DATA.shape}")
+            print(f"shape:{sub[axes.data_column].shape}")
             if axes.iaxis is not None:
                 plargs.set_iter_title(axes, sub, msdata)
 
@@ -535,8 +547,10 @@ def main(parser, gargs):
                 axes.flags = sub.FLAG
                 sub = sub.where(axes.flags == False)
 
-            axes.xdata = Processor(axes.xdata).calculate(axes.xaxis).data
-            axes.ydata = Processor(axes.ydata).calculate(axes.yaxis).data
+            axes.xdata = Processor(axes.xdata).calculate(axes.xaxis,
+                                    msdata.active_channels).data
+            axes.ydata = Processor(axes.ydata).calculate(axes.yaxis,
+                                    msdata.active_channels).data
             
             if axes.cdata is not None:
                 axes.cdata = Processor(axes.cdata).calculate(axes.caxis).data
@@ -547,10 +561,11 @@ def main(parser, gargs):
                           add_grid=False, add_xaxis=True, add_yaxis=True,
                           add_toolbar=True)
             
-            fig = sort_the_plot(FigRag(**to_fig), axes, plargs)
+            fig = sort_the_plot(isub, FigRag(**to_fig), axes, plargs)
             outp.append(fig)
         
         outp = [_.fig for _ in outp]
+       
         if axes.iaxis is not None:
             title_div = Div(
                 text=plargs.title, align="center", width=plargs.plot_width,
@@ -593,12 +608,3 @@ def main(parser, gargs):
         snitch.info(">" * 70)
     
     return 0
-
-if __name__ == "__main__":
-    main(vis_argparser, 
-    (
-    "--ms /home/lexya/Downloads/radioastro/tutorial_docs/clueless_calibration/1491291289.1ghz.1.1ghz.4hrs.ms" +
-    " -x time -y amp "+ "--colour-axis corr"
-    +" --chunks 100000" ).split()
-    )
-

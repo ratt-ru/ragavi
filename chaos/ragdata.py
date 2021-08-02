@@ -651,7 +651,7 @@ class Axargs:
 
     @property
     def active_columns(self):
-        actives = {self.xdata_col, self.ydata_col}
+        actives = {self.xdata_col, self.ydata_col, self.data_column}
         if self.cdata_col and self.cdata_col!="ANTENNA":
             actives.update({*self.cdata_col.split()})
         if self.idata_col:

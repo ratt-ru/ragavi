@@ -61,7 +61,7 @@ class Processor:
         elif "wave" in axis.lower():
             return Processor.uv_wavelength(self.data, freqs)
         elif "dist" in axis.lower():
-            return Processor.uv_distance(self.data, freqs)
+            return Processor.uv_distance(self.data)
         elif len(re.findall(f"{axis}\w*", "channel frequency")) > 0:
             return self.data
         else:
