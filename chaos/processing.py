@@ -155,8 +155,8 @@ class Chooser:
         Can be searched by name and id:
         ALL WILL BE A comma separated string
          - antennas
-         - baselines: this will be a list of comma separated antennas which will be divided by a    
-            dash. e.g. m001-m003, m001, m10-m056
+         - baselines: this will be a list of comma separated antennas which 
+           will be divided by a dash. e.g. m001-m003, m001, m10-m056
          - fields
 
          time will be in seconds and a string: start, end
@@ -171,7 +171,9 @@ class Chooser:
                 antennas[i] = Chooser.nametoid(selection, msdata.ant_map)
             
             super_dict["antennas"] = [int(_) for _ in antennas]
-            antennas = f"ANTENNA1 IN [{','.join(set([_ for _ in antennas if _]))}]"
+            antennas = (
+                f"any(ANTENNA1 IN [{','.join(set([_ for _ in antennas if _]))}]" +
+                f" || ANTENNA2 IN [{','.join(set([_ for _ in antennas if _]))}])")
             super_taql.append(antennas)
 
         if baselines:
@@ -234,7 +236,7 @@ class Chooser:
             super_taql.append(uv_range)
         if return_ids:
             # Return the super selector string and a dict containing ids
-            " && ".join(super_taql), super_dict
+            return " && ".join(super_taql), super_dict
         return " && ".join(super_taql)
 
     @staticmethod
