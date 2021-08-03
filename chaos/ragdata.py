@@ -59,17 +59,6 @@ class MsData:
         self._table_type = "ms"
         self._num_rows = None
         self.initialise_data()
-        """
-        TODO: Add in
-            - x-data column name
-            - y-data column name
-            - x-data
-            - y-data
-            - iter-data column name
-            - color-data column name
-            - maybe a util function that converts input name to actual 
-            data column name
-        """
 
     def initialise_data(self):
         with table(self.ms_name, ack=False) as self._ms:
@@ -116,7 +105,6 @@ class MsData:
         except RuntimeError:
             pass
     
-
     def _process_frequency_table(self):
         """Uses daskms to get frequency data as xarray"""
         try:

@@ -27,7 +27,7 @@ from chaos.plotting import FigRag, Circle, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
     Selargs)
-from chaos.utils import get_colours, new_darray, timer
+from chaos.utils import get_colours, new_darray, timer, bp
 from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = get_logger(logging.getLogger(__name__))
@@ -65,7 +65,7 @@ def antenna_iter(msdata, columns, **kwargs):
     else:
         ddid_name = "SPECTRAL_WINDOW_ID"
 
-    for spw, ant in product(range(msdata.num_spws), range(msdata.num_ants)):
+    for spw, ant in product(kwargs["active_spws"], kwargs["active_ants"]):
         snitch.debug(f"Spw: {spw}, antenna: {ant}")
 
         sel_str = (taql_where + 
@@ -114,6 +114,7 @@ def corr_iter(subs):
     snitch.debug("Done")
     return outp
 
+
 def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
     """
     Get xarray Dataset objects containing Measurement Set columns of the
@@ -154,7 +155,7 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
         group_cols = ["SPECTRAL_WINDOW_ID"]
     sel_cols = [*{"FLAG", *axes.active_columns}]
     
-    where = Chooser.form_taql_string(msdata, antennas=selections.antennas,
+    where, actives = Chooser.form_taql_string(msdata, antennas=selections.antennas,
                 baselines=selections.baselines, fields=selections.fields,
                 spws=selections.ddids, scans=selections.scans,
                 taql=selections.taql, return_ids=True)
@@ -173,7 +174,11 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
     xds_inputs = dict(chunks=dict(row=chunks), taql_where=where,
                       columns=sel_cols, group_cols=group_cols)
     if {"antenna"}.issubset({axes.iaxis, axes.caxis}):
-        tab_objs = antenna_iter(msdata, **xds_inputs)
+        tab_objs = antenna_iter(msdata, 
+        **{**xds_inputs, **dict(
+            active_ants=actives.get("antennas", range(msdata.num_ants)),
+            active_spws=actives.get("spws", range(msdata.num_spws)))}
+            )
         if axes.caxis == "antenna":
             # create an antenna column for colouration
             snitch.warn(f"No iterations as colour axis: {axes.caxis} is active")
@@ -360,7 +365,12 @@ def sort_the_plot(fig_num, fig, axes, plargs):
     if axes.caxis is None:
         img = tf.shade(agg, cmap=plargs.cmap)
     else:
-        plargs.cmap = cycle(plargs.cmap)
+        #slice colour map coz sometimes n_categories is more e.g for baselines
+        # Also reduce cat_maps and n_categories
+        plargs.n_categories = agg[axes.caxis].size
+        plargs.cat_map = {idx: plargs.cat_map[idx] for idx in agg[axes.caxis].values}
+        plargs.cmap = cycle(bp.linear_palette(
+            plargs.cmap, plargs.n_categories))
         img = tf.shade(agg, color_key=plargs.cmap)
 
     fig.add_glyphs(ImageRGBA,
