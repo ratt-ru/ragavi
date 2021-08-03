@@ -22,7 +22,7 @@ from bokeh.models import Div, ImageRGBA, PreText, Text
 
 from chaos.arguments import vis_argparser
 from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
-from chaos.lograg import logging, get_logger, update_log_levels
+from chaos.lograg import logging, update_log_levels, update_logfile_name
 from chaos.plotting import FigRag, Circle, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
@@ -30,7 +30,7 @@ from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
 from chaos.utils import get_colours, new_darray, timer, bp
 from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
-snitch = get_logger(logging.getLogger(__name__))
+snitch = logging.getLogger(__name__)
 
 def antenna_iter(msdata, columns, **kwargs):
     """
@@ -452,7 +452,9 @@ def main(parser, gargs):
     
     if ps.debug:
         update_log_levels(snitch.parent, 10)
-
+    
+    update_logfile_name(snitch.parent, 
+        ps.logfile if ps.logfile else "ragaviz.log")
     generals = Genargs(chunks=ps.chunk_size, mem_limit=ps.mem_limit,
         ncores=ps.ncores)
 

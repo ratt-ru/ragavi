@@ -14,10 +14,10 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool, HoverTool,
                                 LassoSelectTool, PanTool, ResetTool, SaveTool,
                                 UndoTool, WheelZoomTool)
 
-from chaos.lograg import logging, get_logger
+from chaos.lograg import logging
 from chaos.overrides import set_multiple_defaults
 
-snitch = get_logger(logging.getLogger(__name__))
+snitch = logging.getLogger(__name__)
 
 class BaseFigure:
     """

@@ -13,7 +13,7 @@ from bokeh.io import output_file, save
 from chaos.arguments import gains_argparser
 from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
 from chaos.gains import get_colours
-from chaos.lograg import logging, get_logger
+from chaos.lograg import logging
 from chaos.plotting import Circle, FigRag, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import Axargs, Genargs, Selargs
@@ -21,7 +21,7 @@ from chaos.ragdata import CubicalTableData as TableData
 from chaos.widgets_cubical import make_table_name, make_widgets
 from chaos.widgets import F_MARKS
 
-snitch = get_logger(logging.getLogger(__name__))
+snitch = logging.getLogger(__name__)
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False
 

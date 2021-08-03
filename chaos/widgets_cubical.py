@@ -9,9 +9,6 @@ from bokeh.models.widgets import Div, DataTable, TableColumn
 from chaos.processing import Processor
 from chaos.widgets import F_CODES
 
-from ipdb import set_trace
-
-
 def activate_batch_if_no_other_sel(sel1):
     """Activate only selected batch if only the batch selection is ticked
     sel1: Name of other selector to check

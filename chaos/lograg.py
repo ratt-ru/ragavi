@@ -1,8 +1,11 @@
 import logging
+import os
 import sys
 import textwrap
 import traceback as tb
 import warnings
+
+snitch = logging.getLogger(__name__)
 
 LOG_FILE = "ragavi.log"
 ROOT_LOGGER_LEVEL = "INFO"
@@ -44,7 +47,6 @@ def get_logger(log):
 
 
 def update_log_levels(root_logger, level):
-    snitch = get_logger(logging.getLogger(__name__))
     snitch.info("Testing Log level now at info")
     snitch.debug("Testing log level")
     if str(level).isnumeric():
@@ -58,7 +60,26 @@ def update_log_levels(root_logger, level):
             handler.setLevel(level)
     snitch.info(f"Logging level is now: {level}")
     snitch.debug("Debugging mode")
+
+def update_logfile_name(root_logger, fname="ragavi.log"):
+    f_handler = logging.FileHandler(fname)
+    f_handler.setLevel(root_logger.level)
+    f_handler.setFormatter(logging.Formatter(
+        "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
+        datefmt="%d.%m.%Y@%H:%M:%S"))
+    f_handler.addFilter(root_logger.filters[0])
+    # w_logger.addHandler(f_handler)
+
+    # append an extension if none is provided
+    fname += ".log" if os.path.splitext(fname)[-1] == "" else ""
+
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            root_logger.handlers.remove(handler)
     
+    root_logger.addHandler(f_handler)
+    snitch.debug(f"Logfile is at: {fname}")
+        
 
 def wrap_warning_text(message, category, filename, lineno, file=None,
                       line=None):
@@ -80,7 +101,6 @@ def _handle_uncaught_exceptions(extype, exval, extraceback):
     """
     trace = tb.format_exception(extype, exval, extraceback)
     trace = " ".join(trace).split("\n")
-    snitch = get_logger(logging.getLogger(__name__))
     snitch.error("Oops ... uncaught exception occurred!")
     _ = [snitch.error(_) for _ in trace if _ != ""]
 

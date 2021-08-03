@@ -8,9 +8,9 @@ import numpy as np
 
 from time import perf_counter
 from difflib import get_close_matches
-from chaos.lograg import logging, get_logger
+from chaos.lograg import logging
 
-snitch = get_logger(logging.getLogger(__name__))
+snitch = logging.getLogger(__name__)
 
 def timer(func):
     def wrapper(*args, **kwargs):
@@ -38,7 +38,6 @@ def get_colours(n, cmap="coolwarm"):
         return [mpc.to_hex(cmap(norm(a))) for a in range(n)]
 
     elif len(get_close_matches(cmap, plt.colormaps())) > 0:
-        #TODO: Maybe this elif should be the first an only for mpl
         cmap, = get_close_matches(cmap, plt.colormaps(), n=1)
         cmap = plt.get_cmap(cmap)
         norm = mpc.Normalize(vmin=0, vmax=n)

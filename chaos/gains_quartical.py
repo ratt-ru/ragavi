@@ -15,7 +15,7 @@ from itertools import product, zip_longest
 from chaos.arguments import gains_argparser
 from chaos.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
 from chaos.gains import get_colours
-from chaos.lograg import logging, get_logger
+from chaos.lograg import logging
 from chaos.plotting import Circle, Scatter, FigRag
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
@@ -23,7 +23,7 @@ from chaos.ragdata import QuarticalTableData as TableData
 from chaos.utils import new_darray
 from chaos.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
-snitch = get_logger(logging.getLogger(__name__))
+snitch = logging.getLogger(__name__)
 
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False  

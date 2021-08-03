@@ -11,7 +11,7 @@ from bokeh.io import output_file, output_notebook, save
 
 from chaos.arguments import gains_argparser
 from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
-from chaos.lograg import logging, get_logger
+from chaos.lograg import logging
 from chaos.plotting import FigRag, Circle, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
@@ -19,7 +19,7 @@ from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
 from chaos.utils import get_colours, timer
 from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
-snitch = get_logger(logging.getLogger(__name__))
+snitch = logging.getLogger(__name__)
 
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False

@@ -12,10 +12,10 @@ from typing import Any
 from casacore.tables import table
 
 from chaos.exceptions import TableNotFound
-from chaos.lograg import get_logger, logging
+from chaos.lograg import logging
 from chaos.utils import pair
 
-snitch = get_logger(logging.getLogger(__name__))
+snitch = logging.getLogger(__name__)
 
 stokes_types = np.array([
     "I", "Q", "U", "V", "RR", "RL", "LR", "LL", "XX", "XY",
