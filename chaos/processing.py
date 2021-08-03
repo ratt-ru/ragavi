@@ -162,18 +162,24 @@ class Chooser:
          time will be in seconds and a string: start, end
 
         """
-        super_taql = []
-        super_dict = {}
+        super_taql, super_dict = [], {}
 
         if antennas and baselines is None:
+            #if ranges are given
+            if any([char in antennas for char in ": ~".split()]):
+                antennas = Chooser.get_knife(antennas, get_slicer=False)
             antennas = antennas.replace(" ", "").split(",")
             for i, selection in enumerate(antennas):
                 antennas[i] = Chooser.nametoid(selection, msdata.ant_map)
             
             super_dict["antennas"] = [int(_) for _ in antennas]
-            antennas = (
-                f"any(ANTENNA1 IN [{','.join(set([_ for _ in antennas if _]))}]" +
-                f" || ANTENNA2 IN [{','.join(set([_ for _ in antennas if _]))}])")
+            antennas = ','.join(set([_ for _ in antennas if _]))
+            if msdata.table_type != "ms":
+                antennas = f"ANTENNA1 IN [{antennas}]"
+            else:
+                antennas =\
+                    f"any(ANTENNA1 IN [{antennas}] || ANTENNA2 IN [{antennas}])"
+            
             super_taql.append(antennas)
 
         if baselines:
@@ -194,19 +200,27 @@ class Chooser:
             super_taql.append(f"any({baselines})")
 
         if fields:
+            #if ranges are given
+            if any([char in fields for char in ": ~".split()]):
+                fields = Chooser.get_knife(fields, get_slicer=False)
             fields = fields.replace(" ", "").split(",")
             for i, selection in enumerate(fields):
                 fields[i] = Chooser.nametoid(selection, msdata.field_map)
-            
             super_dict["fields"] = [int(_) for _ in fields]
             fields = f"FIELD_ID IN [{','.join(set([_ for _ in fields if _]))}]"
             super_taql.append(fields)
         if scans:
+            #if ranges are given
+            if any([char in scans for char in ": ~".split()]):
+                scans = Chooser.get_knife(scans, get_slicer=False)
             scans = scans.replace(" ", "")
             super_dict["scans"] = [int(_) for _ in scans.split(",")]
             scans = f"SCAN_NUMBER IN [{scans}]"
             super_taql.append(scans)
         if spws:
+            #if ranges are given
+            if any([char in spws for char in ": ~".split()]):
+                spws = Chooser.get_knife(spws, get_slicer=False)
             spws = spws.replace(" ", "")
             super_dict["spws"] = [int(_) for _ in spws.split(",")]
             spws = "DATA_DESC_ID" if "DATA_DESC_ID" in msdata.colnames \
@@ -240,7 +254,7 @@ class Chooser:
         return " && ".join(super_taql)
 
     @staticmethod
-    def get_knife(data):
+    def get_knife(data, get_slicer=True):
         """
         a.k.a knife
         Format the data to addvalues where they need t be added
@@ -263,6 +277,10 @@ class Chooser:
             elif data.endswith("::"):
                 data = data.replace(":", ":None:None")
             else:
-                raise SyntaxError(f"Invalid String {data}")
+                snitch.warn(f"Invalid String {data}")
+                return data
         data = eval(data.replace(":", ","))
-        return slice(*data)
+        if get_slicer:
+            return slice(*data)
+        else:
+            return ",".join([str(_) for _ in range(*data)])
