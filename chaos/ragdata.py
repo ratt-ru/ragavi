@@ -6,7 +6,7 @@ import xarray as xr
 
 from dataclasses import dataclass, field
 from difflib import get_close_matches
-from itertools import combinations
+from itertools import combinations, product
 from psutil import cpu_count, virtual_memory
 from typing import Any
 from casacore.tables import table
@@ -280,7 +280,8 @@ class MsData:
 
 
 class CubicalTableData:
-    def __init__(self, ms_name, ants=None, fields=None, corr1s=None):
+    def __init__(self, ms_name, ants=None, fields=None, corr1s=None,
+        table_type=None, colnames=""):
         self.ms_name = ms_name
         self.ant_names = ants
         self.field_names = [str(f) for f in fields]
@@ -288,10 +289,10 @@ class CubicalTableData:
         self.corrs = None
         self.active_antennas = None
         self.active_corrs = []
-        self.active_corr1s = None
-        self.active_corr2s = None
         self.active_fields = None
         self.active_spws = [0]
+        self.table_type = table_type
+        self.colnames = colnames
 
     @property
     def ant_map(self):
@@ -470,7 +471,8 @@ class Axargs:
         #Get the proper name for the data column first before getting other names
         self.yaxis = self.get_proper_axis_names(self.yaxis)
         self.xaxis = self.get_proper_axis_names(self.xaxis)
-        self.data_column = self.get_colname(self.data_column, self.data_column)
+        if self.data_column is not None:
+            self.data_column = self.get_colname(self.data_column, self.data_column)
         self.xdata_col = self.get_colname(self.xaxis, self.data_column)
         self.ydata_col = self.get_colname(self.yaxis, self.data_column)
 
