@@ -9,9 +9,10 @@ from itertools import product, zip_longest
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.io import output_file, output_notebook, save
 
+from chaos import version
 from chaos.arguments import gains_argparser
 from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
-from chaos.lograg import logging
+from chaos.lograg import logging, update_log_levels, update_logfile_name
 from chaos.plotting import FigRag, Circle, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
@@ -141,7 +142,8 @@ def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
         snitch.debug(f"spw: {sub.SPECTRAL_WINDOW_ID}, " +
               f"field: {msdata.reverse_field_map[sub.FIELD_ID]}, " +
               f"corr: {corr}, yaxis: {yaxis}")
-        colour = cmap[msdata.reverse_ant_map[sub.ANTENNA1]]
+        colour = cmap[msdata.active_antennas.index(
+            msdata.reverse_ant_map[sub.ANTENNA1])]
         msdata.active_channels = msdata.freqs.sel(chan=selections.channels,
                                                   row=sub.SPECTRAL_WINDOW_ID)
 
@@ -151,12 +153,13 @@ def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
         axes.set_axis_data("yaxis", ms_obj=sub)
         axes.xdata = Processor(axes.xdata).calculate(axes.xaxis).data
 
+        sel_corr = {"corr": corr} if "corr" in axes.ydata.dims else {}
         # setting ydata here for reinit. Otherwise, autoset in axargs
         axes.ydata = Processor(sub[axes.ydata_col]).calculate(
-            axes.yaxis).sel(corr=corr).data
+            axes.yaxis).sel(sel_corr).data
 
-        axes.flags = ~sub.FLAG.sel(corr=corr).data
-        axes.errors = sub.PARAMERR.sel(corr=corr).data
+        axes.flags = ~sub.FLAG.sel(sel_corr).data
+        axes.errors = sub.PARAMERR.sel(sel_corr).data
         
         axes = iron_data(axes)
 
@@ -187,17 +190,22 @@ def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
 def main(parser, gargs):
     ps = parser().parse_args(gargs)
 
-    for (msname, antennas, baselines, channels, corrs, ddids, fields, t0, t1,
+    if ps.debug:
+        update_log_levels(snitch.parent, 10)
+    update_logfile_name(snitch.parent,
+                        ps.logfile if ps.logfile else "ragains.log")
+
+    for (msname, antennas, channels, corrs, ddids, fields, t0, t1,
         taql, cmap, yaxes, xaxis, html_name, image_name) in zip_longest(
-        ps.msnames, ps.antennas, ps.baselines, ps.channels, ps.corrs, ps.ddids,
+        ps.msnames, ps.antennas, ps.channels, ps.corrs, ps.ddids,
         ps.fields, ps.t0s, ps.t1s, ps.taqls, ps.cmaps, ps.yaxes, ps.xaxes,
         ps.html_names, ps.image_names):
         
         #we're grouping the arguments into 4
-        generals = Genargs(msname=msname, version="testwhatever")
+        generals = Genargs(msname=msname, version=version)
         selections = Selargs(
             antennas=antennas, corrs=Chooser.get_knife(corrs),
-            baselines=baselines, channels=Chooser.get_knife(channels),
+            baselines=None, channels=Chooser.get_knife(channels),
             ddids=ddids, fields=fields, taql=taql, t0=t0, t1=t1)
 
         #initialise data ssoc with ms
@@ -207,19 +215,25 @@ def main(parser, gargs):
         subs = get_table(msdata, selections, group_data=["SPECTRAL_WINDOW_ID", 
                                                         "FIELD_ID", "ANTENNA1"])
         if len(subs) > 0:
-            msdata.active_corrs = subs[0].corr.values
+            if corrs is None:
+                msdata.active_corrs = subs[0].corr.values
+            else:
+                if type(selections.corrs) == int:
+                    msdata.active_corrs = [selections.corrs]
+                else:
+                    msdata.active_corrs = selections.corrs
         else:
             raise EmptyTable(
                 "Table came up empty. Please your check selection.")
     
         for sub in subs:
-            if sub.FIELD_ID not in msdata.active_fields:
-                msdata.active_fields.append(sub.FIELD_ID)
-            if sub.SPECTRAL_WINDOW_ID not in msdata.active_spws:
-                msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
-            if sub.ANTENNA1 not in msdata.active_antennas:
-                msdata.active_antennas.append(
+            msdata.active_fields.append(sub.FIELD_ID)
+            msdata.active_spws.append(sub.SPECTRAL_WINDOW_ID)
+            msdata.active_antennas.append(
                         msdata.reverse_ant_map[sub.ANTENNA1])
+        msdata.active_fields = sorted(list(set(msdata.active_fields)))
+        msdata.active_spws = sorted(list(set(msdata.active_spws)))
+        msdata.active_antennas = sorted(list(set(msdata.active_antennas)))
         
         if yaxes is None:
             yaxes = ["a", "p"]
@@ -227,7 +241,6 @@ def main(parser, gargs):
             yaxes = [_ for _ in "apri"]
         elif set(yaxes).issubset(set("apri")):
             yaxes = [_ for _ in yaxes]
-        yaxes = [Axargs.translate_y(_) for _ in yaxes]
 
         if msdata.table_type.lower().startswith("k"):
             yaxes = ["delay"]
@@ -239,8 +252,7 @@ def main(parser, gargs):
             html_name = msdata.ms_name + f"_{''.join(yaxes)}" +".html"
         
         if cmap is None:
-            cmap, = ps.cmaps
-        
+            cmap = "coolwarm"
         cmap = get_colours(len(msdata.active_antennas), cmap)
         points = calculate_points(subs[0], len(subs))
 
@@ -346,5 +358,5 @@ def plot_table(**kwargs):
     output_notebook()
     main_layout = main(gains_argparser, nargs)
     show(main_layout)
-    print("Notebook plots ready")
+    print("Notebook plots are ready")
     return 0

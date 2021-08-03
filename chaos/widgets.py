@@ -423,8 +423,9 @@ def make_stats_table(msdata, data_column, yaxes, subs):
     stats = {col: [] for col in columns}
     for sub in subs:
         for yaxis, corr in product(yaxes, msdata.active_corrs):
-            pro = Processor(sub[data_column]).calculate(yaxis).sel(corr=corr)
-            flags = sub.FLAG.sel(corr=corr)
+            sel_corr = {"corr": corr} if "corr" in sub.dims else {}
+            pro = Processor(sub[data_column]).calculate(yaxis).sel(sel_corr)
+            flags = sub.FLAG.sel(sel_corr)
             if "SPECTRAL_WINDOW_ID" in sub.attrs:
                 stats["spw"].append(sub.SPECTRAL_WINDOW_ID)
             else:
