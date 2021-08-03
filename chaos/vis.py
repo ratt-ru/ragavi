@@ -20,6 +20,7 @@ from bokeh.io import output_file, output_notebook, save
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import Div, ImageRGBA, PreText, Text
 
+from chaos import version
 from chaos.arguments import vis_argparser
 from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
 from chaos.lograg import logging, update_log_levels, update_logfile_name
@@ -147,7 +148,7 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
 
     # Nb for i/c axis not in MS e.g baseline, corr, antenna, axes returns None
     # Always group by DDID
-    if os.path.splitext(msdata.ms_name)[-1].lower() == ".ms":
+    if msdata.table_type == ".ms":
         group_cols = ["DATA_DESC_ID"]
     else:
         group_cols = ["SPECTRAL_WINDOW_ID"]
@@ -456,7 +457,7 @@ def main(parser, gargs):
     update_logfile_name(snitch.parent, 
         ps.logfile if ps.logfile else "ragaviz.log")
     generals = Genargs(chunks=ps.chunk_size, mem_limit=ps.mem_limit,
-        ncores=ps.ncores)
+                       ncores=ps.ncores, version=version)
 
     config.set(num_workers=generals.ncores, memory_limit=generals.mem_limit)
 

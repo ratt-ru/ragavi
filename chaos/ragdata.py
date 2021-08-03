@@ -403,7 +403,7 @@ class Genargs:
     def __post_init__(self):
         self.ncores, self.mem_limit = self.resource_defaults(
             self.mem_limit, self.ncores)
-        self.chunks = int(self.chunks)
+        self.chunks = int(self.chunks) if self.chunks is not None else self.chunks
 
     def get_mem(self):
         """Get 90% of the memory available"""
@@ -531,7 +531,7 @@ class Axargs:
         elif len(get_close_matches(name, names, 1))>0:
             name = names[get_close_matches(name, names, 1)[0]]
             snitch.warn(f"'{name}' is not a valid name in ragavi")
-            snitch.info(f"Switching to '{names[name]}' as a close match")
+            snitch.debug(f"Switching to '{names[name]}' as a close match")
         return name
 
 
@@ -599,10 +599,10 @@ class Axargs:
                                n=1)) > 0:
             colname = get_close_matches(axis.upper(), self.msdata.colnames,
                                         n=1)[0]
-            snitch.info(f"'{axis}' column not found, using closest '{colname}'")
+            snitch.debug(f"'{axis}' column not found, using closest '{colname}'")
         else:
             colname = None
-            snitch.info(f"column for: {axis} not found. Setting Column to {colname}")
+            snitch.debug(f"column for: {axis} not found. Setting Column to {colname}")
         return colname
     
     def set_axis_data(self, axis, ms_obj):
@@ -620,11 +620,11 @@ class Axargs:
         _axis = f"{axis[0]}data"
         column = getattr(self, f"{_axis}_col")
         if len(re.findall(rf"{axis_name}\w*", "channel frequency")) > 0:
-            snitch.debug(f"{axis}axis column is channel/frequency")
+            snitch.debug(f"{axis[0]}axis column is channel/frequency")
             # setattr(self, _axis, ms_obj[column].chan)
             setattr(self, _axis, self.msdata.active_channels/1e9)
         else:
-            snitch.debug(f"{axis}axis data column is {column}")
+            snitch.debug(f"{axis[0]}axis data column is {column}")
             if column is not None:
                 if column == "ANTENNA1 ANTENNA2":
                     ms_obj = ms_obj.assign(BASELINE=pair(ms_obj.ANTENNA1,

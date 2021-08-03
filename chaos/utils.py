@@ -65,7 +65,7 @@ def get_colours(n, cmap="coolwarm"):
     #check if colormap is in colorcet
     elif len(get_close_matches(cmap, cc.palette.keys())) > 0:
         cmap = cc.palette(get_close_matches(cmap, cc.palette.keys(), n=1)[0])
-        return cmap[:n]
+        return bp.linear_palette(cmap, n)
     else:
         raise InvalidCmap(f"cmap {cmap} not found.")
         return -1
