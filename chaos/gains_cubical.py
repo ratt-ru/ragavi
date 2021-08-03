@@ -6,14 +6,14 @@ import numpy as np
 from concurrent import futures
 from functools import partial
 from itertools import product, zip_longest
-from collections import namedtuple
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.io import output_file, save
 
-from chaos.arguments import gains_argparser
+from chaos import version
+from chaos.arguments import cubical_gains_parser
 from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
 from chaos.gains import get_colours
-from chaos.lograg import logging
+from chaos.lograg import logging, update_log_levels, update_logfile_name
 from chaos.plotting import Circle, FigRag, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import Axargs, Genargs, Selargs
@@ -58,60 +58,87 @@ def calculate_points(iters, size_per_iter):
     return iters * size_per_iter
 
 def organise_data(sels, tdata):
+    _, actives = Chooser.form_taql_string(
+        tdata, antennas=sels.antennas, baselines=sels.baselines,
+        fields=sels.fields, spws=sels.ddids, return_ids=True)
     if sels.antennas is not None:
-        antennas = sels.antennas.replace(" ", "").split(",")
-        if all([a.isdigit() for a in antennas]):
-            sels.antennas = [int(a) for a in antennas]
-        else:
-            sels.antennas = [tdata.ant_map[a] for a in antennas]
+       sels.antennas = actives.get("antennas")
     else:
-        sels.antennas = list(tdata.ant_map.values())
+        sels.antennas = list(tdata.reverse_ant_map.keys())
     tdata.active_antennas = sels.antennas
     
     if sels.corrs is not None:
+        # get in string format for conversion to xx,xy,yx,yy format
+        if any([char in sels.corrs for char in ": ~".split()]):
+            sels.corrs = Chooser.get_knife(sels.corrs, get_slicer=False)
+        elif sels.corrs.startswith("diag"):
+            sels.corrs = ",".join([*map(tdata.reverse_corr_map.get, [0,3])])
+        elif sels.corrs.startswith("off-"):
+            sels.corrs = ",".join([*map(tdata.reverse_corr_map.get, [1,2])])
+    
         # change to xx etc labels and then translate from corr1s
+        # Doing this coz data stored as corr1:[0,1] and corr2:[0,1]
+        # so xx will be corr1[0]corr2[0]
         corrs = sels.corrs.replace(" ", "").upper().split(",")
         if all([c.isdigit() for c in corrs]):
             corrs = [tdata.reverse_corr_map[int(c)] for c in corrs]
         else:
             corrs = [c for c in corrs if c in tdata.corr_map]
         # this list will contain tuples of the form (corr1, corr2)
-        tdata.corrs = [(tdata.corr1s.index(c[0]), tdata.corr1s.index(c[1]))
-                       for c in corrs]
+        sels.corrs = [(tdata.corr1s.index(c[0]), tdata.corr1s.index(c[1]))
+                    for c in corrs]
     else:
         # this list will contain tuples of the form (corr1, corr2)
-        tdata.corrs = [*product(range(len(tdata.corr1s)), repeat=2)]
-    
+        sels.corrs = [*product(range(len(tdata.corr1s)), repeat=2)]
+        # select only diagonals mm[0] and nn[-1]
+        sels.corrs = [sels.corrs[0], sels.corrs[-1]]
+    tdata.corrs = sels.corrs
     return tdata
+
+def set_xaxis(gain):
+    gains = {k: "channel"  for k in "b xf df".split()}
+    gains.update({k: "time" for k in "d g f k kcross".split()})
+    return gains.get(gain.lower(), "time")
+
 
 def main(parser, gargs):
     ps = parser().parse_args(gargs)
 
-    for (msname, antennas, channels, corrs, fields, t0, t1, cmap, yaxes,
+    if ps.debug:
+        update_log_levels(snitch.parent, 10)
+    update_logfile_name(
+        snitch.parent,
+        ps.logfile if ps.logfile else "ragains-cubical.log")
+
+    for (msname, antennas, channels, corrs, fields, cmap, yaxes,
         xaxis, html_name, image_name) in zip_longest(ps.msnames, ps.antennas,
-        ps.channels, ps.corrs, ps.fields, ps.t0s, ps.t1s, ps.cmaps, ps.yaxes,
+        ps.channels, ps.corrs, ps.fields, ps.cmaps, ps.yaxes,
         ps.xaxes, ps.html_names, ps.image_names):
         
-        snitch.info(f"Reading {msname}")
         table = db.load(msname)
+        snitch.info(f"Reading {msname}")
+
+        # get table type and appropriate data location names
         syns = {("error" if "err" in _ else "gain"): _ for _ in table.names()}
-        gain_data = table[syns["gain"]]
-        gain_err = table[syns["error"]]
+        
+        # get required data
+        gain_data, gain_err = table[syns["gain"]], table[syns["error"]]
 
         # initialise table data container
-        tdata = TableData(cb_name, ants=gain_data.grid[gain_data.ax.ant],
+        # This is done after reading the table cause data isn't contained elsewhere
+        tdata = TableData(msname, ants=gain_data.grid[gain_data.ax.ant],
                         corr1s=gain_data.grid[gain_data.ax.corr1],
                         # corr2s=gain_data.grid[gain_data.ax.corr2],
-                        fields=gain_data.grid[gain_data.ax.dir]
+                        fields=gain_data.grid[gain_data.ax.dir],
+                        table_type=table.names()[0][0], colnames=""
                         )
         
         # set active fields by default to whatever is is in direction
         tdata.active_fields = gain_data.grid[gain_data.ax.dir]      
-        generals = Genargs(msname=msname, version="testwhatever")
+        generals = Genargs(msname=msname, version=version)
         selections = Selargs(
-            antennas=antennas, corrs=corrs,
-            baselines=None, channels=Chooser.get_knife(channels),
-            ddids=None)
+            antennas=antennas, corrs=corrs,baselines=None,
+            channels=Chooser.get_knife(channels), ddids=None)
 
         if html_name is None and image_name is None:
             html_name = tdata.ms_name + f"_{''.join(yaxes)}" + ".html"
@@ -124,8 +151,12 @@ def main(parser, gargs):
         elif yaxes == "all":
             yaxes = [_ for _ in "apri"]
         elif set(yaxes).issubset(set("apri")):
-            yaxes = [_ for _ in yaxes]
-        yaxes = [Axargs.translate_y(_) for _ in yaxes]
+            yaxes = [_ for _ in yaxes]       
+        if tdata.table_type.lower().startswith("k"):
+            yaxes = ["delay"]
+
+        if xaxis is None:
+            xaxis = set_xaxis(tdata.table_type)
 
         all_figs = []
         for yaxis in yaxes:
@@ -134,8 +165,6 @@ def main(parser, gargs):
                 add_toolbar=True, width=900, height=710,
                 x_scale=xaxis if xaxis == "time" else "linear",
                 plot_args={"frame_height": None, "frame_width": None})
-
-            Axes = namedtuple("Axes", ["flags", "errors", "xaxis", "yaxis"])
         
             for fid, ant, (corr1, corr2) in product(
                 tdata.active_fields, tdata.active_antennas, tdata.corrs):
@@ -169,11 +198,11 @@ def main(parser, gargs):
                     tdata.active_corrs.append(f"{_corr}")
 
                 masked_data, masked_err = masked_data.flatten(), masked_err.flatten()
-                axes = Axes(flags=~masked_data.mask, errors=masked_err.data,
-                            xaxis=xaxis, yaxis=yaxis)
-                
+               
+                axes = Axargs(xaxis=xaxis, yaxis=yaxis, data_column=None,
+                             msdata=tdata, flags=~masked_data.mask, 
+                             errors=masked_err.data)   
                 total_reps = masked_data.size
-
                 xaxes = {
                     "time": np.repeat(Processor.unix_timestamp(time),
                                         total_reps//time.size),
@@ -188,9 +217,10 @@ def main(parser, gargs):
                     "field": np.repeat(fid, total_reps),
                     "data": axes
                 }
+                colour = cmap[tdata.active_antennas.index(ant)]
                 figrag.add_glyphs(F_MARKS[fid], data=data, 
-                    legend=tdata.reverse_ant_map[ant], fill_color=cmap[ant],
-                    line_color=cmap[ant],
+                    legend=tdata.reverse_ant_map[ant], fill_color=colour,
+                    line_color=colour,
                     tags=[f"a{ant}", "s0", f"c{_corr}", f"f{fid}"])
 
             figrag.update_xlabel(axes.xaxis)
@@ -236,16 +266,3 @@ def main(parser, gargs):
                  title=os.path.splitext(os.path.basename(html_name))[0])
             snitch.info(f"HTML file at: {html_name}")
         snitch.info("Plotting Done")
-
-if __name__ == "__main__":
-    # cb_name = "/home/lexya/Documents/test_gaintables/cubical/reduction02-cubical-G-field_0-ddid_None.parmdb"
-    # cb_name = "/home/lexya/Documents/test_gaintables/cubical/reduction02-cubical-BBC-field_0-ddid_None.parmdb"
-    cb_name = "/home/lexya/Documents/test_gaintables/cubical/selfcal-cubical-11th-smallms-noxcal-kde-kdd-dE-field_0-ddid_None.parmdb"
-    #synonyms for the the tables available here
-    yaxes = "a"
-    xaxis = "time"
-    main(gains_argparser, [
-        "-t", cb_name, "-y", yaxes, "-x", xaxis,
-        "--corr", "0,3", "--cmap", "glasbey"
-        #    "--ant", "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19"
-        ])
