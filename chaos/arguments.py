@@ -317,15 +317,25 @@ def cubical_gains_parser():
     parser = RagParser(
         usage="ragavi-gains-cubical [options] <value>",
         description="Radio Astronomy Gains Inspector: Cubical gain tables",
-        parents=[gains_argparser()], add_help=False)
+        parents=[gains_argparser()], add_help=False,
+        conflict_handler="resolve")
     
     for grp in parser._action_groups:
-        if "required" in grp.title.lower():
+        if "selection" in grp.title.lower():
             grp.add_argument(
-                "-gt", "--gtype", dest="gtype", nargs='+', type=str, metavar='',
-                default=[None], required=True,
-                help="""Gain table type(s) being plotted. Multiple tables can 
-                be specified as a space separated list""")
+                "-c", "--corr", dest="corrs", type=str, metavar='', nargs='+',
+                default=[None],
+                help="""Correlation index to plot. Can be a single integer or 
+                comma separated integers e.g '0,2'. Defaults to all.""")
+            grp.add_argument(
+                "--t0", dest="t0s", nargs='+', type=float, metavar='',
+                default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+            grp.add_argument(
+                "--t1", dest="t1s", nargs='+', type=float, metavar='',
+                default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+            grp.add_argument(
+                "--taql", dest="taqls", nargs='+', type=str, metavar='',
+                default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     
     return parser
 
@@ -336,5 +346,13 @@ def quartical_gains_parser():
         usage="ragavi-gains-quartical [options] <value>",
         description="Radio Astronomy Gains Inspector: Quartical gain tables",
         parents=[cubical_gains_parser()], add_help=False)
+    
+    for grp in parser._action_groups:
+        if "required" in grp.title.lower():
+            grp.add_argument(
+                "-gt", "--gtype", dest="gtypes", nargs='+', type=str, metavar='',
+                default=[None], required=False,
+                help="""Gain table type(s) being plotted. Multiple tables can 
+                    be specified as a space separated list""")
 
     return parser
