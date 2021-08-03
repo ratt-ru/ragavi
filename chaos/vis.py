@@ -22,7 +22,7 @@ from bokeh.models import Div, ImageRGBA, PreText, Text
 
 from chaos.arguments import vis_argparser
 from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
-from chaos.lograg import logging, get_logger
+from chaos.lograg import logging, get_logger, update_log_levels
 from chaos.plotting import FigRag, Circle, Scatter
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
@@ -31,8 +31,6 @@ from chaos.utils import get_colours, new_darray, timer, bp
 from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = get_logger(logging.getLogger(__name__))
-
-from ipdb import set_trace
 
 def antenna_iter(msdata, columns, **kwargs):
     """
@@ -337,7 +335,12 @@ def sort_the_plot(fig_num, fig, axes, plargs):
         plargs.ymin = apply_blockwise(axes.ydata, np.nanmin, "")
     if plargs.y_max is None:
         plargs.ymax = apply_blockwise(axes.ydata, np.nanmax, "")
-
+    
+    if plargs.link_plots:
+        snitch.debug("Locking plot standard x and y scale")
+        plargs.x_min, plargs.x_max, plargs.y_min, plargs.y_max = (
+            plargs.xmin, plargs.xmax, plargs.ymin, plargs.ymax)
+            
     snitch.info("Calculating x and y Min and Max ranges")
     # with ProgressBar():
     plargs.xmin, plargs.xmax, plargs.ymin, plargs.ymax = compute(
@@ -369,9 +372,8 @@ def sort_the_plot(fig_num, fig, axes, plargs):
         # Also reduce cat_maps and n_categories
         plargs.n_categories = agg[axes.caxis].size
         plargs.cat_map = {idx: plargs.cat_map[idx] for idx in agg[axes.caxis].values}
-        plargs.cmap = cycle(bp.linear_palette(
-            plargs.cmap, plargs.n_categories))
-        img = tf.shade(agg, color_key=plargs.cmap)
+        img = tf.shade(agg, 
+            color_key=cycle(bp.linear_palette(plargs.cmap, plargs.n_categories)))
 
     fig.add_glyphs(ImageRGBA,
         dict(
@@ -445,13 +447,16 @@ def get_row_chunk(msd):
 
 def main(parser, gargs): 
     ps = parser().parse_args(gargs)
-    # ps.debug, ps.link_plots, ps.flag,
+    
     # ps.cbin, ps.tbin
+    
+    if ps.debug:
+        update_log_levels(snitch.parent, 10)
 
     generals = Genargs(chunks=ps.chunk_size, mem_limit=ps.mem_limit,
         ncores=ps.ncores)
 
-    # config.set(num_workers=generals.ncores, memory_limit=generals.mem_limit)
+    config.set(num_workers=generals.ncores, memory_limit=generals.mem_limit)
 
     # repeated for all 
     for (msname, xaxis, yaxis, data_column, cmap, c_axis, i_axis, html_name,
@@ -473,6 +478,7 @@ def main(parser, gargs):
             ps.grid_cols = ps.grid_cols if ps.grid_cols else 5
         if cmap is None:
             cmap = "blues" if c_axis is None else "glasbey_bw"
+            snitch.info(f"Colour map: {cmap}")
         if html_name is None:
             html_name = "{}_{}_vs_{}_{}_flagged_{}".format(
                 os.path.basename(msdata.ms_name), yaxis, xaxis, data_column,
@@ -499,6 +505,7 @@ def main(parser, gargs):
                     "Selected corrs {} are not available. Selecting {}".format(
                     ','.join(invalid_corrs), 
                     ','.join(map(msdata.reverse_corr_map.get, corrs))))
+            snitch.info(f"Corrs: {corrs}")
 
         selections = Selargs(antennas=antennas, baselines=baselines,
             corrs=Chooser.get_knife(corrs), channels=Chooser.get_knife(channels),
@@ -520,7 +527,7 @@ def main(parser, gargs):
         plargs = Plotargs(cmap=cmap, c_height=ps.c_height, c_width=ps.c_width,
                           grid_cols=ps.grid_cols, x_min=ps.xmin, x_max=ps.xmax,
                           y_max=ps.ymax,y_min=ps.ymin, html_name=html_name,
-                          partitions=len(subs))
+                          partitions=len(subs), link_plots=ps.link_plots)
         plargs.set_grid_cols_and_rows()
         plargs.form_plot_title(axes)
 
@@ -553,8 +560,9 @@ def main(parser, gargs):
             # Set the axis data
             [axes.set_axis_data(_, sub) for _ in list("xyci")]
             
+            axes.flags = sub.FLAG
             if ps.flag:
-                axes.flags = sub.FLAG
+                snitch.debug(f"'-if is {ps.flag}'. Plotting non-flagged data.")
                 sub = sub.where(axes.flags == False)
 
             axes.xdata = Processor(axes.xdata).calculate(axes.xaxis,
@@ -573,7 +581,7 @@ def main(parser, gargs):
             
             fig = sort_the_plot(isub, FigRag(**to_fig), axes, plargs)
             outp.append(fig)
-        
+
         outp = [_.fig for _ in outp]
        
         if axes.iaxis is not None:

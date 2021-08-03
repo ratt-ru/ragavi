@@ -508,7 +508,7 @@ class FigRag(BaseFigure):
                 x=[plargs.xmin, plargs.xmin], y=[plargs.ymin, plargs.ymin])
 
             self.add_glyphs(Line, ssq, legend=str(plargs.cat_map[cidx]),
-                            line_color=next(plargs.cmap), line_width=lh)
+                            line_color=plargs.cmap[c], line_width=lh)
 
         self.add_legends(
             group_size=60, position=position, visible=visible,

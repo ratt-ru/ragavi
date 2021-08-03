@@ -15,7 +15,7 @@ warnings.filterwarnings("module")
 logging.captureWarnings(True)
 
 # only get data from ragavi modules
-logger_filter = logging.Filter("")
+logger_filter = logging.Filter("chaos")
 f_formatter = logging.Formatter(
     "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
     datefmt="%d.%m.%Y@%H:%M:%S")
@@ -42,6 +42,23 @@ def get_logger(log):
     # log.handlers = log.parent.handlers
     return log
 
+
+def update_log_levels(root_logger, level):
+    snitch = get_logger(logging.getLogger(__name__))
+    snitch.info("Testing Log level now at info")
+    snitch.debug("Testing log level")
+    if str(level).isnumeric():
+        level = logging._levelToName[int(level)]
+    else:
+        level = logging._nameToLevel[level.upper()]
+    root_logger.setLevel(level)
+    # change the logging level for the handlers
+    if root_logger.hasHandlers():
+        for handler in root_logger.handlers:
+            handler.setLevel(level)
+    snitch.info(f"Logging level is now: {level}")
+    snitch.debug("Debugging mode")
+    
 
 def wrap_warning_text(message, category, filename, lineno, file=None,
                       line=None):
