@@ -337,7 +337,7 @@ class CubicalTableData:
 
 class QuarticalTableData:
     def __init__(self, ms_name, ant_names=None, field_names=None,
-                 corr_names=None, scans=None, spws=None):
+                 corr_names=None, scans=None, spws=None, colnames=""):
         self.ms_name = ms_name
         self.ant_names = ant_names.tolist()
         self.field_names = field_names
@@ -347,6 +347,8 @@ class QuarticalTableData:
         self.active_corrs = []
         self.active_spws = [0]
         self.active_fields = []
+        self.colnames = colnames
+        self.table_type = None
 
     @property
     def ant_map(self):
