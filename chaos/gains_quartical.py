@@ -12,10 +12,11 @@ from daskms.experimental.zarr import xds_from_zarr
 from functools import partial
 from itertools import product, zip_longest
 
-from chaos.arguments import gains_argparser
+from chaos import version
+from chaos.arguments import quartical_gains_parser
 from chaos.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
 from chaos.gains import get_colours
-from chaos.lograg import logging
+from chaos.lograg import logging, update_log_levels, update_logfile_name
 from chaos.plotting import Circle, Scatter, FigRag
 from chaos.processing import Chooser, Processor
 from chaos.ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
@@ -28,12 +29,6 @@ snitch = logging.getLogger(__name__)
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False  
 
-@dataclass
-class Axes:
-    xaxis: str
-    yaxis: str
-    flags: np.array = None
-    errors: da.array = None
 
 def calculate_points(subms, nsubs):
     return subms.gains.size * nsubs
@@ -43,6 +38,7 @@ def add_extra_xaxis(channels, figrag, sargs):
     figrag.add_axis(*channels, "x", "linear", "Frequency GHz", "above")
 
 def init_table_data(msname, sub_list):
+    snitch.debug("Initialising table data container")
     fields, scans, spws={}, [], []
     for ms in sub_list:
         fields[ms.FIELD_ID]=ms.FIELD_NAME
@@ -61,10 +57,10 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
     time, freq = subms.gain_t.values, subms.gain_f.values / 1e9
     ants_corrs = product(msdata.active_antennas, msdata.active_corrs)
     for ant, corr in ants_corrs:
+        snitch.info(f"Antenna {ant}, corr: {corr}")
+        
         sub = subms.sel(ant=ant, corr=corr)
         gains, sdict = sub.gains, {}
-
-        snitch.info(f"Antenna {ant} corr: {ant}")
         if axes.xaxis == "time":
             original = ("gain_t", "gain_f", "dir")
         else:
@@ -94,8 +90,6 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
         sdict["markers"] = np.repeat(F_MARKS[sub.FIELD_ID], total_reps)
         sdict["data"] = axes
         
-        # TODO: change from ant to actual ant name
-
         # aidx: antenna item number in theactive antennas array
         aidx = msdata.active_antennas.tolist().index(ant)
         figrag.add_glyphs(
@@ -106,7 +100,6 @@ def populate_fig_data(subms, axes, cmap, figrag, msdata):
             tags=[f"a{msdata.ant_map[ant]}", f"c{msdata.corr_map[corr]}",
                   f"s{sub.DATA_DESC_ID}", f"f{sub.FIELD_ID}"])
     return figrag
-
 
 def add_hover_data(fig, axes):
     """
@@ -137,34 +130,59 @@ def organise_table(ms, sels, tdata):
     """
     Group table into different ddids and fields
     """
+    # sort sub mss by scans
     ms = sorted(ms, key=lambda x: x.SCAN_NUMBER)
-    dd_fi = sorted(list({(m.DATA_DESC_ID, m.FIELD_ID) for m in ms}))
+    # get ddid and field ids
+    dd_fi = sorted(list({(m.DATA_DESC_ID, m.FIELD_NAME) for m in ms}))
     variables = "gains fields scans ddids FLAG".split()
 
+    _, actives = Chooser.form_taql_string(
+        tdata, antennas=sels.antennas, baselines=sels.baselines,
+        fields=sels.fields, spws=sels.ddids, scans=sels.scans,
+        taql=sels.taql, return_ids=True)
+
     if sels.fields is not None:
-        fields = sels.fields.replace(" ", "").split(",")
-        if all([f.isdigit() for f in fields]):
-            sels.fields = [int(f) for f in fields]
-        else:
-            sels.fields = [tdata.field_maps[f] for f in fields]
+        sels.fields = [tdata.reverse_field_map[_]
+                        for _ in actives.get("fields")]
     else:
-        sels.fields = tdata.field_map.values()
+        sels.fields = list(tdata.field_map.keys())
 
     if sels.antennas is not None:
-        antennas = sels.antennas.replace(" ", "").split(",")
-        if all([a.isdigit() for a in antennas]):
-            sels.antennas = [tdata.reverse_ant_map[int(a)] for a in antennas]
-        else:
-            sels.antennas = [a for a in antennas]
+       sels.antennas = [tdata.reverse_ant_map[_] 
+                         for _ in actives.get("antennas")]
     else:
-        sels.antennas = slice(None, None)
+        sels.antennas = list(tdata.ant_map.keys())
 
+    if sels.ddids is not None:
+        sels.ddids = actives.get("spws")
+    else:
+        sels.ddids = tdata.spws.values
+
+    if sels.corrs is not None:
+        # get in string format for conversion to xx,xy,yx,yy format
+        if any([char in sels.corrs for char in ":~"]):
+            sels.corrs = Chooser.get_knife(sels.corrs, get_slicer=False)
+            sels.corrs = ",".join([tdata.reverse_corr_map[_] for _ in sels.corrs])
+        elif sels.corrs.startswith("diag"):
+            sels.corrs = ",".join([*map(tdata.reverse_corr_map.get, [0, 3])])
+        elif sels.corrs.startswith("off-"):
+            sels.corrs = ",".join([*map(tdata.reverse_corr_map.get, [1, 2])])
+        sels.corrs = sels.corrs.replace(" ", "").upper().split(",")
+        if any([c.isdigit() for c in sels.corrs]):
+            sels.corrs = [tdata.reverse_corr_map[int(c)] if c.isdigit() else c 
+                            for c in sels.corrs]
+        sels.corrs = [c for c in sels.corrs if c in tdata.corr_map]
+
+    else:
+        sels.corrs = [*map(tdata.reverse_corr_map.get, [0, 3])]
 
     new_order = []
     for (dd, fi) in dd_fi:
         sub_order = []
         for i, sub in enumerate(ms):
-            if (sub.DATA_DESC_ID, sub.FIELD_ID) == (dd, fi) and fi in sels.fields:
+            if (sub.DATA_DESC_ID, sub.FIELD_NAME) == (dd, fi) and (
+                fi in sels.fields) and dd in sels.ddids:
+                snitch.debug(f"Selecting ddid {dd} and field {fi}")
                 sub = sub.sel(corr=sels.corrs, ant=sels.antennas,
                              gain_f=sels.channels)
                 sub["fields"] = new_darray(sub.gains, "fields", sub.FIELD_ID)
@@ -178,34 +196,46 @@ def organise_table(ms, sels, tdata):
         new_order.append(xr.concat(sub_order, "gain_t",
                          combine_attrs="drop_conflicts"))
     
-
-    tdata.active_fields = sels.fields
+    # leave active fields as numbers because of plotting
+    tdata.active_fields = [tdata.field_map[_] for _ in sels.fields]
     tdata.active_antennas = new_order[0].ant.values
     tdata.active_corrs = new_order[0].corr.values
-    # TODO: antenna slection needs to be fixed properly
     return new_order
+
+def set_xaxis(gain):
+    gains = {k: "channel"  for k in "b xf df".split()}
+    gains.update({k: "time" for k in "d g f k kcross".split()})
+    return gains.get(gain.lower(), "time")
+
 
 def main(parser, gargs):
     ps = parser().parse_args(gargs)
 
+    if ps.debug:
+        update_log_levels(snitch.parent, 10)
+    update_logfile_name(snitch.parent,
+                        ps.logfile if ps.logfile else "ragains-quartical.log")
+
     for (msname, antennas, channels, corrs, ddids, fields, cmap, yaxes,
-         xaxis, html_name, image_name) in zip_longest(
-            ps.msnames, ps.antennas, ps.channels, ps.corrs, ps.ddids, ps.fields,
-            ps.cmaps, ps.yaxes, ps.xaxes, ps.html_names, ps.image_names):
+         xaxis, html_name, image_name, gtype) in zip_longest(ps.msnames,
+         ps.antennas, ps.channels, ps.corrs, ps.ddids, ps.fields,ps.cmaps,
+         ps.yaxes, ps.xaxes, ps.html_names, ps.image_names, ps.gtypes):
+        
+        msname = msname.rstrip("/")
+        subs = xds_from_zarr(f"{msname}::{gtype}")
+        msdata = init_table_data(f"{msname}::G", subs)
+        snitch.info(f"Loading {msdata.ms_name}")
+        msdata.table_type = gtype
 
-        ms = xds_from_zarr(msname + "::G")
-        msdata = init_table_data(msname + "G", ms)
-
-        generals = Genargs(msname=msname, version="testwhatever")
+        generals = Genargs(msname=msname, version=version)
 
         selections = Selargs(
-            antennas=antennas, corrs=Chooser.get_knife(corrs),
-            baselines=None, channels=Chooser.get_knife(channels),
-            ddids=Chooser.get_knife(ddids))
+            antennas=antennas, corrs=corrs, baselines=None,
+            channels=Chooser.get_knife(channels), ddids=ddids)
 
-        ms = organise_table(ms, selections, msdata)
-        cmap = get_colours(ms[0].ant.size, cmap)
-        points = calculate_points(ms[0], len(ms))
+        subs = organise_table(subs, selections, msdata)
+        cmap = get_colours(subs[0].ant.size, cmap)
+        points = calculate_points(subs[0], len(subs))
 
         if html_name is None and image_name is None:
             html_name = msdata.ms_name + f"_{''.join(yaxes)}" + ".html"
@@ -224,7 +254,10 @@ def main(parser, gargs):
             yaxes = [_ for _ in "apri"]
         elif set(yaxes).issubset(set("apri")):
             yaxes = [_ for _ in yaxes]
-        yaxes = [Axargs.translate_y(_) for _ in yaxes]
+        if msdata.table_type.lower().startswith("k"):
+            yaxes = ["delay"]
+        if xaxis is None:
+            xaxis = set_xaxis(msdata.table_type)
 
         all_figs = []
         for yaxis in yaxes:
@@ -234,9 +267,9 @@ def main(parser, gargs):
                 x_scale=xaxis if xaxis == "time" else "linear",
                 plot_args={"frame_height": None, "frame_width": None})
 
-            for sub in ms:
-                axes = Axes(flags=None, errors=None,
-                    xaxis=xaxis, yaxis=yaxis)
+            for sub in subs:
+                axes = Axargs(xaxis=xaxis, yaxis=yaxis, msdata=msdata,
+                             data_column=None, flags=None, errors=None,)
                 figrag = populate_fig_data(sub, axes=axes,
                     cmap=cmap, figrag=figrag, msdata=msdata)
 
@@ -244,7 +277,7 @@ def main(parser, gargs):
             figrag.update_ylabel(axes.yaxis)
 
             if "chan" in axes.xaxis:
-                add_extra_xaxis(ms[0].gain_f.values, figrag, selections.channels)
+                add_extra_xaxis(subs[0].gain_f.values, figrag, selections.channels)
 
             figrag.add_legends(group_size=_GROUP_SIZE_, visible=True)
             figrag.update_title(f"{axes.yaxis} vs {axes.xaxis}")
@@ -269,7 +302,7 @@ def main(parser, gargs):
             all_figs = [fig.fig for fig in all_figs]
             widgets = make_widgets(
                 msdata, all_figs[0], group_size=_GROUP_SIZE_)
-            stats = make_stats_table(msdata, data_column, yaxes, ms)
+            stats = make_stats_table(msdata, data_column, yaxes, subs)
             # Set up my layouts
             all_widgets = grid([widgets[0], column(widgets[1:]+[stats])],
                                sizing_mode="fixed", nrows=1)
@@ -285,14 +318,7 @@ def main(parser, gargs):
             output_file(filename=html_name)
             save(final_layout, filename=html_name,
                  title=os.path.splitext(os.path.basename(html_name))[0])
-            snitch.info(f"HTML at: {html_name}")
+            snitch.warning(f"HTML at: {html_name}")
         snitch.info("Plotting Done")
 
 
-if __name__ == "__main__":
-    ms_name = "/home/lexya/Documents/test_gaintables/quartical/kgb_mad.qc"
-    #synonyms for the the tables available here
-    yaxes = "a"
-    xaxis = "time"
-    main(gains_argparser, ["-t", ms_name, "-y", yaxes, "-x", xaxis,
-    "--cmap", "glasbey"])
