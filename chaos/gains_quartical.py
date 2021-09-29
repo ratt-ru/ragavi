@@ -208,8 +208,11 @@ def set_xaxis(gain):
     return gains.get(gain.lower(), "time")
 
 
-def main(parser, gargs):
-    ps = parser().parse_args(gargs)
+def main(parser, gargs=None):
+    if gargs is None:
+        ps = parser().parse_args()
+    else:
+        ps = parser().parse_args(gargs)
 
     if ps.debug:
         update_log_levels(snitch.parent, 10)
@@ -322,3 +325,6 @@ def main(parser, gargs):
         snitch.info("Plotting Done")
 
 
+def console():
+    """A console run entry point for setup.cfg"""
+    main(quartical_gains_parser)

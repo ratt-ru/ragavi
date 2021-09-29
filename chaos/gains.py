@@ -187,8 +187,11 @@ def gen_plot(yaxis, xaxis, cmap, msdata, subs, selections, static_name):
     figrag.data_column = axes.data_column
     return figrag
 
-def main(parser, gargs):
-    ps = parser().parse_args(gargs)
+def main(parser, gargs=None):
+    if gargs is None:
+        ps = parser().parse_args()
+    else:
+        ps = parser().parse_args(gargs)
 
     if ps.debug:
         update_log_levels(snitch.parent, 10)
@@ -360,3 +363,7 @@ def plot_table(**kwargs):
     show(main_layout)
     print("Notebook plots are ready")
     return 0
+
+def console():
+    """A console run entry point for setup.cfg"""
+    main(gains_argparser)

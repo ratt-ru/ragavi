@@ -29,7 +29,6 @@ for idx, _ in enumerate(ys):
         new_figure.add_glyphs(Circle, {"x": x, "y": np.array(y)*i}, errors=errors, legend=f"Legend {i}",
                             size=12, fill_alpha=1, fill_color=colours[i], line_color=None)
 
-    set_trace()
     new_figure.add_legends(group_size=5, visible=True)
 
     figures.append(new_figure)

@@ -1,11 +1,10 @@
-from argparse import ArgumentParser
 import argparse
 from chaos import version
 
 class ArgumentParserError(Exception):
     pass
 
-class RagParser(ArgumentParser):
+class RagParser(argparse.ArgumentParser):
     def error(self, message):
         raise ArgumentParserError(message)
 
@@ -20,8 +19,7 @@ def base_parser():
     Argument parser object that contains command line argument's values
     """
     parent = argparse.ArgumentParser(
-        prog="holychaos",
-        usage="holychaos -x time -y amp --ms test.ms",
+        usage="%(prog)s -x time -y amp --ms test.ms",
         description="Radio Astronomy Gains and Visibilities Inspector (RAGaVI)",
         epilog=("Incase of any issues or queries: " +
                 "https://github.com/ratt-ru/ragavi/issues"),
@@ -37,7 +35,7 @@ def base_parser():
     gen_group.add_argument("-h", "--help", action="help",
                            help="show this help message and exit")
     gen_group.add_argument("-v", "--version", action="version",
-                           version=f"ragavi 0.0.tests")
+                           version=version)
     gen_group.add_argument(
         "--debug", dest="debug", action="store_true",
         help="""Enable debug messages""")
@@ -116,7 +114,7 @@ def vis_argparser():
         "ant", "antenna", "ant1", "antenna1", "ant2", "antenna2", "bl",
         "baseline", "corr", "field", "scan", "spw"]
 
-    parser = RagParser(usage="ragavi-vis [options] <value>",
+    parser = RagParser(usage="%(prog)s [options] <value>",
                       description="A Radio Astronomy Visibilities Inspector",
                       parents=[base_parser()])
 
@@ -257,7 +255,7 @@ def gains_argparser():
     """Create command line arguments for ragavi-gains"""
     parser = RagParser(
         usage="%(prog)s [options] <value>",
-        description="Radio Astronomy Gains Inspector: Casa gain tables",
+        description="Radio Astronomy Gains Inspector for CASA gain tables",
         parents=[base_parser()], add_help=False)
 
     for grp in parser._action_groups:
@@ -315,7 +313,7 @@ def gains_argparser():
 def cubical_gains_parser():
     """Create command line arguments for cubical gains"""
     parser = RagParser(
-        usage="ragavi-gains-cubical [options] <value>",
+        usage="%(prog)s [options] <value>",
         description="Radio Astronomy Gains Inspector: Cubical gain tables",
         parents=[gains_argparser()], add_help=False,
         conflict_handler="resolve")
@@ -343,7 +341,7 @@ def cubical_gains_parser():
 def quartical_gains_parser():
     """Create command line arguments for Quartical gains"""
     parser = RagParser(
-        usage="ragavi-gains-quartical [options] <value>",
+        usage="%(prog)s [options] <value>",
         description="Radio Astronomy Gains Inspector: Quartical gain tables",
         parents=[cubical_gains_parser()], add_help=False)
     

@@ -446,8 +446,11 @@ def get_row_chunk(msd):
     return row_cs
 
 
-def main(parser, gargs): 
-    ps = parser().parse_args(gargs)
+def main(parser, gargs=None):
+    if gargs is None:
+        ps = parser().parse_args()
+    else:
+        ps = parser().parse_args(gargs)
     
     # ps.cbin, ps.tbin
     
@@ -629,3 +632,7 @@ def main(parser, gargs):
         snitch.info(">" * 70)
     
     return 0
+
+def console():
+    """A console run entry point for setup.cfg"""
+    main(vis_argparser)

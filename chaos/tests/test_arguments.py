@@ -1,4 +1,4 @@
-from holy_chaos.chaos.arguments import *
+from chaos.arguments import *
 
 from ipdb import set_trace
 
