@@ -367,3 +367,6 @@ def plot_table(**kwargs):
 def console():
     """A console run entry point for setup.cfg"""
     main(gains_argparser)
+
+if __name__ == "__main__":
+    console()

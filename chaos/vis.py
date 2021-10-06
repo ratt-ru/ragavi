@@ -148,7 +148,7 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
 
     # Nb for i/c axis not in MS e.g baseline, corr, antenna, axes returns None
     # Always group by DDID
-    if msdata.table_type == ".ms":
+    if "ms" in msdata.table_type:
         group_cols = ["DATA_DESC_ID"]
     else:
         group_cols = ["SPECTRAL_WINDOW_ID"]
@@ -636,3 +636,6 @@ def main(parser, gargs=None):
 def console():
     """A console run entry point for setup.cfg"""
     main(vis_argparser)
+
+if __name__ == "__main__":
+    console()

@@ -273,3 +273,6 @@ def main(parser, gargs=None):
 def console():
     """A console run entry point for setup.cfg"""
     main(cubical_gains_parser)
+
+if __name__ == "__main__":
+    console()
