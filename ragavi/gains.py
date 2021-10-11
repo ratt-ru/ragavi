@@ -9,16 +9,16 @@ from itertools import product, zip_longest
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.io import output_file, output_notebook, save
 
-from chaos import version
-from chaos.arguments import gains_argparser
-from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
-from chaos.lograg import logging, update_log_levels, update_logfile_name
-from chaos.plotting import FigRag, Circle, Scatter
-from chaos.processing import Chooser, Processor
-from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
+from ragavi import version
+from ragavi.arguments import gains_argparser
+from ragavi.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
+from ragavi.lograg import logging, update_log_levels, update_logfile_name
+from ragavi.plotting import FigRag, Circle, Scatter
+from ragavi.processing import Chooser, Processor
+from ragavi.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
                      Selargs)
-from chaos.utils import get_colours, timer
-from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
+from ragavi.utils import get_colours, timer
+from ragavi.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = logging.getLogger(__name__)
 

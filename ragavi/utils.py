@@ -8,7 +8,7 @@ import numpy as np
 
 from time import perf_counter
 from difflib import get_close_matches
-from chaos.lograg import logging
+from ragavi.lograg import logging
 
 snitch = logging.getLogger(__name__)
 

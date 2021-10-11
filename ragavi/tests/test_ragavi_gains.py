@@ -2,11 +2,11 @@ import pytest
 import os
 
 from glob import glob
-from holy_chaos.chaos.gains import main
-from holy_chaos.chaos.arguments import gains_argparser
+from ragavi.gains import main
+from ragavi.arguments import gains_argparser
 
 
-PATH = "/home/lexya/Documents/chaos_project/holy_chaos/tests/gain_tables"
+PATH = "/home/lexya/Documents/test_gaintables"
 def tables():
     tabs =  [
         "1491291289.B0",

@@ -1,12 +1,18 @@
 import os
 import glob
 import pytest
-from chaos.vis import get_ms, main, vis_argparser
+from ragavi.vis import get_ms, main, vis_argparser
 
-@pytest.fixture
-def ms():
-    return ("/home/lexya/Downloads/radioastro/tutorial_docs/"+
-            "clueless_calibration/1491291289.1ghz.1.1ghz.4hrs.ms")
+cat_axes = ("ant", "antenna", "ant1", "antenna1", "ant2", "antenna2", "bl",
+        "baseline", "corr", "field", "scan", "spw")
+    
+xaxes = ("ant1", "antenna1", "ant2", "antenna2", "amp", "amplitude", "chan",
+    "channel", "freq", "frequency", "imag", "imaginary", "phase", "real",
+    "scan", "time", "uvdist", "UVdist", "uvdistance", "uvdistl",
+    "uvdist_l", "UVwave", "uvwave")
+
+yaxes = ("amp", "ampl", "amplitude", "freq", "chan", "frequency", "real",
+    "imaginary", "imag", "im", "re", "ph", "phase")
 
 # class TestGetMs:
         
@@ -28,37 +34,23 @@ def ms():
 @pytest.mark.usefixtures("ms")
 class TestAxes:
     """Test that the various x, y, iteration and colouration axes work well"""
-    def cat_axes():
-        return ("ant", "antenna", "ant1", "antenna1", "ant2", "antenna2", "bl",
-        "baseline", "corr", "field", "scan", "spw")
-    
-    def xaxes():
-        return "ant1", "antenna1", "ant2", "antenna2", "amp", "amplitude", "chan",
-        "channel", "freq", "frequency", "imag", "imaginary", "phase", "real",
-        "scan", "time", "uvdist", "UVdist", "uvdistance", "uvdistl",
-        "uvdist_l", "UVwave", "uvwave"
-    
-    def yaxes():
-        return "amp", "ampl", "amplitude", "freq", "chan", "frequency", "real",
-        "imaginary", "imag", "im", "re", "ph", "phase"
-
-    @pytest.mark.parametrize("xaxis", xaxes())
+    @pytest.mark.parametrize("xaxis", xaxes)
     def test_xaxes(self, xaxis, ms):
         # amp axis will fail coz yaxis is also amp
         ins = f"--ms {ms} -x {xaxis} -y amp".split()
         assert main(vis_argparser, ins) == 0
 
-    @pytest.mark.parametrize("yaxis", yaxes())
+    @pytest.mark.parametrize("yaxis", yaxes)
     def test_yaxes(self, yaxis, ms):
         ins = f"--ms {ms} -x time -y {yaxis}".split()
         assert main(vis_argparser, ins) == 0
 
-    @pytest.mark.parametrize("iaxis", cat_axes())
+    @pytest.mark.parametrize("iaxis", cat_axes)
     def test_iaxes(self, iaxis, ms):
         ins = f"--ms {ms} -x time -y amp --iter-axis {iaxis}".split()
         assert main(vis_argparser, ins) == 0
     
-    @pytest.mark.parametrize("caxis", cat_axes())
+    @pytest.mark.parametrize("caxis", cat_axes)
     @pytest.mark.caxes
     def test_caxes(self, caxis, ms):
         ins = f"--ms {ms} -x time -y amp --colour-axis {caxis}".split()
@@ -67,8 +59,9 @@ class TestAxes:
 
 @pytest.mark.usefixtures("ms")
 class TestPlotArgs:
-    def test_cosmetics(self):
-        fname = "test_post.html"
+    @pytest.mark.parametrize("caxis", cat_axes)
+    def test_cosmetics(self, caxis):
+        fname = f"{caxis}_test_post.html"
         ins = (f"--ms {ms} -x time -y amp --colour-axis {caxis}"+
                " -x time -y amp " + "-ch 100 -cw 200 --cmap glasbey_dark " +
                f"--cols 3 -o {fname} --ymin 40 --ymax 50").split()

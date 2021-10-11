@@ -1,3 +1,7 @@
+0.6.0
+-----
+  - We rewrite `ragavi`
+
 0.5.2
 -----
 **ragavi-gains**

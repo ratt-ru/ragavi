@@ -1,5 +1,5 @@
 import argparse
-from chaos import version
+from ragavi import version
 
 class ArgumentParserError(Exception):
     pass

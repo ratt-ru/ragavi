@@ -3,7 +3,7 @@ import numpy as np
 import dask.array as da
 import xarray as xr
 
-from holy_chaos.chaos.processing import Processor, Chooser
+from ragavi.processing import Processor, Chooser
 
 @pytest.fixture
 def complex_values():

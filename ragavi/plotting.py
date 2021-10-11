@@ -14,8 +14,8 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool, HoverTool,
                                 LassoSelectTool, PanTool, ResetTool, SaveTool,
                                 UndoTool, WheelZoomTool)
 
-from chaos.lograg import logging
-from chaos.overrides import set_multiple_defaults
+from ragavi.lograg import logging
+from ragavi.overrides import set_multiple_defaults
 
 snitch = logging.getLogger(__name__)
 
@@ -487,7 +487,7 @@ class FigRag(BaseFigure):
        
         caxis: :obj:`str`
             Name of the categorizing axis
-        plargs: :obj:`chaos.ragdata.PlotArgs`
+        plargs: :obj:`ragavi.ragdata.PlotArgs`
             An object containing cmap-list with colours, n_categories-number
             of categories, cat_map- category id to name mapping dictionary
         """

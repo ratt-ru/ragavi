@@ -20,16 +20,16 @@ from bokeh.io import output_file, output_notebook, save
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import Div, ImageRGBA, PreText, Text
 
-from chaos import version
-from chaos.arguments import vis_argparser
-from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
-from chaos.lograg import logging, update_log_levels, update_logfile_name
-from chaos.plotting import FigRag, Circle, Scatter
-from chaos.processing import Chooser, Processor
-from chaos.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
+from ragavi import version
+from ragavi.arguments import vis_argparser
+from ragavi.exceptions import EmptyTable, InvalidCmap, InvalidColumnName, warn
+from ragavi.lograg import logging, update_log_levels, update_logfile_name
+from ragavi.plotting import FigRag, Circle, Scatter
+from ragavi.processing import Chooser, Processor
+from ragavi.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
     Selargs)
-from chaos.utils import get_colours, new_darray, timer, bp
-from chaos.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
+from ragavi.utils import get_colours, new_darray, timer, bp
+from ragavi.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = logging.getLogger(__name__)
 

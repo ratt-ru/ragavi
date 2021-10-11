@@ -5,7 +5,7 @@ from bokeh.models import Circle
 from bokeh.palettes import linear_palette, Magma256
 from bokeh.layouts import gridplot
 
-from holy_chaos.chaos import plotting
+from ragavi import plotting
 print("Running ", end=" ")
 x = range(10)
 y = [_**2 for _ in x]

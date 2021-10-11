@@ -1,5 +1,5 @@
 import pytest
-from holy_chaos.chaos import plotting
+from ragavi import plotting
 
 def test_empty_figure():
     pass

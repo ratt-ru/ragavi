@@ -12,17 +12,17 @@ from daskms.experimental.zarr import xds_from_zarr
 from functools import partial
 from itertools import product, zip_longest
 
-from chaos import version
-from chaos.arguments import quartical_gains_parser
-from chaos.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
-from chaos.gains import get_colours
-from chaos.lograg import logging, update_log_levels, update_logfile_name
-from chaos.plotting import Circle, Scatter, FigRag
-from chaos.processing import Chooser, Processor
-from chaos.ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
-from chaos.ragdata import QuarticalTableData as TableData
-from chaos.utils import new_darray
-from chaos.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
+from ragavi import version
+from ragavi.arguments import quartical_gains_parser
+from ragavi.exceptions import InvalidCmap, InvalidColumnName, EmptyTable
+from ragavi.gains import get_colours
+from ragavi.lograg import logging, update_log_levels, update_logfile_name
+from ragavi.plotting import Circle, Scatter, FigRag
+from ragavi.processing import Chooser, Processor
+from ragavi.ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
+from ragavi.ragdata import QuarticalTableData as TableData
+from ragavi.utils import new_darray
+from ragavi.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
 snitch = logging.getLogger(__name__)
 

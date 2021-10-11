@@ -11,9 +11,9 @@ from psutil import cpu_count, virtual_memory
 from typing import Any
 from casacore.tables import table
 
-from chaos.exceptions import TableNotFound
-from chaos.lograg import logging
-from chaos.utils import pair
+from ragavi.exceptions import TableNotFound
+from ragavi.lograg import logging
+from ragavi.utils import pair
 
 snitch = logging.getLogger(__name__)
 

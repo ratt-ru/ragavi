@@ -6,8 +6,8 @@ from bokeh.models import (Button, CDSView, CheckboxGroup, ColumnDataSource,
                           CustomJS, PreText, Scatter, Slider, Title, Whisker)
 from bokeh.models.widgets import Div, DataTable, TableColumn
 
-from chaos.processing import Processor
-from chaos.widgets import F_CODES
+from ragavi.processing import Processor
+from ragavi.widgets import F_CODES
 
 def activate_batch_if_no_other_sel(sel1):
     """Activate only selected batch if only the batch selection is ticked

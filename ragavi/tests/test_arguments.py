@@ -1,4 +1,4 @@
-from chaos.arguments import *
+from ragavi.arguments import *
 
 from ipdb import set_trace
 
@@ -17,4 +17,3 @@ gargs = ["-t", "a.ms", "b.ms", "c.ms",
          "-y", "a,p,r", "r,i", "i,a",
          "-x", "chan", "time", "time"]
 gh = ga.parse_args(gargs)
-set_trace()

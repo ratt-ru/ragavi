@@ -4,7 +4,7 @@ import numpy as np
 import xarray as xr
 
 from warnings import warn
-from chaos.lograg import logging
+from ragavi.lograg import logging
 snitch = logging.getLogger(__name__)
 
 class Processor:

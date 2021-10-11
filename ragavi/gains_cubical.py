@@ -9,17 +9,17 @@ from itertools import product, zip_longest
 from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.io import output_file, save
 
-from chaos import version
-from chaos.arguments import cubical_gains_parser
-from chaos.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
-from chaos.gains import get_colours
-from chaos.lograg import logging, update_log_levels, update_logfile_name
-from chaos.plotting import Circle, FigRag, Scatter
-from chaos.processing import Chooser, Processor
-from chaos.ragdata import Axargs, Genargs, Selargs
-from chaos.ragdata import CubicalTableData as TableData
-from chaos.widgets_cubical import make_table_name, make_widgets
-from chaos.widgets import F_MARKS
+from ragavi import version
+from ragavi.arguments import cubical_gains_parser
+from ragavi.exceptions import EmptyTable, InvalidCmap, InvalidColumnName
+from ragavi.gains import get_colours
+from ragavi.lograg import logging, update_log_levels, update_logfile_name
+from ragavi.plotting import Circle, FigRag, Scatter
+from ragavi.processing import Chooser, Processor
+from ragavi.ragdata import Axargs, Genargs, Selargs
+from ragavi.ragdata import CubicalTableData as TableData
+from ragavi.widgets_cubical import make_table_name, make_widgets
+from ragavi.widgets import F_MARKS
 
 snitch = logging.getLogger(__name__)
 _GROUP_SIZE_ = 16
