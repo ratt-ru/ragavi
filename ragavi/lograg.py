@@ -13,12 +13,12 @@ ROOT_HANDLER_LEVEL = "INFO"
 
 # set up the general logger
 # capture only a single instance of a matching repeated warning
-warnings.filterwarnings("module")
+warnings.filterwarnings("ignore")
 # capture warnings from all modules
 logging.captureWarnings(True)
 
 # only get data from ragavi modules
-logger_filter = logging.Filter("chaos")
+logger_filter = logging.Filter("ragavi")
 f_formatter = logging.Formatter(
     "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
     datefmt="%d.%m.%Y@%H:%M:%S")
@@ -39,12 +39,6 @@ root_logger = logging.getLogger()
 root_logger.setLevel(ROOT_LOGGER_LEVEL)
 root_logger.addFilter(logger_filter)
 root_logger.addHandler(c_handler)
-
-def get_logger(log):
-    # log.filters = log.parent.filters
-    # log.handlers = log.parent.handlers
-    return log
-
 
 def update_log_levels(root_logger, level):
     snitch.info("Testing Log level now at info")
