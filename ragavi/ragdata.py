@@ -30,7 +30,7 @@ class MsData:
     More like the passive data only.
     """
     def __init__(self, ms_name):
-        self.ms_name = ms_name
+        self.ms_name = ms_name.rstrip("/")
         self.active_channels = None
         self.active_antennas = []
         self.active_fields = []
@@ -282,7 +282,7 @@ class MsData:
 class CubicalTableData:
     def __init__(self, ms_name, ants=None, fields=None, corr1s=None,
         table_type=None, colnames=""):
-        self.ms_name = ms_name
+        self.ms_name = ms_name.rstrip("/")
         self.ant_names = ants
         self.field_names = [str(f) for f in fields]
         self.corr1s = [c.upper() for c in corr1s]
@@ -338,7 +338,7 @@ class CubicalTableData:
 class QuarticalTableData:
     def __init__(self, ms_name, ant_names=None, field_names=None,
                  corr_names=None, scans=None, spws=None, colnames=""):
-        self.ms_name = ms_name
+        self.ms_name = ms_name.rstrip("/")
         self.ant_names = ant_names.tolist()
         self.field_names = field_names
         self.corr_names = corr_names.tolist()

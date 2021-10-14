@@ -18,6 +18,7 @@ from ragavi.plotting import Circle, FigRag, Scatter
 from ragavi.processing import Chooser, Processor
 from ragavi.ragdata import Axargs, Genargs, Selargs
 from ragavi.ragdata import CubicalTableData as TableData
+from ragavi.utils import update_output_dir
 from ragavi.widgets_cubical import make_table_name, make_widgets
 from ragavi.widgets import F_MARKS
 
@@ -107,12 +108,17 @@ def main(parser, gargs=None):
     else:
         ps = parser().parse_args(gargs)
 
+    if ps.out_dir:
+        out_dir = ps.out_dir
+    else:
+        out_dir = os.path.join(os.path.curdir, "ragavi_out")
+
     if ps.debug:
         update_log_levels(snitch.parent, 10)
-    update_logfile_name(
-        snitch.parent,
-        ps.logfile if ps.logfile else "ragains-cubical.log")
-
+    
+    logfile = ps.logfile if ps.logfile else "ragains-cubical.log"
+    update_logfile_name(snitch.parent, update_output_dir(logfile, out_dir))
+    
     for (msname, antennas, channels, corrs, fields, cmap, yaxes,
         xaxis, html_name, image_name) in zip_longest(ps.msnames, ps.antennas,
         ps.channels, ps.corrs, ps.fields, ps.cmaps, ps.yaxes,
@@ -144,7 +150,7 @@ def main(parser, gargs=None):
             channels=Chooser.get_knife(channels), ddids=None)
 
         if html_name is None and image_name is None:
-            html_name = tdata.ms_name + f"_{''.join(yaxes)}" + ".html"
+            html_name = f"{tdata.ms_name}_{''.join(yaxes)}.html"
         
         tdata = organise_data(selections, tdata)
         cmap = get_colours(len(tdata.active_antennas), cmap)
@@ -244,6 +250,7 @@ def main(parser, gargs=None):
         if points > 30000 and image_name is None:
             image_name = tdata.ms_name + ".png"
         if image_name:
+            image_name = update_output_dir(image_name, out_dir)
             statics = lambda func, _x, **kwargs: getattr(_x, func)(**kwargs)
             with futures.ThreadPoolExecutor() as executor:
                 stores = executor.map(
@@ -251,6 +258,7 @@ def main(parser, gargs=None):
                             group_size=_GROUP_SIZE_),
                     *zip(*product(["write_out_static", "potato"], all_figs)))
         if html_name:
+            html_name = update_output_dir(html_name, out_dir)
             data_column = "gains"
             all_figs[0].link_figures(*all_figs[1:])
             all_figs = [fig.fig for fig in all_figs]

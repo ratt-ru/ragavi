@@ -28,7 +28,7 @@ from ragavi.plotting import FigRag, Circle, Scatter
 from ragavi.processing import Chooser, Processor
 from ragavi.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
     Selargs)
-from ragavi.utils import get_colours, new_darray, timer, bp
+from ragavi.utils import get_colours, new_darray, timer, bp, update_output_dir
 from ragavi.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = logging.getLogger(__name__)
@@ -453,12 +453,18 @@ def main(parser, gargs=None):
         ps = parser().parse_args(gargs)
     
     # ps.cbin, ps.tbin
-    
+
+    if ps.out_dir:
+        out_dir = ps.out_dir
+    else:
+        out_dir = os.path.join(os.path.curdir, "ragavi_out")
+
     if ps.debug:
         update_log_levels(snitch.parent, 10)
-    
-    update_logfile_name(snitch.parent, 
-        ps.logfile if ps.logfile else "ragaviz.log")
+
+    logfile = ps.logfile if ps.logfile else "ragaviz.log"
+    update_logfile_name(snitch.parent, update_output_dir(logfile, out_dir))
+
     generals = Genargs(chunks=ps.chunk_size, mem_limit=ps.mem_limit,
                        ncores=ps.ncores, version=version)
 
@@ -617,6 +623,7 @@ def main(parser, gargs=None):
                           sizing_mode="stretch_width")
             final_plot = column([pre, outp[0]], sizing_mode="stretch_width")
         
+        html_name = update_output_dir(html_name, out_dir)
         output_file(html_name, title=plargs.title)
         save(final_plot, filename=html_name)
         snitch.info(f"Rendered plot to: {html_name}")

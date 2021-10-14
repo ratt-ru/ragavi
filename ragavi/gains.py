@@ -17,7 +17,7 @@ from ragavi.plotting import FigRag, Circle, Scatter
 from ragavi.processing import Chooser, Processor
 from ragavi.ragdata import (dataclass, field, Axargs, Genargs, MsData, Plotargs,
                      Selargs)
-from ragavi.utils import get_colours, timer
+from ragavi.utils import get_colours, timer, update_output_dir
 from ragavi.widgets import F_MARKS, make_stats_table, make_table_name, make_widgets
 
 snitch = logging.getLogger(__name__)
@@ -193,10 +193,17 @@ def main(parser, gargs=None):
     else:
         ps = parser().parse_args(gargs)
 
+    if ps.out_dir:
+        out_dir = ps.out_dir
+    else:
+        out_dir = os.path.join(os.path.curdir, "ragavi_out")
+
     if ps.debug:
         update_log_levels(snitch.parent, 10)
-    update_logfile_name(snitch.parent,
-                        ps.logfile if ps.logfile else "ragains.log")
+    
+    logfile = ps.logfile if ps.logfile else "ragains.log"
+    update_logfile_name(snitch.parent, update_output_dir(logfile, out_dir))
+
 
     for (msname, antennas, channels, corrs, ddids, fields, t0, t1,
         taql, cmap, yaxes, xaxis, html_name, image_name) in zip_longest(
@@ -269,7 +276,8 @@ def main(parser, gargs=None):
 
         all_figs = list(all_figs)
         
-        if image_name:           
+        if image_name:
+            image_name = update_output_dir(image_name, out_dir)
             statics = lambda func, _x, **kwargs: getattr(_x, func)(**kwargs)
             with futures.ThreadPoolExecutor() as executor:
                 executor.map(
@@ -282,6 +290,7 @@ def main(parser, gargs=None):
                 # by unpacking the output of zip
 
         if html_name:
+            html_name = update_output_dir(html_name, out_dir)
             data_column = all_figs[0].data_column
             all_figs[0].link_figures(*all_figs[1:])
             all_figs = [fig.fig for fig in all_figs]

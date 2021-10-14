@@ -21,7 +21,7 @@ from ragavi.plotting import Circle, Scatter, FigRag
 from ragavi.processing import Chooser, Processor
 from ragavi.ragdata import Axargs, Selargs, stokes_types, dataclass, Genargs
 from ragavi.ragdata import QuarticalTableData as TableData
-from ragavi.utils import new_darray
+from ragavi.utils import new_darray, update_output_dir
 from ragavi.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
 snitch = logging.getLogger(__name__)
@@ -214,10 +214,17 @@ def main(parser, gargs=None):
     else:
         ps = parser().parse_args(gargs)
 
+    if ps.out_dir:
+        out_dir = ps.out_dir
+    else:
+        out_dir = os.path.join(os.path.curdir, "ragavi_out")
+
     if ps.debug:
         update_log_levels(snitch.parent, 10)
-    update_logfile_name(snitch.parent,
-                        ps.logfile if ps.logfile else "ragains-quartical.log")
+
+    logfile = ps.logfile if ps.logfile else "ragains-quartical.log"
+    update_logfile_name(snitch.parent, update_output_dir(logfile, out_dir))
+
 
     for (msname, antennas, channels, corrs, ddids, fields, cmap, yaxes,
          xaxis, html_name, image_name, gtype) in zip_longest(ps.msnames,
@@ -290,6 +297,7 @@ def main(parser, gargs=None):
             all_figs.append(figrag)
         
         if image_name:
+            image_name = update_output_dir(image_name, out_dir)
             statics = lambda func, _x, **kwargs: getattr(_x, func)(**kwargs)
             with futures.ThreadPoolExecutor() as executor:
                 stores = executor.map(
@@ -301,6 +309,7 @@ def main(parser, gargs=None):
                 # by unpacking the output of zip            
         if html_name:
             data_column = "gains"
+            html_name = update_output_dir(html_name, out_dir)
             all_figs[0].link_figures(*all_figs[1:])
             all_figs = [fig.fig for fig in all_figs]
             widgets = make_widgets(

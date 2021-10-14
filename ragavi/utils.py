@@ -1,3 +1,4 @@
+import os
 import re
 import bokeh.palettes as bp
 import colorcet as cc
@@ -106,3 +107,21 @@ def pair(x, y):
     """
     val = np.square(x) + (3*x) + (2*x*y) + y + np.square(y)
     return val//2
+
+
+def update_output_dir(output_file, output_dir):
+    if os.path.isdir(output_dir):
+        snitch.warn(f"Directory {output_dir} already exists. " +
+                    "Contents will be overwritten")
+    else:
+        snitch.debug(f"Creating output directory {output_dir}")
+        os.makedirs(output_dir)
+
+    current_outdir = os.path.dirname(output_file)
+    # Dirname on the output file is preceded by the specified output dir
+    if current_outdir == "":
+        output_file = os.path.join(output_dir, output_file)
+    else:
+        output_file = os.path.join(output_dir, os.path.basename(output_file))
+    
+    return output_file
