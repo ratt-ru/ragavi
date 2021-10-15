@@ -1,8 +1,5 @@
 from ragavi.arguments import *
 
-from ipdb import set_trace
-
-
 def test_gains_argparser():
     # check if items are lists
     pass

@@ -60,30 +60,31 @@ yaxes = (
     "phase",
 )
 
-
+# @pytest.mark.tclass
+@pytest.mark.usefixtures("out_dir")
 class TestAxes:
     """Test that the various x, y, iteration and colouration axes work well"""
 
     @pytest.mark.parametrize("xaxis", xaxes)
-    def test_xaxes(self, xaxis, test_ms):
+    def test_xaxes(self, xaxis, test_ms, out_dir):
         if xaxis.startswith("amp"):
             pytest.skip("Skipping because both x and y are amp")
-        ins = f"--ms {test_ms} -x {xaxis} -y amp".split()
+        ins = f"--ms {test_ms} -x {xaxis} -y amp -od {out_dir}".split()
         assert main(vis_argparser, ins) == 0
 
     @pytest.mark.parametrize("yaxis", yaxes)
-    def test_yaxes(self, yaxis, test_ms):
-        ins = f"--ms {test_ms} -x time -y {yaxis}".split()
+    def test_yaxes(self, yaxis, test_ms, out_dir):
+        ins = f"--ms {test_ms} -x time -y {yaxis} -od {out_dir}".split()
         assert main(vis_argparser, ins) == 0
 
     @pytest.mark.parametrize("iaxis", cat_axes)
-    def test_iaxes(self, iaxis, test_ms):
-        ins = f"--ms {test_ms} -x time -y amp --iter-axis {iaxis}".split()
+    def test_iaxes(self, iaxis, test_ms, out_dir):
+        ins = f"--ms {test_ms} -x time -y amp --iter-axis {iaxis} -od {out_dir}".split()
         assert main(vis_argparser, ins) == 0
 
     @pytest.mark.parametrize("caxis", cat_axes)
-    def test_caxes(self, caxis, test_ms):
-        ins = f"--ms {test_ms} -x time -y amp --colour-axis {caxis}".split()
+    def test_caxes(self, caxis, test_ms, out_dir):
+        ins = f"--ms {test_ms} -x time -y amp --colour-axis {caxis} -od {out_dir}".split()
         assert main(vis_argparser, ins) == 0
 
 
@@ -95,7 +96,7 @@ class TestPlotArgs:
             f"--ms {test_ms} -x time -y amp --colour-axis {caxis}"
             + " -x time -y amp "
             + "-ch 100 -cw 200 --cmap glasbey_dark "
-            + f"--cols 3 -o {fname} --ymin 40 --ymax 50"
+            + f"--cols 3 -o {fname} -od {out_dir} --ymin 40 --ymax 50"
         ).split()
         assert main(vis_argparser, ins) == 0
         assert len(glob.glob(fname)) == 1

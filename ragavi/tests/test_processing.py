@@ -43,7 +43,6 @@ def freqs():
     return 8 + 10 * np.arange(5)
 
 
-##### START OF TESTS
 def test_amplitude(complex_values, pro):
     assert np.all(np.abs(complex_values) == pro.calculate("amplitude").values)
 

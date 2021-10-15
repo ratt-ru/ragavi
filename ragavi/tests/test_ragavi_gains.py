@@ -51,29 +51,37 @@ def outputs(out_dir, request):
     return os.path.join(out_dir, f"{request.param}_ap.html")
 
 
-def test_basic_out(tables):
+@pytest.mark.parametrize("ext", ["html", "png", "pdf", "svg", "log"])
+def test_cleanup(ext, in_dir, out_dir):
+    [os.remove(out) for out in glob(os.path.join(in_dir, f"*.{ext}"))]
+    [os.remove(out) for out in glob(os.path.join(in_dir, "ms", f"*.{ext}"))]
+    [os.remove(out) for out in glob(os.path.join(out_dir, f"*.{ext}"))]
+    assert True
+
+def test_basic_out(tables, out_dir):
     if table_names[0] not in tables:
         pytest.skip()
-    assert main(gains_argparser, ["-t", tables]) == 0
+    assert main(gains_argparser, ["-t", tables, "-od", out_dir]) == 0
 
 
 def test_custom_htmlname(tables, out_dir):
     if table_names[0] not in tables:
         pytest.skip()
-    out_name = os.path.join(out_dir, "wapi.html")
-    assert main(gains_argparser, ["-t", tables, "--htmlname", out_name]) == 0
-    assert os.path.isfile(out_name) == True
+    out_name = f"{os.path.basename(tables)}_wapi.html"
+    assert main(gains_argparser, ["-t", tables, "--htmlname", out_name, "-od", out_dir]) == 0
+    assert os.path.isfile(os.path.join(out_dir, out_name)) == True
 
 
-def test_default_outputs(tables, outputs):
-    assert main(gains_argparser, ["-t", tables, "--htmlname", outputs]) == 0
-    assert os.path.isfile(outputs) == True
+def test_default_outputs(tables, out_dir):
+    out_name = f"{os.path.basename(tables)}_ap.html"
+    assert main(gains_argparser, ["-t", tables, "--htmlname", out_name, "-od", out_dir]) == 0
+    assert os.path.isfile(os.path.join(out_dir, out_name)) == True
 
 
-def test_multiple_inputs(tables, in_dir, out_dir):
+def test_multiple_inputs(in_dir, out_dir):
     out_name = os.path.join(out_dir, "combined.html")
     select_tabs = [os.path.join(in_dir, table_name) for table_name in table_names[:4]]
-    assert main(gains_argparser, ["-t"] + select_tabs + ["--htmlname", out_name]) == 0
+    assert main(gains_argparser, ["-t"] + select_tabs + ["--htmlname", out_name, "-od", out_dir]) == 0
     assert os.path.isfile(out_name) == True
 
 
@@ -82,5 +90,5 @@ def test_custom_image_name(tables, ext, out_dir):
     if table_names[0] not in tables:
         pytest.skip()
     out_name = os.path.join(out_dir, "wapi")
-    assert main(gains_argparser, ["-t", tables, "--plotname", f"{out_name}.{ext}"]) == 0
+    assert main(gains_argparser, ["-t", tables, "--plotname", f"{out_name}.{ext}", "-od", out_dir]) == 0
     assert len(glob(f"{out_name}*.{ext}")) > 0
