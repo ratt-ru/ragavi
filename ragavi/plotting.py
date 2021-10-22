@@ -19,6 +19,7 @@ from ragavi.overrides import set_multiple_defaults
 
 snitch = logging.getLogger(__name__)
 
+
 class BaseFigure:
     """
     A base for ragavi plots with some default specs
@@ -642,16 +643,17 @@ class FigRag(BaseFigure):
                   title="Antenna", columnspacing=1.0)
 
         fig.suptitle(f"Table: {mdata.ms_name}", ha="center")
-        fig.savefig(f"{name}_{self._fig.yaxis.axis_label}{ext}",
-            bbox_inches='tight')
+        new_filename = f"{name}_{self._fig.yaxis.axis_label}{ext}"
+        fig.savefig(new_filename, bbox_inches='tight')
         
-        snitch.info(f"Image at: {filename}")
+        snitch.info(f"Image at: {new_filename}")
 
     def potato(self, mdata, filename=None, dpi=None, group_size=None):
         """
         Save plots in png,ps, pdf and svg format split out per field,
         and antenna batch. Remember flags were inverted to make cds views!!!
         """        
+
         if filename is None:
             return 
         snitch.info("Setting up static image with subplots")
@@ -690,7 +692,7 @@ class FigRag(BaseFigure):
                 row = -1
                 for aidx, aid in enumerate(mdata.active_antennas):
                     if type(aid) is not int:
-                        aid = mdate.ant_map[aid]
+                        aid = mdata.ant_map[aid]
                     frends = [rend for rend in self._fig.renderers
                         if {f"b{bid}",f"a{aid}",f"f{fid}"}.issubset(
                             set(rend.tags))]
@@ -736,12 +738,13 @@ class FigRag(BaseFigure):
                         va='center')
                 fig.text(0.1, 0.5, self._fig.yaxis.axis_label, ha='center',
                         va='center', rotation='vertical')
-                fig.savefig(f"{name}"
+
+                new_filename = (f"{name}"
                     + f"_{self._fig.yaxis.axis_label}"
                     + f"_{mdata.reverse_field_map[fid]}"
-                    + f"_grp{bid}{ext}", bbox_inches='tight')
-        
-        snitch.info(f"Image at: {filename}")
+                    + f"_grp{bid}{ext}")
+                snitch.info(f"Sub image at: {new_filename}")
+                fig.savefig(new_filename, bbox_inches='tight')
 
 
 # Look here: https://www.geeksforgeeks.org/3d-scatter-plotting-in-python-using-matplotlib/

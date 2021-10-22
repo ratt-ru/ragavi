@@ -22,6 +22,7 @@ from ragavi.widgets import F_MARKS, make_stats_table, make_table_name, make_widg
 
 snitch = logging.getLogger(__name__)
 
+
 _GROUP_SIZE_ = 16
 _NOTEBOOK_ = False
     
@@ -279,6 +280,7 @@ def main(parser, gargs=None):
         if image_name:
             image_name = update_output_dir(image_name, out_dir)
             statics = lambda func, _x, **kwargs: getattr(_x, func)(**kwargs)
+
             with futures.ThreadPoolExecutor() as executor:
                 executor.map(
                     partial(statics, mdata=msdata, filename=image_name,
