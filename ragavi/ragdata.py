@@ -205,6 +205,14 @@ class MsData:
     @property
     def spws(self):
         return self._spws
+     
+    @property
+    def spw_map(self):
+        return {s: s for s in self._spws.values}
+
+    @property
+    def reverse_spw_map(self):
+        return self.spw_map
 
     @property
     def telescope(self):
@@ -764,7 +772,8 @@ class Plotargs:
             "corr": "corr_map", "rcorr": "reverse_corr_map",
             "field": "field_map", "rfield": "reverse_field_map",
             "scan": "scan_map", "rscan": "reverse_scan_map",
-            "chan": "", "ddid": "", "spw": "", "rspw": ""
+            "chan": "", "ddid": "spw_map", "rddid": "reverse_spw_map",
+            "spw": "spw_map", "rspw": "reverse_spw_map"
         }
         return getattr(msd, cat_maps[cat], None)
     
@@ -796,6 +805,8 @@ class Plotargs:
         msd: msdata
             Data container for MS 
         """
+        from ipdb import set_trace
+        set_trace()
         self.cat_map = self.get_category_maps(f"r{axis}", msd)
         self.n_categories = self.get_category_sizes(axis, msd)
 

@@ -581,9 +581,8 @@ def main(parser, gargs=None):
                                     msdata.active_channels).data
             axes.ydata = Processor(axes.ydata).calculate(axes.yaxis,
                                     msdata.active_channels).data
-            
             if axes.cdata is not None:
-                axes.cdata = Processor(axes.cdata).calculate(axes.caxis).data
+                axes.cdata = Processor(axes.cdata).calculate(axes.caxis)
 
             to_fig = dict(width=plargs.plot_width, height=plargs.plot_height,
                           x_scale=xaxis if xaxis == "time" else "linear",

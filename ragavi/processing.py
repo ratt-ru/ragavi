@@ -67,6 +67,8 @@ class Processor:
         elif len(re.findall(f"{axis}\w*", "channel frequency")) > 0:
             return self.data
         else:
+            if isinstance(self.data, int):
+                self.data = da.array([self.data])
             return self.data
 
     @staticmethod
