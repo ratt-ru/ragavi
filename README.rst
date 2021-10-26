@@ -19,39 +19,11 @@ This library mainly requires
     2. `Python casacore`_
     3. `Daskms`_
     4. `Datashader`_
-    5. Nodejs>=8
 
 **- Install build dependencies:**
 
 ** `Python casacore`_ comes as a dependency of `Daskms`_ **
-Nodejs is a requirement for ``Bokeh`` and can be installed using the commands
 
-.. code-block:: bash
-    
-    $ sudo apt-get install curl
-    $ curl -sL https://deb.nodesource.com/setup_8.x | bash -
-    $ apt-get install -y nodejs
-
-All python requirements are found in requirements.txt
-
-or
- 
-To install ``nodejs`` in the virtual environment, use: ``nodeenv``, a nodejs virtual environment.
-More info can be found here_
-
-Create nodejs virtual environment with:
-
-.. code-block:: bash
-    
-    $ nodeenv envName
-
-and
-
-.. code-block:: bash
-
-    $ . envName/bin/activate
-
-to switch to environment. 
 
 ============
 Installation
@@ -62,6 +34,7 @@ working directory where source is checked out
 
 .. code-block:: bash
   
+    $ cd ragavi
     $ pip install .
 
 This package is available on *PYPI* via
