@@ -174,7 +174,10 @@ def organise_table(ms, sels, tdata):
         sels.corrs = [c for c in sels.corrs if c in tdata.corr_map]
 
     else:
-        sels.corrs = [*map(tdata.reverse_corr_map.get, [0, 3])]
+        if tdata.num_corrs >2:
+            sels.corrs = [*map(tdata.reverse_corr_map.get, [0, 3])]
+        else:
+            sels.corrs = [*map(tdata.reverse_corr_map.get, [0, 1])]
 
     new_order = []
     for (dd, fi) in dd_fi:
@@ -233,7 +236,7 @@ def main(parser, gargs=None):
         
         msname = msname.rstrip("/")
         subs = xds_from_zarr(f"{msname}::{gtype}")
-        msdata = init_table_data(f"{msname}::G", subs)
+        msdata = init_table_data(f"{msname}::{gtype}", subs)
         snitch.info(f"Loading {msdata.ms_name}")
         msdata.table_type = gtype
 
@@ -244,6 +247,9 @@ def main(parser, gargs=None):
             channels=Chooser.get_knife(channels), ddids=ddids)
 
         subs = organise_table(subs, selections, msdata)
+
+        if cmap is None:
+            cmap = "coolwarm"
         cmap = get_colours(subs[0].ant.size, cmap)
         points = calculate_points(subs[0], len(subs))
 
@@ -298,18 +304,40 @@ def main(parser, gargs=None):
         
         if image_name:
             image_name = update_output_dir(image_name, out_dir)
+            if "::" in image_name:
+                image_name = image_name.replace("::", "-")
             statics = lambda func, _x, **kwargs: getattr(_x, func)(**kwargs)
+
+            """   
+            Generate all differnt combinations of all_figs and the name of
+            the static functions and then split them into individual lists
+            by unpacking the output of zip
+            """
+            ################### Normal program #############################
+           
             with futures.ThreadPoolExecutor() as executor:
                 stores = executor.map(
                     partial(statics, mdata=msdata, filename=image_name,
                             group_size=_GROUP_SIZE_),
                     *zip(*product(["write_out_static", "potato"], all_figs)))
-                #generate all differnt combinations of all_figs and the name of
-                #the static functions and then split them into individual lists
-                # by unpacking the output of zip            
+           
+           
+            ########### only uncommment when debugging executor ############
+           
+            # for figa in all_figs:
+            #     figa.write_out_static(mdata=msdata, filename=image_name,
+            #                 group_size=_GROUP_SIZE_)
+            #     figa.potato(mdata=msdata, filename=image_name,
+            #                 group_size=_GROUP_SIZE_)
+            
+            ################################################################
+
         if html_name:
             data_column = "gains"
             html_name = update_output_dir(html_name, out_dir)
+
+            if "::" in html_name:
+                html_name = html_name.replace("::", "-")
             all_figs[0].link_figures(*all_figs[1:])
             all_figs = [fig.fig for fig in all_figs]
             widgets = make_widgets(
