@@ -56,6 +56,8 @@ def update_log_levels(root_logger, level):
     snitch.debug("Debugging mode")
 
 def update_logfile_name(root_logger, fname="ragavi.log"):
+    if os.path.splitext(fname)[-1] != ".log":
+        fname += ".log"
     f_handler = logging.FileHandler(fname)
     f_handler.setLevel(root_logger.level)
     f_handler.setFormatter(logging.Formatter(

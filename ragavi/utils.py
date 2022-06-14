@@ -29,6 +29,9 @@ def get_colours(n, cmap="coolwarm"):
     cmap: colormap to select
     n: Number colours to return
     """
+    if cmap is None:
+        cmap = "coolwarm"
+
     #check if the colormap is in mpl
     if re.search(f"\w*{cmap}\w*", ",".join(plt.colormaps()),
                     re.IGNORECASE):

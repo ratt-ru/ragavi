@@ -18,7 +18,7 @@ from ragavi.lograg import logging
 from ragavi.overrides import set_multiple_defaults
 
 snitch = logging.getLogger(__name__)
-
+plt.switch_backend('agg')
 
 class BaseFigure:
     """
@@ -667,8 +667,9 @@ class FigRag(BaseFigure):
         skey = lambda x: int(x.id)
         
         marks = ["o", "x", "^", "+"]
+
         if mdata.corr_map is not None:
-            marks = {mdata.reverse_corr_map[i]: m for i,m in enumerate(marks)}
+            marks = {mdata.reverse_corr_map[i]: m for i,m in enumerate(marks) if i in mdata.reverse_corr_map}
         else:
             marks = {i: m for i, m in enumerate(marks)}
                 
@@ -731,7 +732,6 @@ class FigRag(BaseFigure):
                         ax[row,col].tick_params("x", labelrotation=30)
                         for label in ax[row, col].get_xticklabels():
                             label.set_ha("right")
-                
                 fig.suptitle(f"Table: {mdata.ms_name} "
                               + mdata.reverse_field_map[fid], ha="center")
                 fig.text(0.5, 0.04, self._fig.xaxis.axis_label, ha='center',

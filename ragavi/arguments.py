@@ -47,7 +47,7 @@ def base_parser():
         "-lf",
         "--logfile",
         dest="logfile",
-        nargs="+",
+        # nargs="+",
         type=str,
         metavar="",
         default=None,
