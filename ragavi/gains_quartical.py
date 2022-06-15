@@ -24,6 +24,7 @@ from ragavi.ragdata import QuarticalTableData as TableData
 from ragavi.utils import new_darray, update_output_dir
 from ragavi.widgets import F_MARKS, make_widgets, make_stats_table, make_table_name
 
+
 snitch = logging.getLogger(__name__)
 
 _GROUP_SIZE_ = 16
@@ -40,10 +41,17 @@ def add_extra_xaxis(channels, figrag, sargs):
 def init_table_data(msname, sub_list):
     snitch.debug("Initialising table data container")
     fields, scans, spws={}, [], []
-    for ms in sub_list:
+    for sub_id, ms in enumerate(sub_list):
         fields[ms.FIELD_ID]=ms.FIELD_NAME
-        scans.append(ms.SCAN_NUMBER)
         spws.append(ms.DATA_DESC_ID)
+        if "SCAN_NUMBER" not in sub_list[0].attrs:
+            snitch.warning("SCAN_NUMBER column was not found")
+            snitch.warning("assigning arbitrary scan ID {sub_id}")
+            ms.attrs.update(SCAN_NUMBER=0)
+        scans.append(ms.SCAN_NUMBER)
+
+
+
     fields = [fields[k] for k in sorted(fields.keys())]
     scans = sorted(np.unique(scans))
     spws = sorted(np.unique(spws))
