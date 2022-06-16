@@ -233,7 +233,7 @@ def main(parser, gargs=None):
     if ps.out_dir:
         out_dir = ps.out_dir
     else:
-        out_dir = os.path.join(os.path.curdir, "ragavi_out")
+        out_dir = os.path.join(os.path.curdir, "ragavi-out")
 
     if ps.debug:
         update_log_levels(snitch.parent, 10)
@@ -351,6 +351,9 @@ def main(parser, gargs=None):
 
             if "::" in html_name:
                 html_name = html_name.replace("::", "-")
+
+            snitch.info("Preparing HTML file")
+
             all_figs[0].link_figures(*all_figs[1:])
             all_figs = [fig.fig for fig in all_figs]
             widgets = make_widgets(

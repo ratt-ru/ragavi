@@ -457,7 +457,7 @@ def main(parser, gargs=None):
     if ps.out_dir:
         out_dir = ps.out_dir
     else:
-        out_dir = os.path.join(os.path.curdir, "ragavi_out")
+        out_dir = os.path.join(os.path.curdir, "ragavi-out")
 
     if ps.debug:
         update_log_levels(snitch.parent, 10)
