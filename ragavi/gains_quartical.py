@@ -206,8 +206,11 @@ def organise_table(ms, sels, tdata):
                 sub["ddids"] = new_darray(sub.gains, "ddids", sub.DATA_DESC_ID)
                 sub["FLAG"] = new_darray(sub.gains, "flags", False)
                 ms[i] = sub[variables]
-                ms[i].attrs = {var: sub.attrs[var]
-                               for var in ["DATA_DESC_ID", "FIELD_ID"]}
+
+                ###### comenting out the following line, problematic ###########
+                # ms[i].attrs = {var: sub.attrs[var]
+                #                for var in ["DATA_DESC_ID", "FIELD_ID", "FIELD_NAME", "SCAN_NUMBER"]}
+                
                 sub_order.append(ms[i])
         new_order.append(xr.concat(sub_order, "gain_t",
                          combine_attrs="drop_conflicts"))
