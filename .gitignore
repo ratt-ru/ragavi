@@ -7,10 +7,10 @@
 *.html
 
 #ignore gain tables
-tests/gain_tables
+*gain_tables
 
 #Dask stuff
-dask-worker-space/
+*dask-worker-space/
 
 # notebooks
 *.ipynb
