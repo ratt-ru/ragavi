@@ -46,11 +46,9 @@ def init_table_data(msname, sub_list):
         spws.append(ms.DATA_DESC_ID)
         if "SCAN_NUMBER" not in sub_list[0].attrs:
             snitch.warning("SCAN_NUMBER column was not found")
-            snitch.warning("assigning arbitrary scan ID {sub_id}")
+            snitch.warning(f"assigning arbitrary scan ID {sub_id}")
             ms.attrs.update(SCAN_NUMBER=0)
         scans.append(ms.SCAN_NUMBER)
-
-
 
     fields = [fields[k] for k in sorted(fields.keys())]
     scans = sorted(np.unique(scans))
@@ -59,7 +57,7 @@ def init_table_data(msname, sub_list):
     corrs = sub_list[0].corr.values
 
     return TableData(msname, ant_names=ants, corr_names=corrs,
-        field_names=fields, spws=spws)
+        field_names=fields, spws=spws, scans=scans)
 
 def populate_fig_data(subms, axes, cmap, figrag, msdata):
     time, freq = subms.gain_t.values, subms.gain_f.values / 1e9
@@ -140,8 +138,9 @@ def organise_table(ms, sels, tdata):
     """
     # sort sub mss by scans
     ms = sorted(ms, key=lambda x: x.SCAN_NUMBER)
-    # get ddid and field ids
-    dd_fi = sorted(list({(m.DATA_DESC_ID, m.FIELD_NAME) for m in ms}))
+
+    # get ddid and field ids. I use these for the selection of data
+    dd_fi = sorted(list({(m.DATA_DESC_ID, m.FIELD_NAME, m.SCAN_NUMBER) for m in ms}))
     variables = "gains fields scans ddids FLAG".split()
 
     _, actives = Chooser.form_taql_string(
@@ -166,6 +165,11 @@ def organise_table(ms, sels, tdata):
     else:
         sels.ddids = tdata.spws.values
 
+    if sels.scans is not None:
+        sels.scans = actives.get("scans")
+    else:
+        sels.scans = tdata.scans
+
     if sels.corrs is not None:
         # get in string format for conversion to xx,xy,yx,yy format
         if any([char in sels.corrs for char in ":~"]):
@@ -188,11 +192,12 @@ def organise_table(ms, sels, tdata):
             sels.corrs = [*map(tdata.reverse_corr_map.get, [0, 1])]
 
     new_order = []
-    for (dd, fi) in dd_fi:
+    for (dd, fi, sc) in dd_fi:
         sub_order = []
         for i, sub in enumerate(ms):
-            if (sub.DATA_DESC_ID, sub.FIELD_NAME) == (dd, fi) and (
-                fi in sels.fields) and dd in sels.ddids:
+            if (sub.DATA_DESC_ID, sub.FIELD_NAME, sub.SCAN_NUMBER) == (dd, fi, sc) \
+                and (fi in sels.fields) and dd in sels.ddids \
+                and sc in sels.scans:
                 snitch.debug(f"Selecting ddid {dd} and field {fi}")
                 sub = sub.sel(corr=sels.corrs, ant=sels.antennas,
                              gain_f=sels.channels)
@@ -237,10 +242,10 @@ def main(parser, gargs=None):
     update_logfile_name(snitch.parent, update_output_dir(logfile, out_dir))
 
 
-    for (msname, antennas, channels, corrs, ddids, fields, cmap, yaxes,
+    for (msname, antennas, channels, corrs, ddids, fields, scans, cmap, yaxes,
          xaxis, html_name, image_name, gtype) in zip_longest(ps.msnames,
-         ps.antennas, ps.channels, ps.corrs, ps.ddids, ps.fields,ps.cmaps,
-         ps.yaxes, ps.xaxes, ps.html_names, ps.image_names, ps.gtypes):
+         ps.antennas, ps.channels, ps.corrs, ps.ddids, ps.fields, ps.scans,
+         ps.cmaps, ps.yaxes, ps.xaxes, ps.html_names, ps.image_names, ps.gtypes):
         
         msname = msname.rstrip("/")
         subs = xds_from_zarr(f"{msname}::{gtype}")
@@ -252,7 +257,7 @@ def main(parser, gargs=None):
 
         selections = Selargs(
             antennas=antennas, corrs=corrs, baselines=None,
-            channels=Chooser.get_knife(channels), ddids=ddids)
+            channels=Chooser.get_knife(channels), ddids=ddids, scans=scans)
 
         subs = organise_table(subs, selections, msdata)
 
@@ -366,7 +371,7 @@ def main(parser, gargs=None):
             output_file(filename=html_name)
             save(final_layout, filename=html_name,
                  title=os.path.splitext(os.path.basename(html_name))[0])
-            snitch.warning(f"HTML at: {html_name}")
+            snitch.info(f"HTML at: {html_name}")
         snitch.info("Plotting Done")
 
 

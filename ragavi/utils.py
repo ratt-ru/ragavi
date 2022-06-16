@@ -115,7 +115,7 @@ def pair(x, y):
 def update_output_dir(output_file, output_dir):
     if os.path.isdir(output_dir):
         snitch.warn(f"Directory {output_dir} already exists. " +
-                    "Contents will be overwritten")
+                    "Same name contents will be overwritten")
     else:
         snitch.debug(f"Creating output directory {output_dir}")
         os.makedirs(output_dir)

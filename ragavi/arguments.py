@@ -69,7 +69,7 @@ def base_parser():
     ds_group = parent.add_argument_group("Data selection settings")
     ds_group.add_argument(
         "-a",
-        "--ant",
+        "--ant", "--antenna",
         dest="antennas",
         nargs="+",
         type=str,
@@ -80,7 +80,7 @@ def base_parser():
         range), "5:8" (exclusive range), 5:(from 5 to last). Default is all.""",
     )
     ds_group.add_argument(
-        "--chan",
+        "--chan", "--channel",
         dest="channels",
         nargs="+",
         type=str,
@@ -107,7 +107,7 @@ def base_parser():
         / 'off-diagonal' for of diagonal correlations. Default is all.""",
     )
     ds_group.add_argument(
-        "--ddid",
+        "--ddid", "--spectral-window",
         dest="ddids",
         nargs="+",
         type=str,
@@ -612,6 +612,9 @@ def cubical_gains_parser():
                 help="""Correlation index to plot. Can be a single integer or 
                 comma separated integers e.g '0,2'. Defaults to all.""",
             )
+            
+            # Overriding and Suppressing the following arguments as defined in
+            # the parent parser, this is done using argparse.SUPPRESS
             grp.add_argument(
                 "--t0",
                 dest="t0s",
@@ -665,6 +668,17 @@ def quartical_gains_parser():
                 required=False,
                 help="""Gain table type(s) being plotted. Multiple tables can 
                     be specified as a space separated list""",
+            )
+        if "selection" in grp.title.lower():
+            grp.add_argument(
+                "--scan",
+                dest="scans",
+                nargs="+",
+                type=str,
+                metavar="",
+                default=[None],
+                help="""Which scans to select, Same specification as for field selection
+                """
             )
 
     return parser
