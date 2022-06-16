@@ -805,8 +805,6 @@ class Plotargs:
         msd: msdata
             Data container for MS 
         """
-        from ipdb import set_trace
-        set_trace()
         self.cat_map = self.get_category_maps(f"r{axis}", msd)
         self.n_categories = self.get_category_sizes(axis, msd)
 

@@ -51,12 +51,12 @@ def outputs(out_dir, request):
     return os.path.join(out_dir, f"{request.param}_ap.html")
 
 
-@pytest.mark.parametrize("ext", ["html", "png", "pdf", "svg", "log"])
-def test_cleanup(ext, in_dir, out_dir):
-    [os.remove(out) for out in glob(os.path.join(in_dir, f"*.{ext}"))]
-    [os.remove(out) for out in glob(os.path.join(in_dir, "ms", f"*.{ext}"))]
-    [os.remove(out) for out in glob(os.path.join(out_dir, f"*.{ext}"))]
-    assert True
+# @pytest.mark.parametrize("ext", ["html", "png", "pdf", "svg", "log"])
+# def test_cleanup(ext, in_dir, out_dir):
+#     [os.remove(out) for out in glob(os.path.join(in_dir, f"*.{ext}"))]
+#     [os.remove(out) for out in glob(os.path.join(in_dir, "ms", f"*.{ext}"))]
+#     [os.remove(out) for out in glob(os.path.join(out_dir, f"*.{ext}"))]
+#     assert True
 
 def test_basic_out(tables, out_dir):
     if table_names[0] not in tables:
