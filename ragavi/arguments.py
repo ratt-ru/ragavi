@@ -11,6 +11,13 @@ class RagParser(argparse.ArgumentParser):
         raise ArgumentParserError(message)
 
 
+class HelpTextFormatter(argparse.RawTextHelpFormatter):
+    def _split_lines(self, text, width=80):
+        text = [" ".join(_.split()) for _ in text.splitlines()]
+        text.append("_"*65 +"\n" )
+        return text
+
+
 def base_parser():
     """
     Create command line arguments for ragavi. This is the base template
@@ -32,6 +39,7 @@ def base_parser():
         argument_default=None,
         conflict_handler="resolve",
         add_help=False,
+        formatter_class=HelpTextFormatter
     )
 
     req_group = parent.add_argument_group("Required arguments")
@@ -209,6 +217,7 @@ def vis_argparser():
         usage="%(prog)s [options] <value>",
         description="A Radio Astronomy Visibilities Inspector",
         parents=[base_parser()],
+        formatter_class=HelpTextFormatter
     )
 
     for grp in parser._action_groups:
@@ -485,6 +494,7 @@ def gains_argparser():
         description="Radio Astronomy Gains Inspector for CASA gain tables",
         parents=[base_parser()],
         add_help=False,
+        formatter_class=HelpTextFormatter
     )
 
     for grp in parser._action_groups:
@@ -597,6 +607,7 @@ def cubical_gains_parser():
         parents=[gains_argparser()],
         add_help=False,
         conflict_handler="resolve",
+        formatter_class=HelpTextFormatter
     )
 
     for grp in parser._action_groups:
@@ -653,6 +664,7 @@ def quartical_gains_parser():
         description="Radio Astronomy Gains Inspector: Quartical gain tables",
         parents=[cubical_gains_parser()],
         add_help=False,
+        formatter_class=HelpTextFormatter
     )
 
     for grp in parser._action_groups:

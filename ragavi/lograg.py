@@ -20,7 +20,7 @@ logging.captureWarnings(True)
 # only get data from ragavi modules
 logger_filter = logging.Filter("ragavi")
 f_formatter = logging.Formatter(
-    "%(asctime)s - %(name)-20s - %(levelname)-10s - %(message)s",
+    "%(asctime)s: %(name)-20s - %(levelname)-10s - %(message)s",
     datefmt="%d.%m.%Y@%H:%M:%S")
 
 # console handler

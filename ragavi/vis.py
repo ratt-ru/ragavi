@@ -171,7 +171,8 @@ def get_ms(msdata, selections, axes, cbin=None, chunks=None, tbin=None):
 
     #removed chan and corr chunking    
     xds_inputs = dict(chunks=dict(row=chunks), taql_where=where,
-                      columns=sel_cols, group_cols=group_cols)
+                      columns=[_ for _ in sel_cols if _ is not None],
+                      group_cols=group_cols)
     if {"antenna"}.issubset({axes.iaxis, axes.caxis}):
         tab_objs = antenna_iter(msdata, 
         **{**xds_inputs, **dict(
