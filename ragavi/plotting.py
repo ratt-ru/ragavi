@@ -17,6 +17,8 @@ from bokeh.models.tools import (BoxSelectTool, BoxZoomTool, HoverTool,
 from ragavi.lograg import logging
 from ragavi.overrides import set_multiple_defaults
 
+from ipdb import set_trace
+
 snitch = logging.getLogger(__name__)
 plt.switch_backend('agg')
 
@@ -89,7 +91,7 @@ class BaseFigure:
             outline_line_color="#017afe", outline_line_alpha=0.4, 
             output_backend="canvas", sizing_mode="stretch_width",
             title_location="above", toolbar_location="above",
-            plot_width=self.width, plot_height=self.height,
+            width=self.width, height=self.height,
             frame_height=int(0.93 * self.height),
             frame_width=int(0.98*self.width), name=f"fig{self.f_num}_plot"
             )
@@ -492,14 +494,14 @@ class FigRag(BaseFigure):
             An object containing cmap-list with colours, n_categories-number
             of categories, cat_map- category id to name mapping dictionary
         """
-        self._fig.plot_width = int(self._fig.plot_width * 0.98)
+        self._fig.width = int(self._fig.width * 0.98)
         snitch.debug("Adding colour bar")
         caxis, labels = caxis.capitalize(), list(plargs.cat_map.values())
 
         rends = []
 
         # legend height
-        lh = int((self._fig.plot_height / plargs.n_categories) * 0.85)
+        lh = int((self._fig.height / plargs.n_categories) * 0.85)
 
         for c, cidx in enumerate(plargs.cat_map.keys()):
             # ignore other cats. This was added because of corr mapings
@@ -597,7 +599,7 @@ class FigRag(BaseFigure):
             dpi = 72
 
         # set up renderer sorting function
-        skey = lambda x: int(x.id)
+        skey = lambda x: x.id
 
         plt.close("all")
         fig, ax = plt.subplots(nrows=1, ncols=len(mdata.active_fields),
@@ -664,7 +666,7 @@ class FigRag(BaseFigure):
             dpi = 300
 
         # set up renderer sorting function
-        skey = lambda x: int(x.id)
+        skey = lambda x: x.id
         
         marks = ["o", "x", "^", "+"]
 
