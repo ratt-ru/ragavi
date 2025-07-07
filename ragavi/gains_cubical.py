@@ -207,7 +207,7 @@ def main(parser, gargs=None):
                     tdata.active_corrs.append(f"{_corr}")
 
                 masked_data, masked_err = masked_data.flatten(), masked_err.flatten()
-               
+
                 axes = Axargs(xaxis=xaxis, yaxis=yaxis, data_column=None,
                              msdata=tdata, flags=~masked_data.mask, 
                              errors=masked_err.data)   
@@ -252,11 +252,19 @@ def main(parser, gargs=None):
         if image_name:
             image_name = update_output_dir(image_name, out_dir)
             statics = lambda func, _x, **kwargs: getattr(_x, func)(**kwargs)
-            with futures.ThreadPoolExecutor() as executor:
-                stores = executor.map(
-                    partial(statics, mdata=tdata, filename=image_name,
-                            group_size=_GROUP_SIZE_),
-                    *zip(*product(["write_out_static", "potato"], all_figs)))
+            if ps.debug:
+                for figa in all_figs:
+                    figa.write_out_static(mdata=tdata, filename=image_name, group_size=_GROUP_SIZE_)
+                    figa.potato(mdata=tdata, filename=image_name, group_size=_GROUP_SIZE_)
+            else:
+                stores = []
+                with futures.ThreadPoolExecutor() as executor:
+                    stores = executor.map(
+                        partial(statics, mdata=tdata, filename=image_name,
+                                group_size=_GROUP_SIZE_),
+                        *zip(*product(["write_out_static", "potato"], all_figs)))
+
+        
         if html_name:
             html_name = update_output_dir(html_name, out_dir)
             data_column = "gains"
