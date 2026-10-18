@@ -6,7 +6,7 @@ except:
 # ragavi test files
 # To run:
 # export PYTHONPATH=/path/to/root/module
-# export PYTHONPATH='/home/lexya/Documents/ragavi/ragavi'
+# export PYTHONPATH=/path/to/repository/src
 
 import unittest
 import numpy as np

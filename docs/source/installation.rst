@@ -5,6 +5,7 @@ Installation & usage
 Installation
 ============
 ``Ragavi`` is available on `PYPI` and can be installed via pip or from source.
+This source version requires Python 3.11 or newer.
 
 To install via pip, type on your terminal
 

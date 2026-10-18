@@ -32,7 +32,7 @@ Nodejs is a requirement for ``Bokeh`` and can be installed using the commands
     $ curl -sL https://deb.nodesource.com/setup_8.x | bash -
     $ apt-get install -y nodejs
 
-All python requirements are found in requirements.txt
+Python dependencies are declared in ``pyproject.toml``.
 
 or
  

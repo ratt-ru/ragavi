@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ragavi"
+dynamic = ["version"]
+description = "Radio Astronomy Gain and Visibility Inspector"
+readme = "README.rst"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    {name = "Lexy Andati", email = "andatilexy@gmail.com"},
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+    "bokeh",
+    "codex-africanus[dask]",
+    "dask[complete]",
+    "dask-ms[xarray]",
+    "datashader",
+    "future",
+    "matplotlib",
+    "numpy>=1.15",
+    "python-casacore",
+    "xarray",
+]
+
+[project.scripts]
+ragavi-gains = "ragavi.cli:gains"
+ragavi-vis = "ragavi.cli:vis"
+
+[project.urls]
+Homepage = "https://github.com/ratt-ru/ragavi"
+Documentation = "https://ragavi.readthedocs.io"
+Repository = "https://github.com/ratt-ru/ragavi"
+"Issue Tracker" = "https://github.com/ratt-ru/ragavi/issues"
+Changelog = "https://github.com/ratt-ru/ragavi/blob/master/CHANGELOG.rst"
+
+[tool.hatch.version]
+path = "src/ragavi/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ragavi"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/ragavi",
+    "/tests",
+    "/docs",
+    "/README.rst",
+    "/CHANGELOG.rst",
+    "/LICENSE",
+    "/pyproject.toml",
+]
+
+[dependency-groups]
+tests = ["pytest>=7.1.3"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
