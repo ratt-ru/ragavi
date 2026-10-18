@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import os
 from collections import OrderedDict, namedtuple
-from datetime import datetime
+from datetime import datetime, timezone
 from itertools import product
 
 import daskms as xm
@@ -32,6 +32,22 @@ _PLOT_HEIGHT_ = 710
 _GHZ_ = 1e9
 _NB_RENDER_ = False
 _BATCH_SIZE_ = 16
+
+# Field shapes are reused when a table contains more fields than distinct
+# shapes. The field name remains available in the selector and hover tooltip.
+_FIELD_MARKERS_ = ("circle", "diamond", "square", "triangle", "hex",
+                   "inverted_triangle")
+_FIELD_SYMBOLS_ = ("\u2B24", "\u25C6", "\u25FC", "\u25B2", "\u2B22", "\u25BC")
+
+
+def field_marker(fid):
+    """Return the plot marker for a field's position in the selected fields."""
+    return _FIELD_MARKERS_[fid % len(_FIELD_MARKERS_)]
+
+
+def field_symbol(fid):
+    """Return the matching field selector symbol."""
+    return _FIELD_SYMBOLS_[fid % len(_FIELD_SYMBOLS_)]
 
 
 logger = logging.getLogger(__name__)
@@ -1175,7 +1191,8 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker="circle_x"):
     """
 
     # fill an array with the unflagged marker value
-    markers_arr = np.full(y.shape, fill_value=markers[fid], dtype="<U17")
+    markers_arr = np.full(y.shape, fill_value=markers[fid % len(markers)],
+                          dtype="<U17")
 
     # mask only where there are nan values
     masked_markers_arr = np.ma.masked_where(np.isnan(y), markers_arr)
@@ -1304,9 +1321,8 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
     Tuple of containing glyphs and error bars to be used (from :func:`ragavi.ragavi.errorbar`).
 
     """
-    markers = ["circle", "diamond", "square", "triangle",
-               "hex"]
-    fmarker = "inverted_triangle"
+    markers = _FIELD_MARKERS_
+    fmarker = "circle_x"
     glyph_opts = {"size": 4,
                   "fill_alpha": 1,
                   "fill_color": color,
@@ -1326,7 +1342,7 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
         p_glyph = Scatter(x='x', y=f"y{yidx}", marker="fmarkers",
                           line_width=0, angle=0.7, **glyph_opts)
     else:
-        p_glyph = Scatter(x='x', y=f"y{yidx}", marker=markers[fid],
+        p_glyph = Scatter(x='x', y=f"y{yidx}", marker=field_marker(fid),
                           line_width=0, **glyph_opts)
 
     # add a check for whether all the in y data were NaNs
@@ -1338,7 +1354,8 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
     else:
         ebars = errorbar(x=source.data['x'], y=source.data[f"y{yidx}"],
                          color=color, yerr=yerr)
-        p_glyph.js_link("fill_alpha", ebars, "line_alpha")
+        if ebars is not None:
+            p_glyph.js_link("fill_alpha", ebars, "line_alpha")
 
     logger.debug("Glyphs generated")
 
@@ -1778,9 +1795,6 @@ def main(**kwargs):
         field_names = vu.get_fields(tab).values
         field_ids = np.unique(np.array([s.FIELD_ID for s in subs]))
 
-        field_ucodes = [u"\u2B24", u"\u25C6", u"\u25FC", u"\u25B2",
-                        u"\u25BC", u"\u2B22"]
-
         # setting up colors for the antenna plot
         cmap = vu.get_linear_cmap(cmap, ant_ids.size)
 
@@ -1901,10 +1915,10 @@ def main(**kwargs):
                     fig.add_layout(title, "above")
             elif xaxis == "time":
                 munix = 3506716800.0
-                ni_time = datetime.utcfromtimestamp(
-                    init_time - munix).strftime("%d %b %Y, %H:%M:%S")
-                ne_time = datetime.utcfromtimestamp(
-                    end_time - munix).strftime("%d %b %Y, %H:%M:%S")
+                ni_time = datetime.fromtimestamp(
+                    init_time - munix, tz=timezone.utc).strftime("%d %b %Y, %H:%M:%S")
+                ne_time = datetime.fromtimestamp(
+                    end_time - munix, tz=timezone.utc).strftime("%d %b %Y, %H:%M:%S")
 
                 fig.xaxis.axis_label = "{} from {} UTC".format(
                     x_label, ni_time)
@@ -1995,7 +2009,8 @@ def main(**kwargs):
 
         field_labels = ["Field {} {}".format(
             field_names[int(x)],
-            field_ucodes[enum_fid]) for enum_fid, x in enumerate(field_ids)]
+            field_symbol(enum_fid))
+            for enum_fid, x in enumerate(field_ids)]
 
         field_selector = CheckboxGroup(labels=field_labels, active=[0],
                                        **w_dims)

@@ -163,7 +163,7 @@ def create_bk_fig(x=None, xlab=None, x_min=None, x_max=None,
                            ticker=p_ticker, **axis_specs)
 
     # Create the plot object
-    p = Plot(plot_width=pw, plot_height=ph, frame_height=fh, frame_width=fw,
+    p = Plot(width=pw, height=ph, frame_height=fh, frame_width=fw,
              toolbar=p_toolbar, x_range=x_range, x_scale=x_scale,
              y_range=y_range, y_scale=y_scale, **plot_specs)
 

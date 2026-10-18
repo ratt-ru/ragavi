@@ -1,98 +1,121 @@
-try:
-    from __futures__ import division
-except:
-    pass
+"""Tests for the current gain plotter data and rendering interfaces."""
 
-# ragavi test files
-# To run:
-# export PYTHONPATH=/path/to/root/module
-# export PYTHONPATH=/path/to/repository/src
-
-import unittest
 import numpy as np
-import ragavi.ragavi as rg
-from pyrap.tables import table
+import pytest
+import xarray as xr
+import dask.array as da
+from bokeh.embed import file_html
+from bokeh.models import ColumnDataSource, Legend
+from bokeh.resources import CDN
 
-from future.utils import listitems, listvalues
-from builtins import map
-
-
-class TestRagavi(unittest.TestCase):
-
-    x1 = np.random.randint(1, 30, (20))
-    x2 = np.random.randint(1, 30, (20))
-    fs = np.random.randint(0, 2, (20))
-    fx1 = np.ma.masked_array(data=x1, mask=fs)
-    fx2 = np.ma.masked_array(data=x2, mask=fs)
-    inp = np.vectorize(complex)(fx1, fx2)
-
-    def get_ampha(self, inp):
-        amp = np.ma.sqrt(np.square(inp.real) + np.square(inp.imag))
-        angle = np.rad2deg(np.ma.arctan(np.imag(inp) / np.real(inp)))
-        return amp, 0, angle, 0
-
-    def get_reim(self, inp):
-        real = np.real(inp)
-        im = np.imag(inp)
-        return real, 0, im, 0
-
-    def test_determine_table(self):
-        input_data = ["whatever.G", "anything.B3", "ABcdEF.K023",
-                      ".keija", "testy"]
-        expected = ['.G', '.B', '.K', -1, -1]
-        result = []
-        for data in input_data:
-            result.append(rg.determine_table(data))
-
-        self.assertEqual(result, expected)
-    """
-    def test_name_2id(self):
-        ms_name = "./files/1491291289.G0"
-        ms = table(ms_name, ack=False)
-
-        input_data = [ms, ('DEEP_2', 'NGC45-08', '0454-80', 'RANDOM-SOURCE'),
-                      ]
-        expected = [2, -1, -1, -1]
-        result = []
-        for data in input_data[1]:
-            result.append(rg.name_2id(ms, data))
-
-        ms.close()
-        self.assertEqual(result, expected)
-    """
-
-    def test_data_prep_G(self):
-
-        expected = [self.get_ampha(self.inp), self.get_reim(self.inp)]
-        result = [rg.data_prep_G(self.inp, 0, 'ap'),
-                  rg.data_prep_G(self.inp, 0, 'ri')]
-
-        self.assertTrue(result, expected)
-
-    def test_data_prep_B(self):
-
-        expected = [self.get_ampha(self.inp), self.get_reim(self.inp)]
-        result = [rg.data_prep_B(self.inp, 0, 'ap'),
-                  rg.data_prep_B(self.inp, 0, 'ri')]
-
-        self.assertTrue(result, expected)
-
-    def test_data_prep_K(self):
-
-        expected = [self.get_ampha(self.inp), self.get_ampha(self.inp)]
-        result = [rg.data_prep_K(self.inp, 0, 'ap'),
-                  rg.data_prep_K(self.inp, 0, 'ri')]
-
-        self.assertTrue(result, expected)
-
-    def test_data_prep_F(self):
-
-        expected = [self.get_ampha(self.inp), self.get_reim(self.inp)]
-        result = [rg.data_prep_F(self.inp, 0, 'ap'),
-                  rg.data_prep_F(self.inp, 0, 'ri')]
-
-        self.assertTrue(result, expected)
+from ragavi.plotting import create_bk_fig
+from ragavi.arguments import gains_argparser
+import ragavi.ragavi as gain_module
+from ragavi.ragavi import DataCoreProcessor, field_marker, field_symbol, make_plots
 
 
-if __name__ == '__main__':
-    unittest.main()
+@pytest.mark.parametrize(
+    "axis, expected",
+    [
+        ("amplitude", [np.sqrt(2), np.sqrt(2)]),
+        ("real", [1, 1]),
+        ("imaginary", [1, -1]),
+        ("phase", [45, -45]),
+    ],
+)
+def test_gain_data_processing(axis, expected):
+    values = xr.DataArray(np.array([1 + 1j, 1 - 1j]), dims="row")
+    processor = DataCoreProcessor(None, "unused", "G", axis)
+
+    np.testing.assert_allclose(processor.process_data(values), expected)
+
+
+@pytest.mark.parametrize("gain_type, expected", [("B", "channel"), ("G", "time"),
+                                                  ("K", "time"), ("F", "time")])
+def test_gain_default_xaxis(gain_type, expected):
+    processor = DataCoreProcessor(None, "unused", gain_type, "amplitude")
+    assert processor.xaxis == expected
+
+
+@pytest.mark.parametrize("field_index", [0, 4, 5, 6, 11, 12])
+@pytest.mark.parametrize("flagged", [False, True])
+def test_field_markers_render_for_many_fields(field_index, flagged):
+    y = np.array([1.0, np.nan if flagged else 2.0])
+    source = ColumnDataSource(data={"x": np.array([1, 2]), "y1": y})
+    glyph, whisker = make_plots(source, fid=field_index, yidx=1,
+                                yerr=(y + 0.1, y - 0.1))
+
+    assert field_symbol(field_index) == field_symbol(field_index % 6)
+    if flagged:
+        assert glyph.marker == "fmarkers"
+        assert source.data["fmarkers"].tolist() == [field_marker(field_index),
+                                                      "circle_x"]
+    else:
+        assert glyph.marker == field_marker(field_index)
+
+    fig = create_bk_fig(xlab="Time", ylab="Amplitude", title="Gain plot",
+                        pw=900, ph=710, x_name="time", y_name="amplitude",
+                        add_grid=True, add_xaxis=True, add_yaxis=True,
+                        fix_plotsize=False)
+    renderer = fig.add_glyph(source, glyph)
+    fig.add_layout(whisker)
+    fig.add_layout(Legend(items=[("field", [renderer])]), "above")
+
+    assert fig.width == 900
+    assert fig.height == 710
+    assert "Gain plot" in file_html(fig, CDN, "Gain plot")
+
+
+def test_make_plots_without_error_bars():
+    source = ColumnDataSource(data={"x": np.array([1, 2]),
+                                    "y1": np.array([1.0, 2.0])})
+    glyph, whisker = make_plots(source, fid=6, yidx=1)
+
+    assert glyph.marker == field_marker(6)
+    assert whisker is None
+
+
+def test_gain_plot_with_seven_fields_reaches_html(monkeypatch):
+    """Exercise the plot layout and field selector beyond the old marker limit."""
+    subtables = []
+    for field_id in range(7):
+        flags = np.zeros((2, 1, 1), dtype=bool)
+        if field_id == 6:
+            flags[0, 0, 0] = True
+        subtable = xr.Dataset(
+            {
+                "CPARAM": (("row", "chan", "corr"), da.from_array(
+                    np.array([[[1 + 1j]], [[1 - 1j]]]))),
+                "FLAG": (("row", "chan", "corr"), da.from_array(flags)),
+                "PARAMERR": (("row", "chan", "corr"), da.from_array(
+                    np.full((2, 1, 1), 0.1))),
+                "TIME": ("row", da.from_array(
+                    np.array([3506716801.0, 3506716802.0]))),
+                "SCAN_NUMBER": ("row", [1, 2]),
+            },
+            attrs={"SPECTRAL_WINDOW_ID": 0, "FIELD_ID": field_id, "ANTENNA1": 0},
+        )
+        subtables.append(subtable)
+
+    monkeypatch.setattr(gain_module, "get_table", lambda *a, **kw: (subtables, "G"))
+    monkeypatch.setattr(gain_module, "get_time_range",
+                        lambda *a, **kw: (3506716801.0, 3506716802.0))
+    monkeypatch.setattr(gain_module, "stats_display",
+                        lambda **kw: [kw["spwid"], f"field{kw['field']}", kw["corr"], 1.0])
+    monkeypatch.setattr(gain_module.vu, "get_antennas",
+                        lambda *a, **kw: xr.DataArray(["ant0"]))
+    monkeypatch.setattr(gain_module.vu, "get_fields",
+                        lambda *a, **kw: xr.DataArray([f"field{i}" for i in range(7)]))
+    monkeypatch.setattr(gain_module.vu, "get_frequencies",
+                        lambda *a, **kw: xr.DataArray([[1e9]], dims=("spw", "chan")))
+    monkeypatch.setattr(gain_module.vu, "update_log_levels", lambda *a, **kw: None)
+    monkeypatch.setattr(gain_module.vu, "update_logfile_name", lambda *a, **kw: None)
+    monkeypatch.setattr(gain_module, "set_tempdir", lambda *a, **kw: None)
+    output = {}
+    monkeypatch.setattr(gain_module, "save_html",
+                        lambda name, layouts: output.update(
+                            html=file_html(layouts[0], CDN, "Gain plot")))
+
+    options = gains_argparser().parse_args(["-t", "synthetic.G", "-c", "0", "-y", "a"])
+    assert gain_module.main(options=options) == 0
+    assert "field6" in output["html"]
