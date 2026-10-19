@@ -154,3 +154,71 @@ def test_sparse_gain_plot_selection_metadata(monkeypatch):
     assert len(selection_widgets) == 4
     buttons = list(output["layout"].select({"type": Button}))
     assert any(button.label == "Select all antennas" for button in buttons)
+
+
+def test_channel_gain_plot_spectral_window_selection(monkeypatch):
+    """Channel plots bind each spectral window to its own renderer and axis."""
+    subtables = []
+    for spw_id, field_id in ((0, 0), (2, 1)):
+        subtables.append(xr.Dataset(
+            {
+                "CPARAM": (("row", "chan", "corr"), da.from_array(
+                    np.full((2, 3, 2), 1 + spw_id + 1j))),
+                "FLAG": (("row", "chan", "corr"), da.from_array(
+                    np.zeros((2, 3, 2), dtype=bool))),
+                "PARAMERR": (("row", "chan", "corr"), da.from_array(
+                    np.full((2, 3, 2), 0.1))),
+                "TIME": ("row", da.from_array(
+                    np.array([3506716801.0, 3506716802.0]))),
+                "SCAN_NUMBER": ("row", [1, 2]),
+            },
+            attrs={"SPECTRAL_WINDOW_ID": spw_id, "FIELD_ID": field_id,
+                   "ANTENNA1": 0},
+        ))
+
+    frequencies = np.array([[1e9, 1.1e9, 1.2e9],
+                            [2e9, 2.1e9, 2.2e9],
+                            [3e9, 3.1e9, 3.2e9]])
+    monkeypatch.setattr(gain_module, "get_table", lambda *a, **kw: (subtables, "B"))
+    monkeypatch.setattr(gain_module, "get_time_range",
+                        lambda *a, **kw: (3506716801.0, 3506716802.0))
+    monkeypatch.setattr(gain_module, "stats_display",
+                        lambda **kw: [kw["spwid"], f"field{kw['field']}",
+                                      kw["corr"], 1.0])
+    monkeypatch.setattr(gain_module.vu, "get_antennas",
+                        lambda *a, **kw: xr.DataArray(["ant0"]))
+    monkeypatch.setattr(gain_module.vu, "get_fields",
+                        lambda *a, **kw: xr.DataArray(["field0", "field1"]))
+    monkeypatch.setattr(gain_module.vu, "get_frequencies",
+                        lambda *a, spwid=None, **kw: (
+                            xr.DataArray(frequencies, dims=("spw", "chan"))
+                            if spwid is None else
+                            xr.DataArray(frequencies[spwid], dims="chan")))
+    monkeypatch.setattr(gain_module.vu, "update_log_levels", lambda *a, **kw: None)
+    monkeypatch.setattr(gain_module.vu, "update_logfile_name", lambda *a, **kw: None)
+    monkeypatch.setattr(gain_module, "set_tempdir", lambda *a, **kw: None)
+    output = {}
+    monkeypatch.setattr(gain_module, "save_html",
+                        lambda name, layouts: output.update(
+                            layout=layouts[0],
+                            html=file_html(layouts[0], CDN, "Gain plot")))
+
+    options = gains_argparser().parse_args(
+        ["-t", "synthetic.B", "-c", "0,1", "-y", "a"])
+    assert gain_module.main(options=options) == 0
+    assert "spw2" in output["html"]
+
+    renderers = [renderer for renderer in output["layout"].select(
+        {"type": GlyphRenderer}) if renderer.tags and
+        renderer.tags[0].get("ragavi_selection")]
+    assert len(renderers) == 4
+    assert {(renderer.tags[0]["spw"], renderer.tags[0]["field"],
+             renderer.tags[0]["corr"]) for renderer in renderers} == {
+                 (spw, spw, corr) for spw in (0, 1) for corr in (0, 1)}
+    assert sum(renderer.visible for renderer in renderers) == 1
+
+    spw_selector = next(widget for widget in output["layout"].select(
+        {"type": CheckboxGroup}) if widget.labels == ["Spw: 0", "Spw: 2"])
+    callback = spw_selector.js_property_callbacks["change:active"][0]
+    assert [axis.name for axis in callback.args["ex_ax"]] == ["spw0", "spw2"]
+    assert [axis.visible for axis in callback.args["ex_ax"]] == [True, False]

@@ -1681,6 +1681,8 @@ def main(**kwargs):
                     fig = add_axis(fig, (freqs[spw][0], freqs[spw][-1]),
                                    ax_label="Frequency [GHz]",
                                    ax_name=f"spw{spw}")
+                    fig.select(name=f"spw{spw}")[0].visible = (
+                        spw == spw_ids[0])
                     fig.add_layout(title, "above")
             elif xaxis == "time":
                 munix = 3506716800.0
