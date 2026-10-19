@@ -1,3 +1,12 @@
+Unreleased
+----------
+**ragavi-gains**
+
+  - Add ``--connect`` to join independent gain solution tracks in interactive and static plots.
+  - Show flagged percentages per scan and antenna in hover tooltips.
+  - Correct linked panel controls, notebook plotting, selected data downloads, and multi-table static exports.
+
+
 0.5.2
 -----
 **ragavi-gains**

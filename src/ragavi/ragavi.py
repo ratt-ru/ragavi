@@ -14,7 +14,7 @@ from bokeh.layouts import column, grid, gridplot, layout, row
 from bokeh.models import (Button, CheckboxGroup,
                           ColumnDataSource, CustomJS, PreText,
                           Legend, LinearAxis, PrintfTickFormatter,
-                          Slider, Scatter, Title, Whisker)
+                          Slider, Scatter, MultiLine, Title, Whisker)
 
 from bokeh.models.widgets import DataTable, TableColumn, Div
 from pyrap.tables import table
@@ -30,7 +30,6 @@ _PLOT_WIDTH_ = 900
 _PLOT_HEIGHT_ = 710
 
 _GHZ_ = 1e9
-_NB_RENDER_ = False
 _BATCH_SIZE_ = 16
 
 # Field shapes are reused when a table contains more fields than distinct
@@ -319,7 +318,7 @@ class DataCoreProcessor:
         logger.debug(vu.ctext("Blackbox in"))
         logger.debug("DCP: blackbox: Getting x-axis data")
 
-        Data = namedtuple("Data", "x x_label y y_label y_err")
+        Data = namedtuple("Data", "x x_label y y_label y_err y_shape")
         x = self.x_only()
         xdata = x.x
         xlabel = x.x_label
@@ -327,6 +326,7 @@ class DataCoreProcessor:
         logger.debug("DCP: blackbox: Getting y-axis data")
         y = self.y_only()
         ydata = y.y
+        y_shape = ydata.shape
         ylabel = y.y_label
         hi, lo = y.y_err
 
@@ -337,11 +337,16 @@ class DataCoreProcessor:
             xdata = xdata[:, np.newaxis].repeat(fac, axis=1)
             xdata = xdata.T if xdata.shape != ydata.shape else xdata
 
-        xdata, ydata, hi, lo = compute(xdata.flatten(), ydata.flatten(),
-                                       hi.flatten(), lo.flatten())
+        if hi is None:
+            xdata, ydata = compute(xdata.flatten(), ydata.flatten())
+            errors = None
+        else:
+            xdata, ydata, hi, lo = compute(xdata.flatten(), ydata.flatten(),
+                                           hi.flatten(), lo.flatten())
+            errors = (hi, lo)
 
         d = Data(x=xdata, x_label=xlabel, y=ydata,
-                 y_label=ylabel, y_err=(hi, lo))
+                 y_label=ylabel, y_err=errors, y_shape=y_shape)
 
         logger.debug(vu.ctext("Blackbox out"))
         return d
@@ -383,7 +388,7 @@ class DataCoreProcessor:
 
         # prepare the y-data
         p_ydata = self.prep_yaxis_data(ydata).data
-        if add_error:
+        if add_error and "PARAMERR" in self.xds_table_obj:
             err_data = self.get_errors()
             # add error to the raw complex value beforehand
             hi = self.prep_yaxis_data(ydata + err_data).data
@@ -398,7 +403,7 @@ class DataCoreProcessor:
 
 ################### Some table related functions #######################
 
-def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
+def get_table(tab_name, antenna=None, fid=None, spwid=None, where=None,
               group_cols=None):
     """ Get xarray Dataset objects containing gain table columns of the
     selected data
@@ -434,13 +439,13 @@ def get_table(tab_name, antenna=None, fid=None, spwid=None, where=[],
                   "SNR": {"dims": ("chan", "corr")},
                   }
 
-    # where is now a list
+    where = list(where or [])
     if antenna is not None:
         where.append("ANTENNA1 IN {}".format(antenna))
     if fid is not None:
         where.append("FIELD_ID IN {}".format(fid))
     if spwid is not None:
-        if spwid.isnumeric():
+        if str(spwid).isnumeric():
             spwid = int(spwid)
         else:
             spwid = vu.resolve_ranges(spwid)
@@ -524,11 +529,12 @@ def get_tooltip_data(xds_table_obj, xaxis, freqs):
     """
     logger.debug("Getting tool tip data")
     scan_no = xds_table_obj.SCAN_NUMBER.values
-    if scan_no.size != xds_table_obj.FLAG.sel(corr=0).size:
-        scan_no = np.tile(
-            scan_no, xds_table_obj.FLAG.chan.size).astype(np.uint8)
-    spw_id = np.full(scan_no.shape, xds_table_obj.SPECTRAL_WINDOW_ID,
-                     dtype=np.uint8)
+    nchan = xds_table_obj.FLAG.sizes["chan"]
+    if xaxis == "channel":
+        scan_no = np.tile(scan_no, nchan)
+    else:
+        scan_no = np.repeat(scan_no, nchan)
+    spw_id = np.full(scan_no.shape, xds_table_obj.SPECTRAL_WINDOW_ID)
     logging.debug("Tooltip data ready")
     return spw_id, scan_no
 
@@ -550,7 +556,8 @@ def antenna_toggle_callback():
 def selection_callback():
     """Apply every active selection to renderers using their plot metadata."""
     return """
-        for (const renderer of ax) {
+        for (let i = 0; i < ax.length; i++) {
+            const renderer = ax[i];
             const key = renderer.tags.find(tag => tag.ragavi_selection === true);
             if (key === undefined) {
                 continue;
@@ -559,6 +566,11 @@ def selection_callback():
                                fsel.active.includes(key.field) &&
                                csel.active.includes(key.corr) &&
                                ssel.active.includes(key.spw);
+            for (const bars of ax_err) {
+                if (bars[i] != null) {
+                    bars[i].visible = renderer.visible && errsel.active.includes(0);
+                }
+            }
         }
 
         for (let spw = 0; spw < ex_ax.length; spw++) {
@@ -610,25 +622,13 @@ def toggle_err_callback():
     code : :obj:`str`
     """
     code = """
-            let n_glyphs = ax.length;
-             //if toggle button active
-            if (cb_obj.active.includes(0))
-                {
-                    for(let i=0; i<n_glyphs; i++){
-                        //only switch on if corresponding plot is on
-                        if(ax[i].visible && ax_err[i] != null){
-                            ax_err[i].visible = true;
-                        }
-
+            for (const bars of ax_err) {
+                for (let i = 0; i < ax.length; i++) {
+                    if (bars[i] != null) {
+                        bars[i].visible = ax[i].visible && cb_obj.active.includes(0);
                     }
                 }
-            else{
-                    for(let i=0; i<n_glyphs; i++){
-                        if (ax_err[i] != null){
-                            ax_err[i].visible = false;
-                            }
-                    }
-                }
+            }
             """
     return code
 
@@ -729,25 +729,19 @@ def title_fs_callback():
 
 def save_selected_callback():
     code = """
-        /*uf_src: Unflagged data source
-          f_src:  Flagged data source scanid antname
-        */
-        let out = `x, y1, y2, ant, corr, field, scan, spw\n`;
+        const columns = ['x', ...Array.from({length: n_ax},
+            (_, index) => `y${index + 1}`),
+            'antname', 'corr', 'field', 'scanid', 'spw'];
+        const csv = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+        let out = columns.join(',') + '\\n';
 
-        //for all the data sources available
         for (let i=0; i<uf_src.length; i++){
             let sel_idx = uf_src[i].selected.indices;
             let data = uf_src[i].data;
 
             for (let j=0; j<sel_idx.length; j++){
-                out +=  `${data['x'][sel_idx[j]]}, ` +
-                        `${data['y1'][sel_idx[j]]}, ` +
-                        `${data['y2'][sel_idx[j]]}, ` +
-                        `${data['antname'][sel_idx[j]]}, ` +
-                        `${data['corr'][sel_idx[j]]}, ` +
-                        `${data['field'][sel_idx[j]]}, ` +
-                        `${data['scanid'][sel_idx[j]]}, ` +
-                        `${data['spw'][sel_idx[j]]}\n`;
+                out += columns.map(column => csv(data[column][sel_idx[j]]))
+                              .join(',') + '\\n';
             }
 
         }
@@ -986,75 +980,42 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
     all_fsrc, all_ufsrc : :obj:`tuple`
         Unified flagged and un-flagged data sources
     """
-    n_figs = len(all_figures)
     fig1 = all_figures[0]
-    fig1_ebars = all_ebars[0]
-
-    # number of axes in the figure
-    n_axis = len(fig1.axis)
-
-    # number of renderers
-    n_rs = len(fig1.renderers)
-    all_ufsrc = []
-    all_fsrc = []
-
     logger.debug("Linking generated plots")
 
-    for f in range(1, n_figs):
-        # link the x- ranges
-        all_figures[f].x_range = fig1.x_range
-
-        # link the titles font sizes
+    for fig in all_figures[1:]:
+        fig.x_range = fig1.x_range
         fig1.select(name="p_title")[0].js_link(
-            "text_font_size", all_figures[f].select(name="p_title")[0],
+            "text_font_size", fig.select(name="p_title")[0],
             "text_font_size")
+        for first_axis, axis in zip(fig1.axis, fig.axis):
+            first_axis.js_link("axis_label_text_font_size", axis,
+                               "axis_label_text_font_size")
+            first_axis.js_link("visible", axis, "visible")
 
-        # link x and y-axes font sizes
-        for _i in range(n_axis):
-            fig1.axis[_i].js_link(
-                "axis_label_text_font_size", all_figures[f].axis[_i],
-                "axis_label_text_font_size")
-            fig1.axis[_i].js_link(
-                "visible", all_figures[f].axis[_i],
-                "visible")
+    unified_sources = []
+    unified_flag_sources = []
+    for i, first_renderer in enumerate(fig1.renderers):
+        source_data = dict(first_renderer.data_source.data)
+        flag_data = dict(all_fsources[0][i].data)
+        for f, fig in enumerate(all_figures[1:], start=1):
+            renderer = fig.renderers[i]
+            source_data.update(renderer.data_source.data)
+            flag_data[f"y{f+1}"] = all_fsources[f][i].data[f"y{f+1}"]
+            flag_data[f"iy{f+1}"] = all_fsources[f][i].data[f"iy{f+1}"]
+            first_renderer.js_link("visible", renderer, "visible")
+            first_renderer.js_link("muted", renderer, "muted")
+            first_renderer.glyph.js_link("size", renderer.glyph, "size")
+            first_renderer.glyph.js_link("fill_alpha", renderer.glyph,
+                                         "fill_alpha")
 
-        for _i in range(n_rs):
-            # add y data from fig 1
-            fig1.renderers[_i].data_source.add(
-                all_figures[f].renderers[_i].data_source.data[f"y{f+1}"],
-                name=f"y{f+1}")
+        shared_source = ColumnDataSource(data=source_data)
+        for fig in all_figures:
+            fig.renderers[i].data_source = shared_source
+        unified_sources.append(shared_source)
+        unified_flag_sources.append(ColumnDataSource(data=flag_data))
 
-            # place the data in a single CDS to be shared
-            shared_cds = ColumnDataSource(
-                data=dict(fig1.renderers[_i].data_source.data))
-
-            # Both renderers use the same source across y-axis plots.
-            all_figures[f].renderers[_i].data_source = shared_cds
-            fig1.renderers[_i].data_source = shared_cds
-
-            all_fsources[0][_i].add(all_fsources[f][_i].data[f"y{f+1}"],
-                                    name=f"y{f+1}")
-            all_fsources[0][_i].add(all_fsources[f][_i].data[f"iy{f+1}"],
-                                    name=f"iy{f+1}")
-
-            # link visible values for the renderers
-            fig1.renderers[_i].js_link("visible",
-                                       all_figures[f].renderers[_i],
-                                       "visible")
-            fig1.renderers[_i].js_link("muted",
-                                       all_figures[f].renderers[_i],
-                                       "muted")
-            fig1.renderers[_i].glyph.js_link(
-                "size", all_figures[f].renderers[_i].glyph, "size")
-            fig1.renderers[_i].glyph.js_link(
-                "fill_alpha", all_figures[f].renderers[_i].glyph,
-                "fill_alpha")
-            if fig1_ebars[_i]:
-                fig1_ebars[_i].js_link("visible", all_ebars[f][_i], "visible")
-            all_ufsrc.append(shared_cds)
-            all_fsrc.append(all_fsources[0][_i])
-
-    return all_fsrc, all_ufsrc
+    return unified_flag_sources, unified_sources
 
 
 def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
@@ -1099,9 +1060,10 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
         fmarkers = gen_flag_data_markers(source.data[f"y{yidx}"], fid=fid,
                                          markers=markers, fmarker=fmarker)
         # update the data source with markers
-        source.add(fmarkers, name="fmarkers")
+        marker_column = f"fmarkers{yidx}"
+        source.add(fmarkers, name=marker_column)
 
-        p_glyph = Scatter(x='x', y=f"y{yidx}", marker="fmarkers",
+        p_glyph = Scatter(x='x', y=f"y{yidx}", marker=marker_column,
                           line_width=0, angle=0.7, **glyph_opts)
     else:
         p_glyph = Scatter(x='x', y=f"y{yidx}", marker=field_marker(fid),
@@ -1122,6 +1084,19 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
     logger.debug("Glyphs generated")
 
     return p_glyph, ebars
+
+
+def make_line_source(data):
+    """Keep independent channel or time tracks separate when joining points."""
+    x = data.x.reshape(data.y_shape)
+    y = data.y.reshape(data.y_shape)
+    if y.ndim == 1:
+        x = x[:, np.newaxis]
+        y = y[:, np.newaxis]
+    return ColumnDataSource(data={
+        "xs": [x[:, track] for track in range(y.shape[1])],
+        "ys": [y[:, track] for track in range(y.shape[1])],
+    })
 
 
 ################### Stats Related Funcs ################################
@@ -1220,7 +1195,7 @@ def stats_display(tab_name, yaxis, corr, field, f_names=None,
     dobj = DataCoreProcessor(subtable, tab_name, gtype, yaxis,
                              corr=corr, flag=True, ddid=spwid)
 
-    y = dobj.y_only(yaxis).y.compute()
+    y = dobj.y_only(add_error=False).y.compute()
 
     med_y = np.nanmedian(y)
 
@@ -1293,7 +1268,7 @@ def save_html(name, plot_layout):
 
 
 def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
-                      dpi=None):
+                      dpi=None, connect=False):
     """Save plots in png, ps, pdf, svg format
 
     Parameters
@@ -1310,6 +1285,7 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
     import matplotlib.colors as colors
 
     logger.debug("Setting up static image")
+    colormap = plt.get_cmap(cmap)
 
     name, ext = os.path.splitext(fname)
 
@@ -1325,9 +1301,8 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
 
     logger.debug(f"Setting image dpi to: {dpi}")
 
-    nrows, ncols = figs.shape
-
     for x, row in enumerate(figs):
+        ncols = len(row)
         plt.close("all")
         fi = plt.figure(figsize=(20, 8), dpi=dpi)
         ax = fi.subplots(nrows=1, ncols=ncols, sharex="row",
@@ -1339,14 +1314,18 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
             ax = np.array([ax])
         for y, cds in enumerate(row):
 
+            point_renderers = [renderer for renderer in cds.renderers
+                               if renderer.tags and
+                               renderer.tags[0].get("ragavi_selection")]
+            line_renderers = [renderer for renderer in cds.renderers
+                              if isinstance(renderer.glyph, MultiLine)]
             ants = np.unique([x.data_source.data["antname"][0]
-                              for x in cds.renderers]).tolist()
+                              for x in point_renderers]).tolist()
             cNorm = colors.Normalize(vmin=0, vmax=len(ants) - 1)
-            cmap = cmx.get_cmap(cmap)
-            scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=cmap)
+            scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=colormap)
 
             handles = []
-            for ren in cds.renderers:
+            for renderer_index, ren in enumerate(point_renderers):
                 if f"y{y+1}" in ren.data_source.data.keys():
                     # x-axis
                     xs = ren.data_source.data["x"]
@@ -1357,7 +1336,7 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
                     label = ren.data_source.data["antname"][0]
 
                     # Set marker size
-                    msize = 5 / (xs.size / 2000)
+                    msize = 5 / (len(xs) / 2000)
                     if msize > 4:
                         msize = 4
 
@@ -1366,6 +1345,11 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
 
                     colour = scalarMap.to_rgba(float(ants.index(label)),
                                                bytes=False)
+                    if connect:
+                        line_data = line_renderers[renderer_index].data_source.data
+                        for line_x, line_y in zip(line_data["xs"], line_data["ys"]):
+                            ax[y].plot(line_x, line_y, "-", color=colour,
+                                       linewidth=0.8)
                     ax[y].plot(xs, ys, "o", color=colour, markersize=msize,
                                label=label)
 
@@ -1392,12 +1376,9 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
 
         fi.suptitle(f"Table: {row[0].tags[0]}", ha="center")
 
-        if x > 0:
-            # there ia more than one table being plotted
-            fname = f"{name}{x}{ext}"
-
-        fi.savefig(fname, bbox_inches='tight')
-        logger.info(f"Image at: {fname}")
+        output_name = f"{name}{x if x else ''}{ext}"
+        fi.savefig(output_name, bbox_inches='tight')
+        logger.info(f"Image at: {output_name}")
 
 
 ################### Main ###############################################
@@ -1405,8 +1386,8 @@ def save_static_image(fname, figs=None, batch_size=16, cmap="viridis",
 
 def main(**kwargs):
     """Main function that launches the gains plotter"""
+    notebook = kwargs.get("notebook", False)
     if "options" in kwargs:
-        _NB_RENDER_ = False
         # capture the parser options
         options = kwargs.get("options", None)
 
@@ -1419,9 +1400,6 @@ def main(**kwargs):
         t0 = options.t0
         t1 = options.t1
         where = options.where
-
-    if isinstance(options.fields, list):
-        fields = ",".join(fields)
 
     if options.debug:
         vu.update_log_levels(logger, "debug")
@@ -1440,10 +1418,15 @@ def main(**kwargs):
 
     # capture all the plots from all available tables
     final_plots = []
+    max_points = 0
 
     for tab in tables:
+        fields = options.fields
+        if isinstance(fields, list):
+            fields = ",".join(fields)
+        plotants = options.plotants
 
-        if options.fields:
+        if fields:
             # Not using .isalnum coz the actual field names can be provided
             if (any(_ in fields for _ in ":~") or
                     fields.isnumeric()):
@@ -1511,6 +1494,7 @@ def main(**kwargs):
         all_legends = []
 
         all_ebars = []
+        all_lines = []
         # ebars_ax2 = []
 
         # Store stats
@@ -1565,6 +1549,7 @@ def main(**kwargs):
             fig_renderers = []
             fig_legends = []
             fig_ebars = []
+            fig_lines = []
             fig_selection = []
             fig_stats = []
             ufsources = []
@@ -1617,10 +1602,25 @@ def main(**kwargs):
                             iy = infl_data.y
                             # for tooltips
                             spw_id, scan = get_tooltip_data(sub, xaxis, freqs)
+                            flags = compute(sub.FLAG.sel(corr=corr).data)[0]
+                            if xaxis == "channel":
+                                flags = flags.T
+                            flags = flags.ravel()
+                            scans, scan_index = np.unique(scan,
+                                                           return_inverse=True)
+                            flagged_by_scan = np.bincount(
+                                scan_index, weights=flags)
+                            samples_by_scan = np.bincount(scan_index)
+                            scan_flag_pct = (100 * flagged_by_scan /
+                                             samples_by_scan)[scan_index]
+                            antenna_flag_pct = np.full(
+                                scan.shape, 100 * np.mean(flags))
                             source = ColumnDataSource(
                                 data={"scanid": scan,
+                                      "scan_flag_pct": scan_flag_pct,
+                                      "antenna_flag_pct": antenna_flag_pct,
                                       "corr":  np.full(scan.shape, corr,
-                                                       dtype=np.uint8),
+                                                       dtype=int),
                                       "field": np.full(scan.shape, fname),
                                       "spw": spw_id,
                                       "antname": np.full(scan.shape, legend)
@@ -1645,6 +1645,8 @@ def main(**kwargs):
                             fig_glyphs.append(glyphs)
                             fig_legends.append((legend, []))
                             fig_ebars.append(bars)
+                            if options.connect:
+                                fig_lines.append((make_line_source(data), colour))
                             fig_selection.append(dict(
                                 ragavi_selection=True,
                                 spw=int(np.where(spw_ids == spw)[0][0]),
@@ -1653,10 +1655,16 @@ def main(**kwargs):
                                 batch=_a // _BATCH_SIZE_))
                             sub.close()
 
+            if not ufsources:
+                continue
+
             title = f"{yaxis.capitalize()} vs {xaxis.capitalize()}"
             x_axis_type = "datetime" if xaxis == "time" else "linear"
             fig = create_bk_fig(xlab=x_label, ylab=y_label, title=title,
-                                x_min=x.min(), x_max=x.max(),
+                                x_min=min(np.min(src.data["x"])
+                                          for src in ufsources),
+                                x_max=max(np.max(src.data["x"])
+                                          for src in ufsources),
                                 x_axis_type=x_axis_type, x_name=xaxis,
                                 y_name=yaxis, pw=_PLOT_WIDTH_,
                                 ph=_PLOT_HEIGHT_, add_grid=True,
@@ -1670,6 +1678,8 @@ def main(**kwargs):
             tooltips = [("({:.4}, {:.4})".format(x_label, y_label),
                          f"(@x, @y{_y})"),
                         ("spw", "@spw"), ("scan_id", "@scanid"),
+                        ("flagged in scan", "@scan_flag_pct{0.0}%"),
+                        ("flagged for antenna", "@antenna_flag_pct{0.0}%"),
                         ("antenna", "@antname"),
                         ("corr", "@corr"), ("field", "@field")]
 
@@ -1725,7 +1735,8 @@ def main(**kwargs):
                     fig.add_layout(fig_ebars[_s])
 
             # number of data points
-            n_pts = x.size * len(fig.renderers)
+            n_pts = sum(len(src.data["x"]) for src in ufsources)
+            max_points = max(max_points, n_pts)
 
             logger.debug(vu.ctext(f"This plot has: {n_pts/1e3} x 1e3 points"))
 
@@ -1745,18 +1756,35 @@ def main(**kwargs):
 
             all_glyphs.append(fig_glyphs)
             all_ebars.append(fig_ebars)
+            all_lines.append(fig_lines)
             all_fsources.append(fsources)
             all_ufsources.append(ufsources)
             all_stats.extend(fig_stats)
             all_figures.append(fig)
 
+        if not all_figures:
+            logger.info("Table contains no matching gain data. Skipping.")
+            continue
+
         stats_table = create_stats_table(all_stats, y_axes)
 
         # linking a bunch of stuff
-        if len(all_figures) > 1:
-            all_fsources, all_ufsources = link_plots(
-                all_figures=all_figures, all_fsources=all_fsources,
-                all_ebars=all_ebars)
+        all_fsources, all_ufsources = link_plots(
+            all_figures=all_figures, all_fsources=all_fsources,
+            all_ebars=all_ebars)
+
+        if options.connect:
+            for fig, lines in zip(all_figures, all_lines):
+                point_renderers = list(fig.renderers)
+                fig.select(name="p_htool")[0].renderers = point_renderers
+                for point, (source, colour) in zip(point_renderers, lines):
+                    line = fig.add_glyph(source, MultiLine(
+                        xs="xs", ys="ys", line_color=colour,
+                        line_width=1.5, line_alpha=0.75))
+                    line.visible = point.visible
+                    line.muted_glyph = line.glyph.clone(line_alpha=0)
+                    point.js_link("visible", line, "visible")
+                    point.js_link("muted", line, "muted")
 
         ######################################################################
         ################ Defining widgets ###################################
@@ -1769,7 +1797,8 @@ def main(**kwargs):
 
         # Selection group
         # creating and configuring Antenna selection buttons
-        ant_labs = gen_checkbox_labels(_BATCH_SIZE_, n_leg_objs, ant_names)
+        ant_labs = gen_checkbox_labels(_BATCH_SIZE_, n_leg_objs,
+                                       ant_names[ant_ids])
         batch_select = CheckboxGroup(labels=ant_labs, active=[0],
                                      **w_dims)
         ant_select = Button(label=("Clear antenna selection" if
@@ -1846,18 +1875,19 @@ def main(**kwargs):
         selection_args = dict(
             ax=all_figures[0].renderers, bsel=batch_select,
             fsel=field_selector, csel=corr_select, ssel=spw_select,
-            ex_ax=ex_ax, all_button=ant_select, nbatches=n_leg_objs)
+            ex_ax=ex_ax, all_button=ant_select, nbatches=n_leg_objs,
+            ax_err=all_ebars, errsel=toggle_err)
         for widget in (batch_select, corr_select, field_selector, spw_select):
             widget.js_on_change("active", CustomJS(
                 args=selection_args, code=selection_callback()))
 
         legend_toggle.js_on_change("active", CustomJS(
-            args=dict(legs=all_legends, n_legs=n_leg_objs),
+            args=dict(legs=all_legends, n_legs=len(all_legends)),
             code=legend_toggle_callback()))
 
         toggle_err.js_on_change("active", CustomJS(
             args=dict(ax=all_figures[0].renderers,
-                      ax_err=all_ebars[0]),
+                      ax_err=all_ebars),
             code=toggle_err_callback()))
 
         toggle_flag.js_on_change("active", CustomJS(
@@ -1868,7 +1898,7 @@ def main(**kwargs):
 
         save_selected.js_on_click(CustomJS(args=dict(
             uf_src=all_ufsources,
-            f_src=all_fsources),
+            n_ax=len(all_figures)),
             code=save_selected_callback()))
 
         alpha_slider.js_on_change("value",
@@ -1923,9 +1953,7 @@ def main(**kwargs):
 
         logger.info("Table {} done.".format(tab))
 
-    final_plots = np.array(final_plots)
-
-    if _NB_RENDER_:
+    if notebook:
         return final_layout
     else:
         # set output dir to temp dir also
@@ -1934,11 +1962,13 @@ def main(**kwargs):
         if options.image_name and options.html_name:
             save_html(options.html_name, final_layout)
             save_static_image(fname=options.image_name, figs=final_plots,
-                              batch_size=_BATCH_SIZE_, cmap=options.mycmap)
+                              batch_size=_BATCH_SIZE_, cmap=options.mycmap,
+                              connect=options.connect)
 
         elif options.image_name:
             save_static_image(fname=options.image_name, figs=final_plots,
-                              batch_size=_BATCH_SIZE_, cmap=options.mycmap)
+                              batch_size=_BATCH_SIZE_, cmap=options.mycmap,
+                              connect=options.connect)
         else:
             if options.html_name:
                 html_name = options.html_name
@@ -1950,9 +1980,9 @@ def main(**kwargs):
                     html_name = html_name.replace(t_name, t_now)
 
             save_html(html_name, final_layout)
-            if n_pts > 30000:
+            if max_points > 30000:
                 html_name += ".png"
-                logger.info(f"> 30k points ({n_pts/1e3} x 1e3) in each plot")
+                logger.info(f"> 30k points ({max_points/1e3} x 1e3) in a plot")
                 logger.info(vu.ctext(
                     "Also generating static output because the HTML output will be overwhelmingly large and barely interactive"))
                 logger.info(
@@ -1960,7 +1990,8 @@ def main(**kwargs):
                 logger.info(vu.ctext(f"Static file's name set to: {html_name}"))
 
                 save_static_image(fname=html_name, figs=final_plots,
-                                  batch_size=_BATCH_SIZE_, cmap=options.mycmap)
+                                  batch_size=_BATCH_SIZE_, cmap=options.mycmap,
+                                  connect=options.connect)
 
         return 0
 
@@ -2006,20 +2037,21 @@ def plot_table(**kwargs):
 
     nargs = []
     for k, v in kwargs.items():
+        if isinstance(v, bool):
+            if v:
+                nargs.append(f"--{k}")
+            continue
         nargs.append(f"--{k}")
         if isinstance(v, list):
-            nargs.extend(v)
+            nargs.extend(map(str, v))
         else:
-            nargs.append(v)
+            nargs.append(str(v))
     parser = gains_argparser()
     options = parser.parse_args(nargs)
 
-    # set NB rendering to true
-    global _NB_RENDER_
-    _NB_RENDER_ = True
     output_notebook()
 
-    lays = main(options=options)
+    lays = main(options=options, notebook=True)
 
     for _l in lays:
         show(_l)

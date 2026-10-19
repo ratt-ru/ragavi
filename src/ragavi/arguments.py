@@ -298,6 +298,8 @@ def gains_argparser():
                          To plot all at once, set this to 'all'.
                          Defaults to ap.""",
                          default="ap")
+    pconfig.add_argument("--connect", action="store_true",
+                         help="Connect gain points along the x-axis for each solution track.")
     pconfig.add_argument("--debug", dest="debug",
                          action="store_true",
                          help="""Enable debug messages""")

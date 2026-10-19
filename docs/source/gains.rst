@@ -46,6 +46,12 @@ By default, `ragavi-gains` automatically determines an appropriate x-axis for
 a given input table. This behaviour can be changed by specifying the
 `-x/xaxis` argument.
 
+Use ``--connect`` to join points along the x-axis. Each independent channel
+or time solution is drawn as its own line, and flagged samples leave gaps.
+The option is also available as ``plot_table(..., connect=True)`` in notebooks.
+Hovering over a point shows the flagged percentage for its scan and for its
+antenna within the selected field, spectral window, and correlation.
+
 
 Use in Jupyter Notebooks
 ========================
