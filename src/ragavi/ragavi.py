@@ -3,7 +3,7 @@ import numpy as np
 import sys
 import os
 from collections import OrderedDict, namedtuple
-from datetime import datetime
+from datetime import datetime, timezone
 from itertools import product
 
 import daskms as xm
@@ -32,6 +32,22 @@ _PLOT_HEIGHT_ = 710
 _GHZ_ = 1e9
 _NB_RENDER_ = False
 _BATCH_SIZE_ = 16
+
+# Field shapes are reused when a table contains more fields than distinct
+# shapes. The field name remains available in the selector and hover tooltip.
+_FIELD_MARKERS_ = ("circle", "diamond", "square", "triangle", "hex",
+                   "inverted_triangle")
+_FIELD_SYMBOLS_ = ("\u2B24", "\u25C6", "\u25FC", "\u25B2", "\u2B22", "\u25BC")
+
+
+def field_marker(fid):
+    """Return the plot marker for a field's position in the selected fields."""
+    return _FIELD_MARKERS_[fid % len(_FIELD_MARKERS_)]
+
+
+def field_symbol(fid):
+    """Return the matching field selector symbol."""
+    return _FIELD_SYMBOLS_[fid % len(_FIELD_SYMBOLS_)]
 
 
 logger = logging.getLogger(__name__)
@@ -520,277 +536,38 @@ def get_tooltip_data(xds_table_obj, xaxis, freqs):
 # Visible data selection callbacks
 
 
-def ant_select_callback():
-    """JS callback for the selection and de-selection of antennas
-
-    Returns
-    -------
-    code : :obj:`str`
+def antenna_toggle_callback():
+    """Select or clear all antenna groups."""
+    return """
+        if (bsel.active.length === nbatches) {
+            bsel.active = [];
+        } else {
+            bsel.active = Array.from({length: nbatches}, (_, index) => index);
+        }
     """
 
-    code = """
-            /*
-              Make all the Antennas available active
-              ax: list containing glyph renderers
-              bsel: batch selection group button
-              nbatches: Number of batches available
-              fsel: field_selector widget,
-              csel: corr_select widget,
-              ssel: spw_select widget,
-              nfields: Number of available fields,
-              ncorrs: Number of avaiblable corrs,
-              nspws: Number of spectral windows,
-            */
-            if (cb_obj.active.includes(0))
-                {
 
-                    for(let i=0; i<ax.length; i++){
-                        ax[i].visible = true;
-                    }
-                    //activate all the checkboxes whose antennas are active
-                    bsel.active = [...Array(nbatches).keys()];
-                    csel.active = [...Array(ncorrs).keys()];
-                    fsel.active = [...Array(nfields).keys()];
-                    ssel.active = [...Array(nspws).keys()];
+def selection_callback():
+    """Apply every active selection to renderers using their plot metadata."""
+    return """
+        for (const renderer of ax) {
+            const key = renderer.tags.find(tag => tag.ragavi_selection === true);
+            if (key === undefined) {
+                continue;
+            }
+            renderer.visible = bsel.active.includes(key.batch) &&
+                               fsel.active.includes(key.field) &&
+                               csel.active.includes(key.corr) &&
+                               ssel.active.includes(key.spw);
+        }
 
-                }
-            else{
-                    for(let i=0; i<ax.length; i++){
-                       ax[i].visible = false;
-                    }
+        for (let spw = 0; spw < ex_ax.length; spw++) {
+            ex_ax[spw].visible = ssel.active.includes(spw);
+        }
 
-                    bsel.active = [];
-                    csel.active = [];
-                    fsel.active = [];
-                    ssel.active = [];
-
-                }
-            """
-
-    return code
-
-
-def batch_select_callback():
-    """JS callback for batch selection Checkboxes
-
-    Returns
-    -------
-    code : :obj:`str`
+        all_button.label = bsel.active.length === nbatches ?
+                           "Clear antenna selection" : "Select all antennas";
     """
-    code = """
-        /* antsel: Select or deselect all antennas button
-           bsize: total number of items in a batch
-           csel: the corr selector array
-           fsel: the field selector button
-           ssel: spw selector button
-           nants: Number of antennas
-           ncorrs: number of available correlations
-           nfields: number of available fields
-           nbatches: total number of available batches
-           ax: List containing glyphs for all antennas, fields and correlations
-           count: keeping a cumulative sum of the traverse number
-        */
-        let count = 0;
-        let new_bsize;
-        for (let sp=0; sp<nspws; sp++){
-            for (let f=0; f<nfields; f++){
-                for (let c=0; c<ncorrs; c++){
-                    //re-initialise bsize
-                    new_bsize = bsize;
-                    for(let n=0; n<nbatches; n++){
-                        /* Reduce batch size to the size of the last batch
-                        and number of antennas is not the same as bsize
-                        */
-                        if (n == nbatches-1 && nants!=bsize){
-                            new_bsize = nants % bsize;
-                        }
-                        for(let b=0; b<new_bsize; b++){
-                            if (cb_obj.active.includes(n)){
-                                ax[count].visible = true;
-                                }
-                            else{
-                                ax[count].visible = false;
-                            }
-                            count = count + 1;
-                        }
-                    }
-                }
-            }
-        }
-
-        if (cb_obj.active.length == nbatches){
-            antsel.active = [0];
-        }
-        else if (cb_obj.active.length==0){
-            antsel.active = [];
-        }
-       """
-    return code
-
-
-def corr_select_callback():
-    """Correlation selection callback"""
-    code = """
-         /*bsize: total number of items in a batch
-           bsel: the batch selector group buttons
-           fsel: field selector group buttons
-           ssel: spw selector group buttons
-           nants: Total number of antennas
-           nspws: Number of spectral windows
-           ncorrs: number of available correlations
-           nfields: number of available fields
-           nbatches: total number of available batches
-           ax: List containing glyphs for a single plot for all antennas,
-           fields and correlations
-           count: keeping a cumulative sum of the traverse number
-        */
-
-        let count = 0;
-        let new_bsize;
-        for (let sp=0; sp<nspws; sp++){
-
-            for (let f=0; f<nfields; f++){
-
-                for (let c=0; c<ncorrs; c++){
-
-                    //re-initialise new batch size
-                    new_bsize = bsize;
-
-                    for(let n=0; n<nbatches; n++){
-
-                        // Reduce new_bsize to the size of the final batch
-                        if (n == nbatches-1 && nants!=bsize){
-                            new_bsize = nants % bsize;
-                        }
-
-                        for(let b=0; b<new_bsize; b++){
-
-                            if (cb_obj.active.includes(c) && fsel.active.includes(f) &&
-                                ssel.active.includes(sp) &&
-                                bsel.active.includes(n)){
-                                ax[count].visible = true;
-                                }
-                            else{
-                                ax[count].visible = false;
-                            }
-                            count = count + 1;
-                        }
-                    }
-                }
-            }
-        }
-
-       """
-    return code
-
-
-def field_selector_callback():
-    """Return JS callback for field selection checkboxes
-
-    Returns
-    -------
-    code : :obj:`str`
-    """
-    code = """
-        /*bsize: total number of items in a batch
-         bsel: the batch selector group buttons
-         csel: corr selector group buttons
-         nants: Number of antennas
-         ncorrs: number of available correlations
-         nfields: number of available fields
-         nbatches: total number of available batches
-         ax: List containing glyphs for all antennas, fields and  correlations
-         count: keeping a cumulative sum of the traverse number
-        */
-        let count = 0;
-        let new_bsize;
-        for (let sp=0; sp<nspws; sp++){
-            for (let f=0; f<nfields; f++){
-                for (let c=0; c<ncorrs; c++){
-                    //re-initialise new batch size
-                    new_bsize = bsize;
-                    for(let n=0; n<nbatches; n++){
-                        // Reduce new batch size to the size of the last batch
-                        if (n == nbatches-1 && nants!=bsize){
-                            new_bsize = nants % bsize;
-                        }
-                        for(let b=0; b<new_bsize; b++){
-                            if (cb_obj.active.includes(f) && csel.active.includes(c) &&
-                                ssel.active.includes(sp) &&
-                                bsel.active.includes(n)){
-                                ax[count].visible = true;
-                                }
-                            else{
-                                ax[count].visible = false;
-                            }
-                            count = count + 1;
-                        }
-                    }
-                }
-            }
-        }
-       """
-    return code
-
-
-def spw_select_callback():
-    """SPW selection callaback"""
-    code = """
-         /*bsize: total number of items in a batch
-           bsel: the batch selector group buttons
-           ex_ax: for the extra frequency ax(es). Is 0 if none.
-           fsel: field selector group buttons
-           csel: corr selector group buttons
-           nspws: Number of spectral windows
-           ncorrs: number of available correlations
-           nfields: number of available fields
-           nbatches: total number of available batches
-           ax: List containing glyphs for all antennas, fields and correlations
-           count: keeping a cumulative sum of the traverse number
-        */
-        let count = 0;
-        let new_bsize;
-        for (let sp=0; sp<nspws; sp++){
-            for (let f=0; f<nfields; f++){
-                for (let c=0; c<ncorrs; c++){
-
-                    //re-initialise new batch size
-                    new_bsize = bsize;
-
-                    for(let n=0; n<nbatches; n++){
-                        // Reduce bsize to the size of the last batch
-                        if (n == nbatches-1 && nants!=bsize){
-                            new_bsize = nants % bsize;
-                        }
-                        for(let b=0; b<new_bsize; b++){
-                            if (cb_obj.active.includes(sp) && fsel.active.includes(f) &&
-                                csel.active.includes(c) &&
-                                bsel.active.includes(n)){
-                                ax[count].visible = true;
-                                }
-                            else{
-                                ax[count].visible = false;
-                            }
-                            count = count + 1;
-                        }
-                    }
-                }
-            }
-
-            //Make the extra y-axes visible only if corresponding spw selected
-            if (ex_ax.length>0){
-                if (cb_obj.active.includes(sp)){
-                    ex_ax[sp].visible=true;
-                }
-                else{
-                    ex_ax[sp].visible=false;
-                }
-            }
-
-        }
-
-       """
-    return code
 
 
 # Show additional data callbacks
@@ -1101,7 +878,7 @@ def create_legend_objs(num_leg_objs, bax1):
 
     lo_ax1 = {}
 
-    l_opts = dict(click_policy="hide", glyph_height=20,
+    l_opts = dict(click_policy="mute", glyph_height=20,
                   glyph_width=20, label_text_font_size="8pt",
                   label_text_font="monospace", location="top_left",
                   margin=1, orientation="horizontal",
@@ -1175,7 +952,8 @@ def gen_flag_data_markers(y, fid=None, markers=None, fmarker="circle_x"):
     """
 
     # fill an array with the unflagged marker value
-    markers_arr = np.full(y.shape, fill_value=markers[fid], dtype="<U17")
+    markers_arr = np.full(y.shape, fill_value=markers[fid % len(markers)],
+                          dtype="<U17")
 
     # mask only where there are nan values
     masked_markers_arr = np.ma.masked_where(np.isnan(y), markers_arr)
@@ -1250,11 +1028,9 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
             shared_cds = ColumnDataSource(
                 data=dict(fig1.renderers[_i].data_source.data))
 
-            # ensure that the cds and its view are the same otherwise error
+            # Both renderers use the same source across y-axis plots.
             all_figures[f].renderers[_i].data_source = shared_cds
-            all_figures[f].renderers[_i].view.source = shared_cds
             fig1.renderers[_i].data_source = shared_cds
-            fig1.renderers[_i].view.source = shared_cds
 
             all_fsources[0][_i].add(all_fsources[f][_i].data[f"y{f+1}"],
                                     name=f"y{f+1}")
@@ -1265,6 +1041,9 @@ def link_plots(all_figures=None, all_fsources=None, all_ebars=None):
             fig1.renderers[_i].js_link("visible",
                                        all_figures[f].renderers[_i],
                                        "visible")
+            fig1.renderers[_i].js_link("muted",
+                                       all_figures[f].renderers[_i],
+                                       "muted")
             fig1.renderers[_i].glyph.js_link(
                 "size", all_figures[f].renderers[_i].glyph, "size")
             fig1.renderers[_i].glyph.js_link(
@@ -1304,9 +1083,8 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
     Tuple of containing glyphs and error bars to be used (from :func:`ragavi.ragavi.errorbar`).
 
     """
-    markers = ["circle", "diamond", "square", "triangle",
-               "hex"]
-    fmarker = "inverted_triangle"
+    markers = _FIELD_MARKERS_
+    fmarker = "circle_x"
     glyph_opts = {"size": 4,
                   "fill_alpha": 1,
                   "fill_color": color,
@@ -1326,7 +1104,7 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
         p_glyph = Scatter(x='x', y=f"y{yidx}", marker="fmarkers",
                           line_width=0, angle=0.7, **glyph_opts)
     else:
-        p_glyph = Scatter(x='x', y=f"y{yidx}", marker=markers[fid],
+        p_glyph = Scatter(x='x', y=f"y{yidx}", marker=field_marker(fid),
                           line_width=0, **glyph_opts)
 
     # add a check for whether all the in y data were NaNs
@@ -1338,7 +1116,8 @@ def make_plots(source, fid=0, color="red", yerr=None, yidx=None):
     else:
         ebars = errorbar(x=source.data['x'], y=source.data[f"y{yidx}"],
                          color=color, yerr=yerr)
-        p_glyph.js_link("fill_alpha", ebars, "line_alpha")
+        if ebars is not None:
+            p_glyph.js_link("fill_alpha", ebars, "line_alpha")
 
     logger.debug("Glyphs generated")
 
@@ -1778,9 +1557,6 @@ def main(**kwargs):
         field_names = vu.get_fields(tab).values
         field_ids = np.unique(np.array([s.FIELD_ID for s in subs]))
 
-        field_ucodes = [u"\u2B24", u"\u25C6", u"\u25FC", u"\u25B2",
-                        u"\u25BC", u"\u2B22"]
-
         # setting up colors for the antenna plot
         cmap = vu.get_linear_cmap(cmap, ant_ids.size)
 
@@ -1789,6 +1565,7 @@ def main(**kwargs):
             fig_renderers = []
             fig_legends = []
             fig_ebars = []
+            fig_selection = []
             fig_stats = []
             ufsources = []
             fsources = []
@@ -1868,6 +1645,12 @@ def main(**kwargs):
                             fig_glyphs.append(glyphs)
                             fig_legends.append((legend, []))
                             fig_ebars.append(bars)
+                            fig_selection.append(dict(
+                                ragavi_selection=True,
+                                spw=int(np.where(spw_ids == spw)[0][0]),
+                                field=int(np.where(field_ids == fid)[0][0]),
+                                corr=int(np.where(corrs == corr)[0][0]),
+                                batch=_a // _BATCH_SIZE_))
                             sub.close()
 
             title = f"{yaxis.capitalize()} vs {xaxis.capitalize()}"
@@ -1898,13 +1681,15 @@ def main(**kwargs):
                     fig = add_axis(fig, (freqs[spw][0], freqs[spw][-1]),
                                    ax_label="Frequency [GHz]",
                                    ax_name=f"spw{spw}")
+                    fig.select(name=f"spw{spw}")[0].visible = (
+                        spw == spw_ids[0])
                     fig.add_layout(title, "above")
             elif xaxis == "time":
                 munix = 3506716800.0
-                ni_time = datetime.utcfromtimestamp(
-                    init_time - munix).strftime("%d %b %Y, %H:%M:%S")
-                ne_time = datetime.utcfromtimestamp(
-                    end_time - munix).strftime("%d %b %Y, %H:%M:%S")
+                ni_time = datetime.fromtimestamp(
+                    init_time - munix, tz=timezone.utc).strftime("%d %b %Y, %H:%M:%S")
+                ne_time = datetime.fromtimestamp(
+                    end_time - munix, tz=timezone.utc).strftime("%d %b %Y, %H:%M:%S")
 
                 fig.xaxis.axis_label = "{} from {} UTC".format(
                     x_label, ni_time)
@@ -1926,9 +1711,11 @@ def main(**kwargs):
 
             for _s in range(n_cds):
                 p = fig.add_glyph(ufsources[_s], fig_glyphs[_s])
-
-                if _s >= _BATCH_SIZE_:
-                    p.visible = False
+                p.tags = [fig_selection[_s]]
+                p.muted_glyph = fig_glyphs[_s].clone(
+                    fill_alpha=0, line_alpha=0)
+                p.visible = all(fig_selection[_s][key] == 0 for key in
+                                ("spw", "field", "corr", "batch"))
 
                 fig_renderers.append(p)
                 # form legend item
@@ -1982,12 +1769,12 @@ def main(**kwargs):
 
         # Selection group
         # creating and configuring Antenna selection buttons
-        ant_select = CheckboxGroup(labels=["Select all antennas"],
-                                   active=[], **w_dims)
-
         ant_labs = gen_checkbox_labels(_BATCH_SIZE_, n_leg_objs, ant_names)
         batch_select = CheckboxGroup(labels=ant_labs, active=[0],
                                      **w_dims)
+        ant_select = Button(label=("Clear antenna selection" if
+                                   n_leg_objs == 1 else
+                                   "Select all antennas"), **w_dims)
 
         corr_labs = ["Correlation {}".format(str(_)) for _ in corrs]
         corr_select = CheckboxGroup(labels=corr_labs, active=[0],
@@ -1995,7 +1782,8 @@ def main(**kwargs):
 
         field_labels = ["Field {} {}".format(
             field_names[int(x)],
-            field_ucodes[enum_fid]) for enum_fid, x in enumerate(field_ids)]
+            field_symbol(enum_fid))
+            for enum_fid, x in enumerate(field_ids)]
 
         field_selector = CheckboxGroup(labels=field_labels, active=[0],
                                        **w_dims)
@@ -2049,50 +1837,19 @@ def main(**kwargs):
 
         logger.debug("Attaching callbacks to widgets")
 
-        ant_select.js_on_change("active", CustomJS(
-            args=dict(ax=all_figures[0].renderers, bsel=batch_select,
-                      fsel=field_selector, csel=corr_select, ssel=spw_select,
-                      nbatches=n_leg_objs, nfields=field_ids.size,
-                      ncorrs=corrs.size, nspws=spw_ids.size),
-            code=ant_select_callback()))
+        ant_select.js_on_click(CustomJS(
+            args=dict(bsel=batch_select, nbatches=n_leg_objs),
+            code=antenna_toggle_callback()))
 
-        # BATCH SELECTION
-        batch_select.js_on_change("active", CustomJS(
-            args=dict(ax=all_figures[0].renderers, bsize=_BATCH_SIZE_,
-                      nants=ant_ids.size, nbatches=n_leg_objs,
-                      nfields=field_ids.size, ncorrs=corrs.size,
-                      nspws=spw_ids.size, fsel=field_selector,
-                      csel=corr_select, antsel=ant_select, ssel=spw_select),
-            code=batch_select_callback()))
-
-        corr_select.js_on_change("active", CustomJS(
-            args=dict(bsel=batch_select, bsize=_BATCH_SIZE_,
-                      fsel=field_selector, nants=ant_ids.size,
-                      ncorrs=corrs.size, nfields=field_ids.size,
-                      nbatches=n_leg_objs, nspws=spw_ids.size,
-                      ax=all_figures[0].renderers, ssel=spw_select),
-            code=corr_select_callback()))
-
-        field_selector.js_on_change("active", CustomJS(
-            args=dict(bsize=_BATCH_SIZE_, bsel=batch_select, csel=corr_select,
-                      nants=ant_ids.size, nfields=field_ids.size,
-                      ncorrs=corrs.size, nbatches=n_leg_objs,
-                      nspws=spw_ids.size, ax=all_figures[0].renderers,
-                      ssel=spw_select),
-            code=field_selector_callback()))
-
-        ex_ax = all_figures[0].select(type=LinearAxis, layout="above")
-        ex_ax = sorted({_.id: _ for _ in ex_ax}.items())
-        ex_ax = [_[1] for _ in ex_ax]
-
-        spw_select.js_on_change("active", CustomJS(
-            args=dict(bsel=batch_select, bsize=_BATCH_SIZE_, csel=corr_select,
-                      fsel=field_selector, nants=ant_ids.size,
-                      ncorrs=corrs.size, nfields=field_ids.size,
-                      nbatches=n_leg_objs, nspws=spw_ids.size,
-                      ax=all_figures[0].renderers, spw_ids=spw_ids,
-                      ex_ax=ex_ax),
-            code=spw_select_callback()))
+        ex_ax = ([all_figures[0].select(name=f"spw{spw}")[0]
+                  for spw in spw_ids] if xaxis == "channel" else [])
+        selection_args = dict(
+            ax=all_figures[0].renderers, bsel=batch_select,
+            fsel=field_selector, csel=corr_select, ssel=spw_select,
+            ex_ax=ex_ax, all_button=ant_select, nbatches=n_leg_objs)
+        for widget in (batch_select, corr_select, field_selector, spw_select):
+            widget.js_on_change("active", CustomJS(
+                args=selection_args, code=selection_callback()))
 
         legend_toggle.js_on_change("active", CustomJS(
             args=dict(legs=all_legends, n_legs=n_leg_objs),
