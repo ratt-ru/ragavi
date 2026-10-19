@@ -6,13 +6,15 @@ import xarray as xr
 import dask.array as da
 from bokeh.embed import file_html
 from bokeh.models import (Button, CheckboxGroup, ColumnDataSource,
-                          GlyphRenderer, Legend)
+                          GlyphRenderer, Legend, MultiLine, Scatter)
 from bokeh.resources import CDN
 
 from ragavi.plotting import create_bk_fig
 from ragavi.arguments import gains_argparser
 import ragavi.ragavi as gain_module
-from ragavi.ragavi import DataCoreProcessor, field_marker, field_symbol, make_plots
+from ragavi.ragavi import (DataCoreProcessor, field_marker, field_symbol,
+                           get_tooltip_data, link_plots, make_line_source,
+                           make_plots, save_static_image)
 
 
 @pytest.mark.parametrize(
@@ -38,6 +40,61 @@ def test_gain_default_xaxis(gain_type, expected):
     assert processor.xaxis == expected
 
 
+def test_gain_without_paramerr_still_produces_plot_data():
+    subtable = xr.Dataset({
+        "CPARAM": (("row", "chan", "corr"),
+                   np.array([[[1 + 1j]], [[2 + 0j]]])),
+        "FLAG": (("row", "chan", "corr"),
+                 np.zeros((2, 1, 1), dtype=bool)),
+        "TIME": ("row", da.from_array(
+            np.array([3506716801.0, 3506716802.0]))),
+    })
+    data = DataCoreProcessor(subtable, "unused", "G", "amplitude",
+                             flag=True).act()
+
+    np.testing.assert_allclose(data.y, [np.sqrt(2), 2])
+    assert data.y_err is None
+
+
+def test_gain_lines_keep_independent_tracks_separate():
+    from collections import namedtuple
+    data = namedtuple("Data", "x y y_shape")(
+        x=np.array([1, 1, 2, 2, 3, 3]),
+        y=np.array([10, 20, 11, np.nan, 12, 22]),
+        y_shape=(3, 2))
+
+    source = make_line_source(data)
+
+    assert [track.tolist() for track in source.data["xs"]] == [
+        [1, 2, 3], [1, 2, 3]]
+    np.testing.assert_array_equal(source.data["ys"][0], [10, 11, 12])
+    assert np.isnan(source.data["ys"][1][1])
+
+
+def test_connected_static_gain_export_with_different_panel_counts(tmp_path):
+    def figure(table):
+        fig = create_bk_fig(xlab="Channel", ylab="Amplitude", title="Gain plot",
+                            x_name="channel", y_name="amplitude", pw=500,
+                            ph=400, add_xaxis=True, add_yaxis=True)
+        fig.tags.append(table)
+        points = fig.add_glyph(ColumnDataSource(data={
+            "x": [1, 2], "y1": [3, 4], "antname": ["a0", "a0"]}),
+            Scatter(x="x", y="y1"))
+        points.tags = [{"ragavi_selection": True}]
+        fig.add_glyph(ColumnDataSource(data={
+            "xs": [[1, 2]], "ys": [[3, 4]]}),
+            MultiLine(xs="xs", ys="ys"))
+        return fig
+
+    output = tmp_path / "gains"
+    save_static_image(str(output), figs=[[figure("first")],
+                                         [figure("second"), figure("second")]],
+                      connect=True, dpi=40)
+
+    assert output.with_suffix(".png").exists()
+    assert (tmp_path / "gains1.png").exists()
+
+
 @pytest.mark.parametrize("field_index", [0, 4, 5, 6, 11, 12])
 @pytest.mark.parametrize("flagged", [False, True])
 def test_field_markers_render_for_many_fields(field_index, flagged):
@@ -48,9 +105,9 @@ def test_field_markers_render_for_many_fields(field_index, flagged):
 
     assert field_symbol(field_index) == field_symbol(field_index % 6)
     if flagged:
-        assert glyph.marker == "fmarkers"
-        assert source.data["fmarkers"].tolist() == [field_marker(field_index),
-                                                      "circle_x"]
+        assert glyph.marker == "fmarkers1"
+        assert source.data["fmarkers1"].tolist() == [field_marker(field_index),
+                                                       "circle_x"]
     else:
         assert glyph.marker == field_marker(field_index)
 
@@ -74,6 +131,97 @@ def test_make_plots_without_error_bars():
 
     assert glyph.marker == field_marker(6)
     assert whisker is None
+
+
+@pytest.mark.parametrize(
+    "xaxis, scans", [("time", [300, 300, 301, 301]),
+                     ("channel", [300, 301, 300, 301])])
+def test_gain_tooltips_follow_flattened_data_order(xaxis, scans):
+    subtable = xr.Dataset(
+        {"SCAN_NUMBER": ("row", [300, 301]),
+         "FLAG": (("row", "chan", "corr"),
+                  np.zeros((2, 2, 1), dtype=bool))},
+        attrs={"SPECTRAL_WINDOW_ID": 300})
+
+    spw, scan = get_tooltip_data(subtable, xaxis, None)
+    assert scan.tolist() == scans
+    assert spw.tolist() == [300] * 4
+
+
+def test_four_gain_axes_share_each_series_and_flag_values():
+    figures, flagged, whiskers = [], [], []
+    for index in range(4):
+        fig = create_bk_fig(xlab="Time", ylab="Value", title="Gain plot",
+                            x_name="time", y_name="gain", add_xaxis=True,
+                            add_yaxis=True, pw=500, ph=400)
+        figure_whiskers = []
+        figure_flags = []
+        for antenna in range(2):
+            y = np.array([float(index + antenna), float(index + antenna + 1)])
+            source = ColumnDataSource(data={"x": [1, 2],
+                                            f"y{index + 1}": y,
+                                            "antname": [str(antenna)] * 2})
+            if index == 3:
+                source.add(["circle", "circle_x"], "fmarkers4")
+            fig.add_glyph(source, Scatter(x="x", y=f"y{index + 1}"))
+            figure_flags.append(ColumnDataSource(data={
+                f"y{index + 1}": y,
+                f"iy{index + 1}": y + 10}))
+            figure_whiskers.append(None)
+        figures.append(fig)
+        flagged.append(figure_flags)
+        whiskers.append(figure_whiskers)
+
+    all_flags, all_sources = link_plots(figures, flagged, whiskers)
+
+    assert len(all_sources) == len(all_flags) == 2
+    for antenna in range(2):
+        assert all(fig.renderers[antenna].data_source is all_sources[antenna]
+                   for fig in figures)
+        for axis in range(1, 5):
+            assert f"y{axis}" in all_sources[antenna].data
+            assert f"iy{axis}" in all_flags[antenna].data
+        assert "fmarkers4" in all_sources[antenna].data
+    assert "Gain plot" in file_html(figures, CDN, "Gain plot")
+
+
+def test_notebook_gain_plot_requests_layouts(monkeypatch):
+    shown = []
+    monkeypatch.setattr(gain_module, "output_notebook", lambda: None)
+    monkeypatch.setattr(gain_module, "show", shown.append)
+    def capture_main(**kwargs):
+        assert kwargs["notebook"] is True
+        assert kwargs["options"].mytabs == ["one.G", "two.G"]
+        assert kwargs["options"].fields == ["1", "2"]
+        assert kwargs["options"].connect is True
+        return ["first layout", "second layout"]
+    monkeypatch.setattr(gain_module, "main", capture_main)
+
+    gain_module.plot_table(table=["one.G", "two.G"], field=[1, 2],
+                           connect=True)
+
+    assert shown == ["first layout", "second layout"]
+
+
+def test_gain_field_names_resolve_per_table(monkeypatch):
+    selected = []
+    monkeypatch.setattr(gain_module.vu, "name_2id",
+                        lambda tab, name: 1 if tab.endswith("one.G") else 2)
+    monkeypatch.setattr(gain_module, "get_table",
+                        lambda tab, **kwargs: (selected.append(kwargs["fid"]) or [], "G"))
+    monkeypatch.setattr(gain_module, "get_time_range", lambda *a, **kw: (1, 2))
+    monkeypatch.setattr(gain_module.vu, "get_frequencies",
+                        lambda *a, **kw: xr.DataArray([[1e9]],
+                                                      dims=("spw", "chan")))
+    monkeypatch.setattr(gain_module.vu, "update_log_levels", lambda *a, **kw: None)
+    monkeypatch.setattr(gain_module.vu, "update_logfile_name", lambda *a, **kw: None)
+    monkeypatch.setattr(gain_module, "set_tempdir", lambda *a, **kw: None)
+    monkeypatch.setattr(gain_module, "save_html", lambda *a, **kw: None)
+
+    options = gains_argparser().parse_args(
+        ["-t", "one.G", "two.G", "-f", "TARGET", "-c", "0"])
+    assert gain_module.main(options=options) == 0
+    assert selected == ["[1]", "[2]"]
 
 
 def test_sparse_gain_plot_selection_metadata(monkeypatch):
@@ -152,6 +300,8 @@ def test_sparse_gain_plot_selection_metadata(monkeypatch):
         callback.code == gain_module.selection_callback()
         for callback in widget.js_property_callbacks.get("change:active", []))]
     assert len(selection_widgets) == 4
+    assert all(len(widget.js_property_callbacks["change:active"][0]
+                   .args["ax_err"]) == 2 for widget in selection_widgets)
     buttons = list(output["layout"].select({"type": Button}))
     assert any(button.label == "Select all antennas" for button in buttons)
 
@@ -160,12 +310,15 @@ def test_channel_gain_plot_spectral_window_selection(monkeypatch):
     """Channel plots bind each spectral window to its own renderer and axis."""
     subtables = []
     for spw_id, field_id in ((0, 0), (2, 1)):
+        flags = np.zeros((2, 3, 2), dtype=bool)
+        if spw_id == 0:
+            flags[0, 1, 0] = True
         subtables.append(xr.Dataset(
             {
                 "CPARAM": (("row", "chan", "corr"), da.from_array(
                     np.full((2, 3, 2), 1 + spw_id + 1j))),
                 "FLAG": (("row", "chan", "corr"), da.from_array(
-                    np.zeros((2, 3, 2), dtype=bool))),
+                    flags)),
                 "PARAMERR": (("row", "chan", "corr"), da.from_array(
                     np.full((2, 3, 2), 0.1))),
                 "TIME": ("row", da.from_array(
@@ -202,10 +355,15 @@ def test_channel_gain_plot_spectral_window_selection(monkeypatch):
                         lambda name, layouts: output.update(
                             layout=layouts[0],
                             html=file_html(layouts[0], CDN, "Gain plot")))
+    static = {}
+    monkeypatch.setattr(gain_module, "save_static_image",
+                        lambda **kwargs: static.update(kwargs))
 
     options = gains_argparser().parse_args(
-        ["-t", "synthetic.B", "-c", "0,1", "-y", "a"])
+        ["-t", "synthetic.B", "-c", "0,1", "-y", "a", "--connect",
+         "-p", "synthetic.png", "-o", "synthetic"])
     assert gain_module.main(options=options) == 0
+    assert static["connect"] is True
     assert "spw2" in output["html"]
 
     renderers = [renderer for renderer in output["layout"].select(
@@ -216,9 +374,23 @@ def test_channel_gain_plot_spectral_window_selection(monkeypatch):
              renderer.tags[0]["corr"]) for renderer in renderers} == {
                  (spw, spw, corr) for spw in (0, 1) for corr in (0, 1)}
     assert sum(renderer.visible for renderer in renderers) == 1
+    lines = [renderer for renderer in output["layout"].select(
+        {"type": GlyphRenderer}) if isinstance(renderer.glyph, MultiLine)]
+    assert len(lines) == 4
+    assert all(len(line.data_source.data["xs"]) == 2 for line in lines)
+    first = next(renderer for renderer in renderers if
+                 renderer.tags[0]["spw"] == 0 and
+                 renderer.tags[0]["corr"] == 0)
+    assert first.data_source.data["scan_flag_pct"].tolist() == pytest.approx(
+        [100 / 3, 0, 100 / 3, 0, 100 / 3, 0])
+    assert first.data_source.data["antenna_flag_pct"].tolist() == pytest.approx(
+        [100 / 6] * 6)
 
     spw_selector = next(widget for widget in output["layout"].select(
         {"type": CheckboxGroup}) if widget.labels == ["Spw: 0", "Spw: 2"])
     callback = spw_selector.js_property_callbacks["change:active"][0]
     assert [axis.name for axis in callback.args["ex_ax"]] == ["spw0", "spw2"]
     assert [axis.visible for axis in callback.args["ex_ax"]] == [True, False]
+    download = next(button for button in output["layout"].select(
+        {"type": Button}) if button.label == "Download data selection")
+    assert download.js_event_callbacks["button_click"][0].args["n_ax"] == 1
